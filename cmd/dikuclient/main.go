@@ -11,17 +11,20 @@ import (
 
 	"github.com/anicolao/dikuclient/internal/config"
 	"github.com/anicolao/dikuclient/internal/tui"
+	"github.com/anicolao/dikuclient/internal/web"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 var (
-	host        = flag.String("host", "", "MUD server hostname")
-	port        = flag.Int("port", 4000, "MUD server port")
-	logAll      = flag.Bool("log-all", false, "Enable logging of MUD output and TUI content")
-	accountName = flag.String("account", "", "Use saved account")
-	saveAccount = flag.Bool("save-account", false, "Save account credentials")
-	listAccounts = flag.Bool("list-accounts", false, "List saved accounts")
-	deleteAccount = flag.String("delete-account", "", "Delete saved account")
+	host           = flag.String("host", "", "MUD server hostname")
+	port           = flag.Int("port", 4000, "MUD server port")
+	logAll         = flag.Bool("log-all", false, "Enable logging of MUD output and TUI content")
+	accountName    = flag.String("account", "", "Use saved account")
+	saveAccount    = flag.Bool("save-account", false, "Save account credentials")
+	listAccounts   = flag.Bool("list-accounts", false, "List saved accounts")
+	deleteAccount  = flag.String("delete-account", "", "Delete saved account")
+	webMode        = flag.Bool("web", false, "Start in web mode (HTTP server with WebSocket)")
+	webPort        = flag.Int("web-port", 8080, "Web server port")
 )
 
 func main() {
@@ -44,7 +47,18 @@ func main() {
 		return
 	}
 
-	// Determine connection parameters
+	// Handle web mode
+	if *webMode {
+		fmt.Printf("Starting web server on port %d...\n", *webPort)
+		fmt.Printf("Open http://localhost:%d in your browser\n", *webPort)
+		if err := web.Start(*webPort); err != nil {
+			fmt.Printf("Error starting web server: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Determine connection parameters (terminal mode)
 	var finalHost string
 	var finalPort int
 	var username, password string

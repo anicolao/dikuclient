@@ -1,0 +1,145 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Courier New', monospace;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    max-width: 100%;
+    margin: 0 auto;
+    width: 100%;
+}
+
+header {
+    background-color: #2d2d2d;
+    padding: 1rem;
+    border-bottom: 2px solid #444;
+    flex-shrink: 0;
+}
+
+h1 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    color: #4ec9b0;
+}
+
+.connection-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.info-bar {
+    font-size: 0.85rem;
+    color: #888;
+    margin-top: 0.5rem;
+}
+
+.connection-controls input {
+    padding: 0.5rem;
+    background-color: #1e1e1e;
+    border: 1px solid #444;
+    color: #d4d4d4;
+    font-family: inherit;
+}
+
+.connection-controls input[type="text"] {
+    flex: 1;
+}
+
+.connection-controls input[type="number"] {
+    width: 100px;
+}
+
+.connection-controls button {
+    padding: 0.5rem 1rem;
+    background-color: #007acc;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.connection-controls button:hover:not(:disabled) {
+    background-color: #005a9e;
+}
+
+.connection-controls button:disabled {
+    background-color: #3e3e3e;
+    color: #666;
+    cursor: not-allowed;
+}
+
+.status {
+    padding: 0.5rem 1rem;
+    border-radius: 3px;
+    font-size: 0.9rem;
+}
+
+.status.connected {
+    background-color: #4ec9b0;
+    color: #1e1e1e;
+}
+
+.status.disconnected {
+    background-color: #f48771;
+    color: #1e1e1e;
+}
+
+main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    overflow: hidden;
+    min-height: 0;
+}
+
+#terminal {
+    flex: 1;
+    background-color: #000;
+    border: 1px solid #444;
+    overflow: auto;
+    padding: 10px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.2;
+    white-space: pre;
+    color: #d4d4d4;
+}
+
+/* Styles for xterm.js if it loads */
+#terminal .xterm {
+    height: 100%;
+    padding: 10px;
+}
+
+/* Fallback terminal styles */
+#terminal.fallback {
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+
+#terminal:focus {
+    outline: 1px solid #007acc;
+}
+
+/* Cursor for fallback terminal */
+.cursor {
+    background-color: #d4d4d4;
+    color: #000;
+}

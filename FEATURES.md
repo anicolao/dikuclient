@@ -1,4 +1,103 @@
-# Feature Summary: Account Management and Auto-Login
+# Feature Summary
+
+This document summarizes the major features added to DikuMUD Client.
+
+## Web Mode with Terminal Emulation (Phase 3)
+
+### Overview
+The DikuMUD Client now supports a web-based interface accessible through a browser using terminal emulation. This provides an identical experience to the terminal mode by running the full TUI client in a pseudo-terminal (PTY) and streaming it to the browser via WebSocket.
+
+### Features Implemented
+
+#### 1. Terminal Emulation Architecture
+- Runs the complete TUI client in a PTY on the server
+- Streams ANSI terminal output to browser via WebSocket
+- Uses xterm.js for proper terminal rendering in browser
+- Fallback support when CDN is blocked
+- Identical experience between terminal and web modes
+
+#### 2. HTTP Server
+- Serves static web interface files (HTML, CSS, JavaScript)
+- Configurable port with `--web-port` flag
+- Clean, modern dark theme UI
+
+#### 3. WebSocket Handler
+- Real-time bidirectional communication between browser and PTY
+- Manages multiple concurrent client sessions
+- Each session runs independent TUI instance
+- Automatic cleanup on disconnect
+- Supports terminal resize events
+
+#### 4. Web Client Interface
+- Connection controls (host, port, connect/disconnect buttons)
+- Full terminal emulator using xterm.js
+- Displays complete TUI including status bar, sidebars, and formatting
+- Keyboard input forwarded to PTY
+- Responsive layout with proper terminal sizing
+
+#### 5. TUI Integration
+- No code duplication - uses existing TUI implementation
+- All TUI features work in web mode (status bar, sidebars, ANSI colors)
+- Server spawns dikuclient with specified host/port in PTY
+- PTY handles terminal control codes and formatting
+
+### Usage
+
+Start web server:
+```bash
+./dikuclient --web --web-port 8080
+```
+
+Then open `http://localhost:8080` in a browser, enter MUD host/port, and click Connect.
+
+### Technical Implementation
+
+#### Server Side (Go)
+- **internal/web/server.go**: HTTP server with file serving and WebSocket endpoint
+- **internal/web/websocket.go**: PTY-based session manager that spawns TUI instances
+- Uses gorilla/websocket library for WebSocket support
+- Uses creack/pty library for pseudo-terminal support
+
+#### Client Side (JavaScript)
+- **web/static/index.html**: Main HTML interface with xterm.js integration
+- **web/static/app.js**: WebSocket client with xterm.js and fallback support
+- **web/static/styles.css**: Dark theme styling for terminal emulation
+
+#### Protocol
+- JSON messages for control: `{"type": "connect", "host": "...", "port": 4000, "cols": 80, "rows": 24}`
+- JSON messages for resize: `{"type": "resize", "cols": 80, "rows": 24}`
+- Raw terminal data for output and input
+
+#### Architecture
+```
+Browser (xterm.js) ←→ WebSocket ←→ PTY ←→ TUI Client ←→ MUD Server
+```
+
+This follows DESIGN.md Option 1 (Terminal Emulation - Recommended):
+- Identical experience between terminal and web modes
+- Code reuse - single TUI codebase
+- No dual rendering backends to maintain
+
+### Security Considerations
+- CORS enabled (allow all origins) - should be configured for production
+- No authentication implemented - suitable for local/trusted networks
+- Plain text WebSocket (ws://) - should use WSS for production
+- PTY isolation ensures session separation
+
+### Files Added
+- `internal/web/server.go` - HTTP server
+- `internal/web/websocket.go` - PTY-based WebSocket handler
+- `web/static/index.html` - Web interface
+- `web/static/app.js` - WebSocket client
+- `web/static/styles.css` - Styling
+
+### Files Modified
+- `cmd/dikuclient/main.go` - Added web mode flags
+- `go.mod` - Added gorilla/websocket dependency
+
+---
+
+## Account Management and Auto-Login (Phase 1)
 
 This document summarizes the account management and auto-login features added to DikuMUD Client.
 
