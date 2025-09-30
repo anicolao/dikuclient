@@ -119,7 +119,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				command := m.currentInput
 				// Send command (even if empty - user may want to send blank line)
 				m.conn.Send(command)
-				
+
 				// Don't modify m.output here - let the server echo if it wants to
 				// Or we can store the command for display purposes
 				if !m.echoSuppressed && command != "" {
@@ -130,7 +130,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.output[len(m.output)-1] = m.output[len(m.output)-1] + "\x1b[93m" + command + "\x1b[0m"
 					}
 				}
-				
+
 				// Reset input
 				m.currentInput = ""
 				m.cursorPos = 0
@@ -209,13 +209,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case mudMsg:
 		// Add message to output - it already has proper line endings
 		msgStr := string(msg)
-		
+
 		// Log raw MUD output if logging enabled
 		if m.mudLogFile != nil {
 			fmt.Fprintf(m.mudLogFile, "[%s] %s", time.Now().Format("15:04:05.000"), msgStr)
 			m.mudLogFile.Sync()
 		}
-		
+
 		// Split into lines and add them individually to preserve formatting
 		lines := strings.Split(msgStr, "\n")
 		for i, line := range lines {
@@ -225,41 +225,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.output = append(m.output, line)
 		}
-		
+
 		// Check for auto-login prompts
 		if m.username != "" && m.autoLoginState < 2 {
 			lastLine := ""
 			if len(m.output) > 0 {
 				lastLine = strings.ToLower(strings.TrimSpace(m.output[len(m.output)-1]))
 			}
-			
+
 			// Check for username prompt
-			if m.autoLoginState == 0 && (strings.Contains(lastLine, "name:") || 
-				strings.Contains(lastLine, "login:") || 
-				strings.Contains(lastLine, "account:") ||
-				strings.Contains(lastLine, "character:")) {
+			if m.autoLoginState == 0 && (strings.Contains(lastLine, "name") ||
+				strings.Contains(lastLine, "login") ||
+				strings.Contains(lastLine, "account") ||
+				strings.Contains(lastLine, "character")) {
 				// Send username automatically
 				m.conn.Send(m.username)
 				m.autoLoginState = 1
 				m.output = append(m.output, fmt.Sprintf("\x1b[90m[Auto-login: sending username '%s']\x1b[0m", m.username))
 			}
 		}
-		
+
 		if m.password != "" && m.autoLoginState == 1 {
 			lastLine := ""
 			if len(m.output) > 0 {
 				lastLine = strings.ToLower(strings.TrimSpace(m.output[len(m.output)-1]))
 			}
-			
+
 			// Check for password prompt
-			if strings.Contains(lastLine, "password:") || strings.Contains(lastLine, "pass:") {
+			if strings.Contains(lastLine, "password") || strings.Contains(lastLine, "pass") {
 				// Send password automatically
 				m.conn.Send(m.password)
 				m.autoLoginState = 2
 				m.output = append(m.output, "\x1b[90m[Auto-login: sending password]\x1b[0m")
 			}
 		}
-		
+
 		m.updateViewport()
 		return m, m.listenForMessages
 
@@ -288,7 +288,7 @@ func (m *Model) updateViewport() {
 	var content string
 	if len(m.output) > 0 {
 		lastLine := m.output[len(m.output)-1]
-		
+
 		if (m.currentInput != "" || m.connected) && !m.echoSuppressed {
 			// Build input line with cursor (only if echo is not suppressed)
 			inputLine := m.currentInput
@@ -299,7 +299,7 @@ func (m *Model) updateViewport() {
 				// Show cursor at the end
 				inputLine = m.currentInput + "█"
 			}
-			
+
 			// Append input inline to the last line with yellow color
 			// Use bright yellow (93) for better visibility
 			lines := make([]string, len(m.output)-1)
@@ -334,10 +334,10 @@ func (m *Model) updateViewport() {
 			}
 		}
 	}
-	
+
 	m.viewport.SetContent(content)
 	m.viewport.GotoBottom()
-	
+
 	// Log TUI content if logging enabled
 	if m.tuiLogFile != nil {
 		fmt.Fprintf(m.tuiLogFile, "[%s] === TUI Update ===\n%s\n\n", time.Now().Format("15:04:05.000"), content)
