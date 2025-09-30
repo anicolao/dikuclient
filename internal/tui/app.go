@@ -30,7 +30,8 @@ var (
 	mainStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("62")).
-			Background(lipgloss.Color("234")) // Dark background
+			BorderBackground(lipgloss.Color("234")). // Dark background for border
+			Background(lipgloss.Color("234"))        // Dark background
 
 	viewportStyle = lipgloss.NewStyle().
 				Background(lipgloss.Color("234")). // Dark background
@@ -45,7 +46,8 @@ var (
 	sidebarStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("62")).
-			Background(lipgloss.Color("234")). // Dark background
+			BorderBackground(lipgloss.Color("234")). // Dark background for border
+			Background(lipgloss.Color("234")).       // Dark background
 			Padding(1)
 
 	emptyPanelStyle = lipgloss.NewStyle().
@@ -56,7 +58,8 @@ var (
 	inputStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("229")). // Bright yellow for user input
 			Background(lipgloss.Color("234")). // Dark background to match viewport
-			Bold(true)
+			Bold(true).
+			Inline(false) // Fill entire line background
 )
 
 type mudMsg string
