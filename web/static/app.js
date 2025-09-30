@@ -199,11 +199,27 @@ connectBtn.addEventListener('click', () => {
     };
 
     ws.onmessage = (event) => {
-        // Write data directly to terminal
-        if (useFallback) {
-            writeFallback(event.data);
-        } else if (term) {
-            term.write(event.data);
+        // Handle both text and binary data
+        if (event.data instanceof Blob) {
+            // Binary data - convert to text
+            event.data.arrayBuffer().then(buffer => {
+                const bytes = new Uint8Array(buffer);
+                const decoder = new TextDecoder('utf-8', { fatal: false });
+                const text = decoder.decode(bytes);
+                
+                if (useFallback) {
+                    writeFallback(text);
+                } else if (term) {
+                    term.write(text);
+                }
+            });
+        } else {
+            // Text data
+            if (useFallback) {
+                writeFallback(event.data);
+            } else if (term) {
+                term.write(event.data);
+            }
         }
         
         // Update connection state if needed

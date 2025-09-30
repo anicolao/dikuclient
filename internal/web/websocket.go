@@ -215,7 +215,9 @@ func (h *WebSocketHandler) forwardPTYOutput(session *Session) {
 		if n > 0 {
 			session.mu.Lock()
 			if !session.closed {
-				err = session.ws.WriteMessage(websocket.TextMessage, buf[:n])
+				// Use BinaryMessage to avoid UTF-8 validation issues
+				// PTY output may contain binary telnet sequences
+				err = session.ws.WriteMessage(websocket.BinaryMessage, buf[:n])
 				if err != nil {
 					log.Printf("Error writing to WebSocket: %v", err)
 					session.mu.Unlock()
