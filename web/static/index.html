@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DikuMUD Client</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>DikuMUD Client</h1>
+            <div class="connection-controls">
+                <input type="text" id="host" placeholder="Host (e.g., aardmud.org)" value="aardmud.org">
+                <input type="number" id="port" placeholder="Port" value="23">
+                <button id="connectBtn">Connect</button>
+                <button id="disconnectBtn" disabled>Disconnect</button>
+                <span id="status" class="status disconnected">Disconnected</span>
+            </div>
+        </header>
+        
+        <main>
+            <div class="output-area">
+                <div id="output"></div>
+            </div>
+            <div class="input-area">
+                <input type="text" id="input" placeholder="Enter command..." disabled>
+                <button id="sendBtn" disabled>Send</button>
+            </div>
+        </main>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>

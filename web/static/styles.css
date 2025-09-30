@@ -1,0 +1,171 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Courier New', monospace;
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+header {
+    background-color: #2d2d2d;
+    padding: 1rem;
+    border-bottom: 2px solid #444;
+}
+
+h1 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    color: #4ec9b0;
+}
+
+.connection-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.connection-controls input {
+    padding: 0.5rem;
+    background-color: #1e1e1e;
+    border: 1px solid #444;
+    color: #d4d4d4;
+    font-family: inherit;
+}
+
+.connection-controls input[type="text"] {
+    flex: 1;
+}
+
+.connection-controls input[type="number"] {
+    width: 100px;
+}
+
+.connection-controls button {
+    padding: 0.5rem 1rem;
+    background-color: #007acc;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.connection-controls button:hover:not(:disabled) {
+    background-color: #005a9e;
+}
+
+.connection-controls button:disabled {
+    background-color: #3e3e3e;
+    color: #666;
+    cursor: not-allowed;
+}
+
+.status {
+    padding: 0.5rem 1rem;
+    border-radius: 3px;
+    font-size: 0.9rem;
+}
+
+.status.connected {
+    background-color: #4ec9b0;
+    color: #1e1e1e;
+}
+
+.status.disconnected {
+    background-color: #f48771;
+    color: #1e1e1e;
+}
+
+main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    overflow: hidden;
+}
+
+.output-area {
+    flex: 1;
+    background-color: #1e1e1e;
+    border: 1px solid #444;
+    padding: 1rem;
+    overflow-y: auto;
+    margin-bottom: 1rem;
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+#output {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.output-line {
+    margin-bottom: 0.2rem;
+}
+
+.input-area {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.input-area input {
+    flex: 1;
+    padding: 0.5rem;
+    background-color: #2d2d2d;
+    border: 1px solid #444;
+    color: #d4d4d4;
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.input-area button {
+    padding: 0.5rem 1.5rem;
+    background-color: #007acc;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.input-area button:hover:not(:disabled) {
+    background-color: #005a9e;
+}
+
+.input-area button:disabled {
+    background-color: #3e3e3e;
+    color: #666;
+    cursor: not-allowed;
+}
+
+/* Scrollbar styling */
+.output-area::-webkit-scrollbar {
+    width: 10px;
+}
+
+.output-area::-webkit-scrollbar-track {
+    background: #1e1e1e;
+}
+
+.output-area::-webkit-scrollbar-thumb {
+    background: #444;
+}
+
+.output-area::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
