@@ -2,7 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/anicolao/dikuclient/internal/client"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -24,6 +26,8 @@ type Model struct {
 	port          int
 	sidebarWidth  int
 	err           error
+	mudLogFile    *os.File
+	tuiLogFile    *os.File
 }
 
 var (
@@ -50,7 +54,7 @@ type mudMsg string
 type errMsg error
 
 // NewModel creates a new application model
-func NewModel(host string, port int) Model {
+func NewModel(host string, port int, mudLogFile, tuiLogFile *os.File) Model {
 	vp := viewport.New(0, 0)
 	// Don't apply any style to viewport - let ANSI codes pass through naturally
 
@@ -62,6 +66,8 @@ func NewModel(host string, port int) Model {
 		host:         host,
 		port:         port,
 		sidebarWidth: 30,
+		mudLogFile:   mudLogFile,
+		tuiLogFile:   tuiLogFile,
 	}
 }
 
@@ -135,6 +141,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursorPos = len(m.currentInput)
 			return m, nil
 
+		case tea.KeySpace:
+			// Explicitly handle space key
+			m.currentInput = m.currentInput[:m.cursorPos] + " " + m.currentInput[m.cursorPos:]
+			m.cursorPos++
+			m.updateViewport()
+			return m, nil
+
 		default:
 			// Handle regular character input
 			if msg.Type == tea.KeyRunes {
@@ -170,6 +183,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case mudMsg:
 		// Add message to output - it already has proper line endings
 		msgStr := string(msg)
+		
+		// Log raw MUD output if logging enabled
+		if m.mudLogFile != nil {
+			fmt.Fprintf(m.mudLogFile, "[%s] %s", time.Now().Format("15:04:05.000"), msgStr)
+			m.mudLogFile.Sync()
+		}
+		
 		// Split into lines and add them individually to preserve formatting
 		lines := strings.Split(msgStr, "\n")
 		for i, line := range lines {
@@ -238,6 +258,12 @@ func (m *Model) updateViewport() {
 	
 	m.viewport.SetContent(content)
 	m.viewport.GotoBottom()
+	
+	// Log TUI content if logging enabled
+	if m.tuiLogFile != nil {
+		fmt.Fprintf(m.tuiLogFile, "[%s] === TUI Update ===\n%s\n\n", time.Now().Format("15:04:05.000"), content)
+		m.tuiLogFile.Sync()
+	}
 }
 
 // listenForMessages listens for messages from the MUD server

@@ -31,3 +31,7 @@ go.work
 # OS files
 .DS_Store
 Thumbs.db
+
+# Log files
+mud-output-*.log
+tui-content-*.log
