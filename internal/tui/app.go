@@ -14,21 +14,24 @@ import (
 
 // Model represents the application state
 type Model struct {
-	conn          *client.Connection
-	viewport      viewport.Model
-	output        []string
-	currentInput  string
-	cursorPos     int
-	width         int
-	height        int
-	connected     bool
-	host          string
-	port          int
-	sidebarWidth  int
-	err           error
-	mudLogFile    *os.File
-	tuiLogFile    *os.File
+	conn           *client.Connection
+	viewport       viewport.Model
+	output         []string
+	currentInput   string
+	cursorPos      int
+	width          int
+	height         int
+	connected      bool
+	host           string
+	port           int
+	sidebarWidth   int
+	err            error
+	mudLogFile     *os.File
+	tuiLogFile     *os.File
 	echoSuppressed bool // Server has disabled echo (e.g., for passwords)
+	username       string
+	password       string
+	autoLoginState int // 0=idle, 1=sent username, 2=sent password
 }
 
 var (
@@ -57,19 +60,27 @@ type echoStateMsg bool // true if echo suppressed (password mode)
 
 // NewModel creates a new application model
 func NewModel(host string, port int, mudLogFile, tuiLogFile *os.File) Model {
+	return NewModelWithAuth(host, port, "", "", mudLogFile, tuiLogFile)
+}
+
+// NewModelWithAuth creates a new application model with authentication credentials
+func NewModelWithAuth(host string, port int, username, password string, mudLogFile, tuiLogFile *os.File) Model {
 	vp := viewport.New(0, 0)
 	// Don't apply any style to viewport - let ANSI codes pass through naturally
 
 	return Model{
-		viewport:     vp,
-		output:       []string{},
-		currentInput: "",
-		cursorPos:    0,
-		host:         host,
-		port:         port,
-		sidebarWidth: 30,
-		mudLogFile:   mudLogFile,
-		tuiLogFile:   tuiLogFile,
+		viewport:       vp,
+		output:         []string{},
+		currentInput:   "",
+		cursorPos:      0,
+		host:           host,
+		port:           port,
+		sidebarWidth:   30,
+		mudLogFile:     mudLogFile,
+		tuiLogFile:     tuiLogFile,
+		username:       username,
+		password:       password,
+		autoLoginState: 0,
 	}
 }
 
@@ -214,6 +225,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.output = append(m.output, line)
 		}
+		
+		// Check for auto-login prompts
+		if m.username != "" && m.autoLoginState < 2 {
+			lastLine := ""
+			if len(m.output) > 0 {
+				lastLine = strings.ToLower(strings.TrimSpace(m.output[len(m.output)-1]))
+			}
+			
+			// Check for username prompt
+			if m.autoLoginState == 0 && (strings.Contains(lastLine, "name:") || 
+				strings.Contains(lastLine, "login:") || 
+				strings.Contains(lastLine, "account:") ||
+				strings.Contains(lastLine, "character:")) {
+				// Send username automatically
+				m.conn.Send(m.username)
+				m.autoLoginState = 1
+				m.output = append(m.output, fmt.Sprintf("\x1b[90m[Auto-login: sending username '%s']\x1b[0m", m.username))
+			}
+		}
+		
+		if m.password != "" && m.autoLoginState == 1 {
+			lastLine := ""
+			if len(m.output) > 0 {
+				lastLine = strings.ToLower(strings.TrimSpace(m.output[len(m.output)-1]))
+			}
+			
+			// Check for password prompt
+			if strings.Contains(lastLine, "password:") || strings.Contains(lastLine, "pass:") {
+				// Send password automatically
+				m.conn.Send(m.password)
+				m.autoLoginState = 2
+				m.output = append(m.output, "\x1b[90m[Auto-login: sending password]\x1b[0m")
+			}
+		}
+		
 		m.updateViewport()
 		return m, m.listenForMessages
 
