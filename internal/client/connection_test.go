@@ -53,6 +53,11 @@ func TestProcessTelnetData_CompleteSsequences(t *testing.T) {
 			input:    []byte{'A', IAC, SB, 1, 2, 3, IAC, SE, 'B'},
 			expected: []byte{'A', 'B'},
 		},
+		{
+			name:     "IAC SB with escaped IAC inside",
+			input:    []byte{'A', IAC, SB, 1, IAC, IAC, 2, IAC, SE, 'B'},
+			expected: []byte{'A', 'B'},
+		},
 	}
 
 	for _, tt := range tests {

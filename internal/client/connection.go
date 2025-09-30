@@ -155,8 +155,12 @@ func (c *Connection) processTelnetData(data []byte) []byte {
 							foundSE = true
 							break
 						}
+						// IAC followed by something other than SE (e.g., IAC IAC)
+						// Skip both bytes
+						i += 2
+					} else {
+						i++
 					}
-					i++
 				}
 				// If we didn't find SE and didn't buffer, we hit end of data
 				if !foundSE && i >= len(data) && len(c.telnetBuffer) == 0 {
