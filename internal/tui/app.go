@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/anicolao/dikuclient/internal/client"
-	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -15,8 +14,9 @@ import (
 type Model struct {
 	conn          *client.Connection
 	viewport      viewport.Model
-	textarea      textarea.Model
 	output        []string
+	currentInput  string
+	cursorPos     int
 	width         int
 	height        int
 	connected     bool
@@ -29,7 +29,9 @@ type Model struct {
 var (
 	mainStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("62"))
+			BorderForeground(lipgloss.Color("62")).
+			Background(lipgloss.Color("234")). // Dark background
+			Foreground(lipgloss.Color("252"))  // Light text
 
 	statusStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("229")).
@@ -44,6 +46,10 @@ var (
 	emptyPanelStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Italic(true)
+
+	inputStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("229")). // Bright yellow for user input
+			Bold(true)
 )
 
 type mudMsg string
@@ -51,19 +57,13 @@ type errMsg error
 
 // NewModel creates a new application model
 func NewModel(host string, port int) Model {
-	ta := textarea.New()
-	ta.Placeholder = "Type your command here..."
-	ta.Focus()
-	ta.CharLimit = 200
-	ta.SetHeight(3)
-	ta.ShowLineNumbers = false
-
 	vp := viewport.New(0, 0)
 
 	return Model{
-		textarea:     ta,
 		viewport:     vp,
 		output:       []string{},
+		currentInput: "",
+		cursorPos:    0,
 		host:         host,
 		port:         port,
 		sidebarWidth: 30,
@@ -72,7 +72,7 @@ func NewModel(host string, port int) Model {
 
 // Init initializes the application
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(textarea.Blink, m.connect)
+	return m.connect
 }
 
 // connect establishes a connection to the MUD server
@@ -102,16 +102,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case tea.KeyEnter:
 			if m.conn != nil && m.connected {
-				value := m.textarea.Value()
-				if value != "" {
-					m.conn.Send(value)
-					m.output = append(m.output, fmt.Sprintf("> %s", value))
-					m.textarea.Reset()
-					m.viewport.SetContent(strings.Join(m.output, "\n"))
-					m.viewport.GotoBottom()
-				}
+				// Send command (even if empty - user may want to send blank line)
+				m.conn.Send(m.currentInput)
+				// Reset input
+				m.currentInput = ""
+				m.cursorPos = 0
+				// Update display immediately
+				m.updateViewport()
 			}
 			return m, nil
+
+		case tea.KeyBackspace:
+			if m.cursorPos > 0 {
+				m.currentInput = m.currentInput[:m.cursorPos-1] + m.currentInput[m.cursorPos:]
+				m.cursorPos--
+				m.updateViewport()
+			}
+			return m, nil
+
+		case tea.KeyLeft:
+			if m.cursorPos > 0 {
+				m.cursorPos--
+			}
+			return m, nil
+
+		case tea.KeyRight:
+			if m.cursorPos < len(m.currentInput) {
+				m.cursorPos++
+			}
+			return m, nil
+
+		case tea.KeyHome:
+			m.cursorPos = 0
+			return m, nil
+
+		case tea.KeyEnd:
+			m.cursorPos = len(m.currentInput)
+			return m, nil
+
+		default:
+			// Handle regular character input
+			if msg.Type == tea.KeyRunes {
+				// Insert character at cursor position
+				m.currentInput = m.currentInput[:m.cursorPos] + string(msg.Runes) + m.currentInput[m.cursorPos:]
+				m.cursorPos += len(msg.Runes)
+				m.updateViewport()
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -119,21 +155,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 
 		headerHeight := 3
-		footerHeight := 5
 		sidebarWidth := m.sidebarWidth
 		mainWidth := m.width - sidebarWidth - 6
 
 		m.viewport.Width = mainWidth
-		m.viewport.Height = m.height - headerHeight - footerHeight - 2
-		m.textarea.SetWidth(mainWidth)
+		m.viewport.Height = m.height - headerHeight - 2
 
+		m.updateViewport()
 		return m, nil
 
 	case *client.Connection:
 		m.conn = msg
 		m.connected = true
 		m.output = append(m.output, fmt.Sprintf("Connected to %s:%d", m.host, m.port))
-		m.viewport.SetContent(strings.Join(m.output, "\n"))
+		m.updateViewport()
 		return m, m.listenForMessages
 
 	case mudMsg:
@@ -148,24 +183,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.output = append(m.output, line)
 		}
-		m.viewport.SetContent(strings.Join(m.output, "\n"))
-		m.viewport.GotoBottom()
+		m.updateViewport()
 		return m, m.listenForMessages
 
 	case errMsg:
 		m.err = msg
 		m.output = append(m.output, fmt.Sprintf("Error: %v", msg))
-		m.viewport.SetContent(strings.Join(m.output, "\n"))
+		m.updateViewport()
 		return m, nil
 	}
-
-	m.textarea, cmd = m.textarea.Update(msg)
-	cmds = append(cmds, cmd)
 
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
+}
+
+// updateViewport updates the viewport content with output and current input
+func (m *Model) updateViewport() {
+	// Combine output with current input line
+	content := strings.Join(m.output, "\n")
+	if m.currentInput != "" || m.connected {
+		// Add the input line with cursor
+		inputLine := m.currentInput
+		if m.cursorPos < len(m.currentInput) {
+			// Show cursor in the middle of text
+			inputLine = m.currentInput[:m.cursorPos] + "█" + m.currentInput[m.cursorPos:]
+		} else {
+			// Show cursor at the end
+			inputLine = m.currentInput + "█"
+		}
+		content += "\n" + inputStyle.Render(inputLine)
+	}
+	m.viewport.SetContent(content)
+	m.viewport.GotoBottom()
 }
 
 // listenForMessages listens for messages from the MUD server
@@ -194,14 +245,10 @@ func (m Model) View() string {
 	// Main content area (game output + sidebar)
 	mainContent := m.renderMainContent()
 
-	// Input area
-	inputArea := m.renderInputArea()
-
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		status,
 		mainContent,
-		inputArea,
 	)
 }
 
@@ -218,10 +265,9 @@ func (m Model) renderStatusBar() string {
 
 func (m Model) renderMainContent() string {
 	headerHeight := 3
-	footerHeight := 5
 	sidebarWidth := m.sidebarWidth
 	mainWidth := m.width - sidebarWidth - 6
-	contentHeight := m.height - headerHeight - footerHeight - 2
+	contentHeight := m.height - headerHeight - 2
 
 	// Game output viewport
 	gameOutput := mainStyle.
@@ -287,10 +333,6 @@ func (m Model) renderSidebar(width, height int) string {
 		inventoryPanel,
 		mapPanel,
 	)
-}
-
-func (m Model) renderInputArea() string {
-	return mainStyle.Render(m.textarea.View())
 }
 
 func max(a, b int) int {
