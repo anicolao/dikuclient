@@ -29,9 +29,12 @@ type Model struct {
 var (
 	mainStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("62")).
-			Background(lipgloss.Color("234")). // Dark background
-			Foreground(lipgloss.Color("252"))  // Light text
+			BorderForeground(lipgloss.Color("62"))
+
+	viewportStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color("234")). // Dark background
+				Foreground(lipgloss.Color("252")).  // Light text
+				Inline(false)                       // Fill entire background
 
 	statusStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("229")).
@@ -201,20 +204,55 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // updateViewport updates the viewport content with output and current input
 func (m *Model) updateViewport() {
-	// Combine output with current input line
-	content := strings.Join(m.output, "\n")
-	if m.currentInput != "" || m.connected {
-		// Add the input line with cursor
-		inputLine := m.currentInput
-		if m.cursorPos < len(m.currentInput) {
-			// Show cursor in the middle of text
-			inputLine = m.currentInput[:m.cursorPos] + "█" + m.currentInput[m.cursorPos:]
+	// Check if the last output line is a prompt and append input to same line
+	var content string
+	if len(m.output) > 0 {
+		// Check if we should append input to the last line
+		// The last line doesn't end with newline if it's a prompt
+		lastLine := m.output[len(m.output)-1]
+		
+		if m.currentInput != "" || m.connected {
+			// Build input line with cursor
+			inputLine := m.currentInput
+			if m.cursorPos < len(m.currentInput) {
+				// Show cursor in the middle of text
+				inputLine = m.currentInput[:m.cursorPos] + "█" + m.currentInput[m.cursorPos:]
+			} else {
+				// Show cursor at the end
+				inputLine = m.currentInput + "█"
+			}
+			
+			// If last line looks like a prompt (short and doesn't look like full sentence),
+			// append input to the same line
+			// Simple heuristic: if last line is short and has ">" or ends with ":", it's likely a prompt
+			isPromptLine := len(lastLine) < 40 && (strings.Contains(lastLine, ">") || strings.HasSuffix(lastLine, ":"))
+			
+			if isPromptLine && len(m.output) > 0 {
+				// Replace the last line with prompt + input
+				lines := make([]string, len(m.output)-1)
+				copy(lines, m.output[:len(m.output)-1])
+				lines = append(lines, lastLine+" "+inputStyle.Render(inputLine))
+				content = strings.Join(lines, "\n")
+			} else {
+				// Add input on a new line
+				content = strings.Join(m.output, "\n") + "\n" + inputStyle.Render(inputLine)
+			}
 		} else {
-			// Show cursor at the end
-			inputLine = m.currentInput + "█"
+			content = strings.Join(m.output, "\n")
 		}
-		content += "\n" + inputStyle.Render(inputLine)
+	} else {
+		// No output yet, just show cursor if connected
+		if m.currentInput != "" || m.connected {
+			inputLine := m.currentInput
+			if m.cursorPos < len(m.currentInput) {
+				inputLine = m.currentInput[:m.cursorPos] + "█" + m.currentInput[m.cursorPos:]
+			} else {
+				inputLine = m.currentInput + "█"
+			}
+			content = inputStyle.Render(inputLine)
+		}
 	}
+	
 	m.viewport.SetContent(content)
 	m.viewport.GotoBottom()
 }
@@ -269,11 +307,17 @@ func (m Model) renderMainContent() string {
 	mainWidth := m.width - sidebarWidth - 6
 	contentHeight := m.height - headerHeight - 2
 
-	// Game output viewport
-	gameOutput := mainStyle.
+	// Game output viewport with full background
+	viewportContent := viewportStyle.
 		Width(mainWidth).
 		Height(contentHeight).
 		Render(m.viewport.View())
+	
+	// Wrap in border
+	gameOutput := mainStyle.
+		Width(mainWidth).
+		Height(contentHeight).
+		Render(viewportContent)
 
 	// Sidebar with empty panels
 	sidebar := m.renderSidebar(sidebarWidth, contentHeight)
