@@ -1,4 +1,84 @@
-# Feature Summary: Account Management and Auto-Login
+# Feature Summary
+
+This document summarizes the major features added to DikuMUD Client.
+
+## Web Mode with WebSocket Support (Phase 3)
+
+### Overview
+The DikuMUD Client now supports a web-based interface accessible through a browser. This enables remote access, multi-user support, and platform-independent usage.
+
+### Features Implemented
+
+#### 1. HTTP Server
+- Serves static web interface files (HTML, CSS, JavaScript)
+- Configurable port with `--web-port` flag
+- Clean, modern dark theme UI
+
+#### 2. WebSocket Handler
+- Real-time bidirectional communication between browser and server
+- Manages multiple concurrent client connections
+- Protocol: Simple text-based (CONNECT:host:port, ERROR:message, etc.)
+- Automatic connection cleanup on disconnect
+
+#### 3. Web Client Interface
+- Connection controls (host, port, connect/disconnect buttons)
+- Real-time output display area with auto-scroll
+- Command input field with Enter-to-send
+- Status indicator (Connected/Disconnected)
+- Responsive layout
+
+#### 4. MUD Integration
+- WebSocket server creates TCP connections to MUD servers on behalf of clients
+- Forwards MUD output to browser in real-time
+- Forwards user commands from browser to MUD server
+- Handles telnet protocol negotiation
+
+### Usage
+
+Start web server:
+```bash
+./dikuclient --web --web-port 8080
+```
+
+Then open `http://localhost:8080` in a browser, enter MUD host/port, and click Connect.
+
+### Technical Implementation
+
+#### Server Side (Go)
+- **internal/web/server.go**: HTTP server with file serving and WebSocket endpoint
+- **internal/web/websocket.go**: WebSocket connection handler and session manager
+- Uses gorilla/websocket library for WebSocket support
+
+#### Client Side (JavaScript)
+- **web/static/index.html**: Main HTML interface
+- **web/static/app.js**: WebSocket client logic
+- **web/static/styles.css**: Dark theme styling
+
+#### Protocol
+- `CONNECT:host:port` - Client requests connection to MUD server
+- `CONNECTED` - Server confirms connection established
+- `ERROR:message` - Server reports error
+- Regular text - MUD output or user commands
+
+### Security Considerations
+- CORS enabled (allow all origins) - should be configured for production
+- No authentication implemented - suitable for local/trusted networks
+- Plain text WebSocket (ws://) - should use WSS for production
+
+### Files Added
+- `internal/web/server.go` - HTTP server
+- `internal/web/websocket.go` - WebSocket handler
+- `web/static/index.html` - Web interface
+- `web/static/app.js` - WebSocket client
+- `web/static/styles.css` - Styling
+
+### Files Modified
+- `cmd/dikuclient/main.go` - Added web mode flags
+- `go.mod` - Added gorilla/websocket dependency
+
+---
+
+## Account Management and Auto-Login (Phase 1)
 
 This document summarizes the account management and auto-login features added to DikuMUD Client.
 

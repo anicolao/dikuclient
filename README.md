@@ -5,6 +5,7 @@ A modern, efficient DikuMUD client written in Go with a beautiful Text User Inte
 ## Features
 
 - **Clean TUI Interface**: Modern terminal UI with panels for game output, stats, inventory, and map
+- **Web Mode**: Browser-based interface with WebSocket support for remote access
 - **MUD Connection**: Connect to any MUD server via telnet protocol
 - **Command Input/Output**: Interactive command line for sending commands to the MUD
 - **Account Management**: Save and manage multiple MUD accounts with auto-login support
@@ -23,13 +24,27 @@ go build -o dikuclient ./cmd/dikuclient
 
 ## Usage
 
-### Quick Start
+### Quick Start - Terminal Mode
 
 Run without arguments to see the interactive account selection menu:
 
 ```bash
 ./dikuclient
 ```
+
+### Quick Start - Web Mode
+
+Start the web server and connect via browser:
+
+```bash
+# Start web server on port 8080
+./dikuclient --web
+
+# Start on custom port
+./dikuclient --web --web-port 3000
+```
+
+Then open your browser to `http://localhost:8080` (or your custom port).
 
 ### Connect to a MUD server
 
@@ -76,9 +91,16 @@ This allows seamless automatic login to your favorite MUDs.
 
 ### Controls
 
+**Terminal Mode:**
 - **Type commands** in the input area at the bottom and press `Enter` to send
 - **Ctrl+C** or **Esc** to quit the application
 - **Arrow keys** to navigate through command history (left/right for cursor positioning)
+
+**Web Mode:**
+- Enter MUD host and port in the connection controls
+- Click **Connect** to establish connection
+- Type commands in the input field and press `Enter` or click **Send**
+- Click **Disconnect** to close connection
 
 ## Project Structure
 
@@ -88,23 +110,26 @@ dikuclient/
 │   └── dikuclient/         # Main entry point
 ├── internal/
 │   ├── client/             # MUD connection logic
-│   └── tui/                # TUI application
+│   ├── tui/                # TUI application
+│   └── web/                # Web server and WebSocket handler
+├── web/
+│   └── static/             # Web interface files (HTML/CSS/JS)
 ├── DESIGN.md               # Design documentation
 └── README.md               # This file
 ```
 
 ## Development Status
 
-This is a barebones implementation (Phase 1) that includes:
+This implementation includes:
 - ✅ Basic TUI framework setup with Bubble Tea
 - ✅ MUD connection handling
 - ✅ Command input/output
+- ✅ Web mode with WebSocket support (Phase 3)
 - ✅ Empty placeholder panels for future features
 
 ### Future Enhancements (Planned)
 
 - Phase 2: Multi-pane layout, syntax highlighting, configuration system
-- Phase 3: Web mode with WebSocket support
 - Phase 4: Plugin system, mapping, performance optimizations
 
 ## License
