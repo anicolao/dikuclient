@@ -92,14 +92,20 @@ func (c *Connection) processTelnetData(data []byte) []byte {
 						c.mu.Lock()
 						oldEcho := c.serverEcho
 						if cmd == WILL {
+							// Server will echo - this means server will handle echoing
+							// For MUDs: WILL ECHO often means password mode (server echoes asterisks)
+							// Client should suppress showing the actual input
 							c.serverEcho = true
 						} else if cmd == WONT {
+							// Server won't echo - client should show input
+							// This is normal mode where client displays what user types
 							c.serverEcho = false
 						}
-						// Notify UI of echo state change (true = suppressed/password mode)
+						// Notify UI of echo state change
+						// Send true when echo should be suppressed (when server WILL echo)
 						if oldEcho != c.serverEcho {
 							select {
-							case c.echoChan <- !c.serverEcho:
+							case c.echoChan <- c.serverEcho: // true when serverEcho is true (WILL/password)
 							default:
 							}
 						}

@@ -109,16 +109,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Send command (even if empty - user may want to send blank line)
 				m.conn.Send(command)
 				
-				// Only echo the command if echo is not suppressed (password mode)
-				// Keep it on the same line where it was typed
+				// Don't modify m.output here - let the server echo if it wants to
+				// Or we can store the command for display purposes
 				if !m.echoSuppressed && command != "" {
-					// Append command to the last line (where it was typed)
+					// Add the command as a new line in output (it will show on the prompt line)
+					// This preserves it even when new output arrives
 					if len(m.output) > 0 {
+						// Modify the last line to include the command
 						m.output[len(m.output)-1] = m.output[len(m.output)-1] + "\x1b[93m" + command + "\x1b[0m"
 					}
 				}
 				
-				// Reset input but keep the prompt line in output
+				// Reset input
 				m.currentInput = ""
 				m.cursorPos = 0
 				// Update display immediately
