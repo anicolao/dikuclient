@@ -11,17 +11,35 @@ import (
 	"time"
 )
 
+// Telnet IAC (Interpret As Command) constants
+const (
+	IAC  = 255 // 0xFF
+	WILL = 251 // 0xFB
+	WONT = 252 // 0xFC
+	DO   = 253 // 0xFD
+	DONT = 254 // 0xFE
+	GA   = 249 // 0xF9 - Go Ahead (marks end of prompt)
+	SB   = 250 // 0xFA - Subnegotiation Begin
+	SE   = 240 // 0xF0 - Subnegotiation End
+)
+
+// Telnet options
+const (
+	TELOPT_ECHO = 1
+)
+
 // Connection represents a connection to a MUD server
 type Connection struct {
-	conn     net.Conn
-	reader   *bufio.Reader
-	writer   *bufio.Writer
-	outChan  chan string
-	inChan   chan string
-	errChan  chan error
-	closeCh  chan struct{}
-	mu       sync.RWMutex
-	closed   bool
+	conn       net.Conn
+	reader     *bufio.Reader
+	writer     *bufio.Writer
+	outChan    chan string
+	inChan     chan string
+	errChan    chan error
+	closeCh    chan struct{}
+	mu         sync.RWMutex
+	closed     bool
+	serverEcho bool // Whether server is echoing
 }
 
 // NewConnection creates a new MUD connection
@@ -33,19 +51,78 @@ func NewConnection(host string, port int) (*Connection, error) {
 	}
 
 	c := &Connection{
-		conn:    conn,
-		reader:  bufio.NewReader(conn),
-		writer:  bufio.NewWriter(conn),
-		outChan: make(chan string, 100),
-		inChan:  make(chan string, 100),
-		errChan: make(chan error, 10),
-		closeCh: make(chan struct{}),
+		conn:       conn,
+		reader:     bufio.NewReader(conn),
+		writer:     bufio.NewWriter(conn),
+		outChan:    make(chan string, 100),
+		inChan:     make(chan string, 100),
+		errChan:    make(chan error, 10),
+		closeCh:    make(chan struct{}),
+		serverEcho: true, // Assume server echoes initially
 	}
 
 	go c.readLoop()
 	go c.writeLoop()
 
 	return c, nil
+}
+
+// processTelnetData strips telnet IAC sequences and handles negotiation
+func (c *Connection) processTelnetData(data []byte) []byte {
+	result := make([]byte, 0, len(data))
+	i := 0
+	
+	for i < len(data) {
+		if data[i] == IAC && i+1 < len(data) {
+			// Handle IAC sequences
+			cmd := data[i+1]
+			switch cmd {
+			case IAC:
+				// Escaped IAC (0xFF 0xFF) = literal 0xFF
+				result = append(result, IAC)
+				i += 2
+			case WILL, WONT, DO, DONT:
+				// Three-byte sequence: IAC WILL/WONT/DO/DONT <option>
+				if i+2 < len(data) {
+					option := data[i+2]
+					// Handle ECHO option
+					if option == TELOPT_ECHO {
+						c.mu.Lock()
+						if cmd == WILL {
+							c.serverEcho = true
+						} else if cmd == WONT {
+							c.serverEcho = false
+						}
+						c.mu.Unlock()
+					}
+					i += 3
+				} else {
+					i += 2
+				}
+			case GA:
+				// Go Ahead - marks end of prompt, just skip it
+				i += 2
+			case SB:
+				// Subnegotiation - skip until SE
+				i += 2
+				for i < len(data) && !(data[i] == IAC && i+1 < len(data) && data[i+1] == SE) {
+					i++
+				}
+				if i < len(data) {
+					i += 2 // Skip IAC SE
+				}
+			default:
+				// Unknown two-byte sequence
+				i += 2
+			}
+		} else {
+			// Normal character
+			result = append(result, data[i])
+			i++
+		}
+	}
+	
+	return result
 }
 
 // readLoop continuously reads from the MUD server
@@ -70,12 +147,14 @@ func (c *Connection) readLoop() {
 				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 					// Timeout - check if we have accumulated data to send
 					if accumulated.Len() > 0 {
-						data := accumulated.String()
+						data := accumulated.Bytes()
 						accumulated.Reset()
+						// Process telnet sequences
+						cleaned := c.processTelnetData(data)
 						// Strip \r characters
-						data = strings.ReplaceAll(data, "\r", "")
-						if data != "" {
-							c.outChan <- data
+						dataStr := strings.ReplaceAll(string(cleaned), "\r", "")
+						if dataStr != "" {
+							c.outChan <- dataStr
 						}
 					}
 					continue
@@ -90,14 +169,17 @@ func (c *Connection) readLoop() {
 				accumulated.Write(buffer[:n])
 				
 				// Check if we have complete lines
-				data := accumulated.String()
-				if strings.Contains(data, "\n") {
+				data := accumulated.Bytes()
+				dataStr := string(data)
+				if strings.Contains(dataStr, "\n") {
 					// Send complete lines immediately
 					accumulated.Reset()
+					// Process telnet sequences
+					cleaned := c.processTelnetData(data)
 					// Strip \r characters
-					data = strings.ReplaceAll(data, "\r", "")
-					if data != "" {
-						c.outChan <- data
+					cleanedStr := strings.ReplaceAll(string(cleaned), "\r", "")
+					if cleanedStr != "" {
+						c.outChan <- cleanedStr
 					}
 				}
 			}

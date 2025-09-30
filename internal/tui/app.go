@@ -103,8 +103,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case tea.KeyEnter:
 			if m.conn != nil && m.connected {
+				command := m.currentInput
 				// Send command (even if empty - user may want to send blank line)
-				m.conn.Send(m.currentInput)
+				m.conn.Send(command)
+				
+				// Echo the command if server won't echo it
+				// (This will be overridden if server does echo, which is fine)
+				if command != "" {
+					// Add the command to output in yellow for visibility
+					m.output = append(m.output, "\x1b[93m"+command+"\x1b[0m")
+				}
+				
 				// Reset input
 				m.currentInput = ""
 				m.cursorPos = 0
