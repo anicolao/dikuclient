@@ -232,21 +232,12 @@ func (m *Model) updateViewport() {
 			// Always append input to the last line
 			lines := make([]string, len(m.output)-1)
 			copy(lines, m.output[:len(m.output)-1])
-			// Pad each line to viewport width and apply dark background
-			for i := range lines {
-				lines[i] = viewportStyle.Width(m.viewport.Width).Render(lines[i])
-			}
-			// Add last line with input
-			lastLineContent := lastLine + " " + inputStyle.Render(inputLine)
-			lines = append(lines, viewportStyle.Width(m.viewport.Width).Render(lastLineContent))
+			// Add last line with input - use ANSI color code for yellow text
+			// Don't apply lipgloss styling here as it interferes with MUD ANSI codes
+			lines = append(lines, lastLine+" \x1b[1;33m"+inputLine+"\x1b[0m")
 			content = strings.Join(lines, "\n")
 		} else {
-			// Pad each line to viewport width and apply dark background
-			lines := make([]string, len(m.output))
-			for i, line := range m.output {
-				lines[i] = viewportStyle.Width(m.viewport.Width).Render(line)
-			}
-			content = strings.Join(lines, "\n")
+			content = strings.Join(m.output, "\n")
 		}
 	} else {
 		// No output yet, just show cursor if connected
@@ -257,7 +248,8 @@ func (m *Model) updateViewport() {
 			} else {
 				inputLine = m.currentInput + "█"
 			}
-			content = viewportStyle.Width(m.viewport.Width).Render(inputStyle.Render(inputLine))
+			// Use ANSI color code for yellow text
+			content = "\x1b[1;33m" + inputLine + "\x1b[0m"
 		}
 	}
 	
