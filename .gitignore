@@ -18,7 +18,7 @@ vendor/
 go.work
 
 # Built binaries
-dikuclient
+/dikuclient
 /cmd/dikuclient/dikuclient
 
 # IDE files
