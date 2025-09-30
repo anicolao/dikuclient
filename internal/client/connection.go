@@ -2,9 +2,13 @@ package client
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"net"
+	"strings"
 	"sync"
+	"time"
 )
 
 // Connection represents a connection to a MUD server
@@ -50,17 +54,53 @@ func (c *Connection) readLoop() {
 		c.Close()
 	}()
 
+	buffer := make([]byte, 4096)
+	var accumulated bytes.Buffer
+	
 	for {
 		select {
 		case <-c.closeCh:
 			return
 		default:
-			line, err := c.reader.ReadString('\n')
+			// Set read timeout to check for partial data (prompts)
+			c.conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+			
+			n, err := c.conn.Read(buffer)
 			if err != nil {
-				c.errChan <- fmt.Errorf("read error: %w", err)
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					// Timeout - check if we have accumulated data to send
+					if accumulated.Len() > 0 {
+						data := accumulated.String()
+						accumulated.Reset()
+						// Strip \r characters
+						data = strings.ReplaceAll(data, "\r", "")
+						if data != "" {
+							c.outChan <- data
+						}
+					}
+					continue
+				}
+				if err != io.EOF {
+					c.errChan <- fmt.Errorf("read error: %w", err)
+				}
 				return
 			}
-			c.outChan <- line
+			
+			if n > 0 {
+				accumulated.Write(buffer[:n])
+				
+				// Check if we have complete lines
+				data := accumulated.String()
+				if strings.Contains(data, "\n") {
+					// Send complete lines immediately
+					accumulated.Reset()
+					// Strip \r characters
+					data = strings.ReplaceAll(data, "\r", "")
+					if data != "" {
+						c.outChan <- data
+					}
+				}
+			}
 		}
 	}
 }

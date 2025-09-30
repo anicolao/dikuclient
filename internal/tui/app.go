@@ -137,7 +137,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.listenForMessages
 
 	case mudMsg:
-		m.output = append(m.output, string(msg))
+		// Add message to output - it already has proper line endings
+		msgStr := string(msg)
+		// Split into lines and add them individually to preserve formatting
+		lines := strings.Split(msgStr, "\n")
+		for i, line := range lines {
+			// Don't add empty line at the end if message ended with \n
+			if i == len(lines)-1 && line == "" {
+				continue
+			}
+			m.output = append(m.output, line)
+		}
 		m.viewport.SetContent(strings.Join(m.output, "\n"))
 		m.viewport.GotoBottom()
 		return m, m.listenForMessages
