@@ -232,10 +232,21 @@ func (m *Model) updateViewport() {
 			// Always append input to the last line
 			lines := make([]string, len(m.output)-1)
 			copy(lines, m.output[:len(m.output)-1])
-			lines = append(lines, lastLine+" "+inputStyle.Render(inputLine))
+			// Pad each line to viewport width and apply dark background
+			for i := range lines {
+				lines[i] = viewportStyle.Width(m.viewport.Width).Render(lines[i])
+			}
+			// Add last line with input
+			lastLineContent := lastLine + " " + inputStyle.Render(inputLine)
+			lines = append(lines, viewportStyle.Width(m.viewport.Width).Render(lastLineContent))
 			content = strings.Join(lines, "\n")
 		} else {
-			content = strings.Join(m.output, "\n")
+			// Pad each line to viewport width and apply dark background
+			lines := make([]string, len(m.output))
+			for i, line := range m.output {
+				lines[i] = viewportStyle.Width(m.viewport.Width).Render(line)
+			}
+			content = strings.Join(lines, "\n")
 		}
 	} else {
 		// No output yet, just show cursor if connected
@@ -246,7 +257,7 @@ func (m *Model) updateViewport() {
 			} else {
 				inputLine = m.currentInput + "█"
 			}
-			content = inputStyle.Render(inputLine)
+			content = viewportStyle.Width(m.viewport.Width).Render(inputStyle.Render(inputLine))
 		}
 	}
 	
