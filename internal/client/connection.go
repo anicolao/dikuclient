@@ -36,10 +36,11 @@ type Connection struct {
 	outChan    chan string
 	inChan     chan string
 	errChan    chan error
+	echoChan   chan bool // Sends echo suppression state changes
 	closeCh    chan struct{}
 	mu         sync.RWMutex
 	closed     bool
-	serverEcho bool // Whether server is echoing
+	serverEcho bool // Whether server is echoing (false = password mode)
 }
 
 // NewConnection creates a new MUD connection
@@ -57,6 +58,7 @@ func NewConnection(host string, port int) (*Connection, error) {
 		outChan:    make(chan string, 100),
 		inChan:     make(chan string, 100),
 		errChan:    make(chan error, 10),
+		echoChan:   make(chan bool, 10),
 		closeCh:    make(chan struct{}),
 		serverEcho: true, // Assume server echoes initially
 	}
@@ -88,10 +90,18 @@ func (c *Connection) processTelnetData(data []byte) []byte {
 					// Handle ECHO option
 					if option == TELOPT_ECHO {
 						c.mu.Lock()
+						oldEcho := c.serverEcho
 						if cmd == WILL {
 							c.serverEcho = true
 						} else if cmd == WONT {
 							c.serverEcho = false
+						}
+						// Notify UI of echo state change (true = suppressed/password mode)
+						if oldEcho != c.serverEcho {
+							select {
+							case c.echoChan <- !c.serverEcho:
+							default:
+							}
 						}
 						c.mu.Unlock()
 					}
@@ -224,6 +234,11 @@ func (c *Connection) Send(msg string) {
 // Receive returns the output channel for reading server messages
 func (c *Connection) Receive() <-chan string {
 	return c.outChan
+}
+
+// EchoState returns the echo state channel (true = suppressed/password mode)
+func (c *Connection) EchoState() <-chan bool {
+	return c.echoChan
 }
 
 // Errors returns the error channel

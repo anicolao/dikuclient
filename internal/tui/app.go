@@ -28,6 +28,7 @@ type Model struct {
 	err           error
 	mudLogFile    *os.File
 	tuiLogFile    *os.File
+	echoSuppressed bool // Server has disabled echo (e.g., for passwords)
 }
 
 var (
@@ -52,6 +53,7 @@ var (
 
 type mudMsg string
 type errMsg error
+type echoStateMsg bool // true if echo suppressed (password mode)
 
 // NewModel creates a new application model
 func NewModel(host string, port int, mudLogFile, tuiLogFile *os.File) Model {
@@ -107,14 +109,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Send command (even if empty - user may want to send blank line)
 				m.conn.Send(command)
 				
-				// Echo the command if server won't echo it
-				// (This will be overridden if server does echo, which is fine)
-				if command != "" {
-					// Add the command to output in yellow for visibility
-					m.output = append(m.output, "\x1b[93m"+command+"\x1b[0m")
+				// Only echo the command if echo is not suppressed (password mode)
+				// Keep it on the same line where it was typed
+				if !m.echoSuppressed && command != "" {
+					// Append command to the last line (where it was typed)
+					if len(m.output) > 0 {
+						m.output[len(m.output)-1] = m.output[len(m.output)-1] + "\x1b[93m" + command + "\x1b[0m"
+					}
 				}
 				
-				// Reset input
+				// Reset input but keep the prompt line in output
 				m.currentInput = ""
 				m.cursorPos = 0
 				// Update display immediately
@@ -211,6 +215,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateViewport()
 		return m, m.listenForMessages
 
+	case echoStateMsg:
+		// Update echo suppression state (true = suppressed/password mode)
+		m.echoSuppressed = bool(msg)
+		m.updateViewport()
+		return m, m.listenForMessages
+
 	case errMsg:
 		m.err = msg
 		m.output = append(m.output, fmt.Sprintf("Error: %v", msg))
@@ -231,8 +241,8 @@ func (m *Model) updateViewport() {
 	if len(m.output) > 0 {
 		lastLine := m.output[len(m.output)-1]
 		
-		if m.currentInput != "" || m.connected {
-			// Build input line with cursor
+		if (m.currentInput != "" || m.connected) && !m.echoSuppressed {
+			// Build input line with cursor (only if echo is not suppressed)
 			inputLine := m.currentInput
 			if m.cursorPos < len(m.currentInput) {
 				// Show cursor in the middle of text
@@ -248,20 +258,32 @@ func (m *Model) updateViewport() {
 			copy(lines, m.output[:len(m.output)-1])
 			lines = append(lines, lastLine+"\x1b[93m"+inputLine+"\x1b[0m")
 			content = strings.Join(lines, "\n")
+		} else if m.echoSuppressed && m.connected {
+			// In password mode, just show the prompt without the input
+			// Show a cursor to indicate user can type
+			lines := make([]string, len(m.output)-1)
+			copy(lines, m.output[:len(m.output)-1])
+			lines = append(lines, lastLine+"█")
+			content = strings.Join(lines, "\n")
 		} else {
 			content = strings.Join(m.output, "\n")
 		}
 	} else {
 		// No output yet, just show cursor if connected
 		if m.currentInput != "" || m.connected {
-			inputLine := m.currentInput
-			if m.cursorPos < len(m.currentInput) {
-				inputLine = m.currentInput[:m.cursorPos] + "█" + m.currentInput[m.cursorPos:]
+			if !m.echoSuppressed {
+				inputLine := m.currentInput
+				if m.cursorPos < len(m.currentInput) {
+					inputLine = m.currentInput[:m.cursorPos] + "█" + m.currentInput[m.cursorPos:]
+				} else {
+					inputLine = m.currentInput + "█"
+				}
+				// Use bright yellow for better visibility
+				content = "\x1b[93m" + inputLine + "\x1b[0m"
 			} else {
-				inputLine = m.currentInput + "█"
+				// Password mode - just show cursor
+				content = "█"
 			}
-			// Use bright yellow for better visibility
-			content = "\x1b[93m" + inputLine + "\x1b[0m"
 		}
 	}
 	
@@ -284,6 +306,8 @@ func (m Model) listenForMessages() tea.Msg {
 	select {
 	case msg := <-m.conn.Receive():
 		return mudMsg(msg)
+	case echoSuppressed := <-m.conn.EchoState():
+		return echoStateMsg(echoSuppressed)
 	case err := <-m.conn.Errors():
 		return errMsg(err)
 	}
