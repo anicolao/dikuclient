@@ -113,7 +113,7 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 					}
 				}
 			}
-			
+
 			// Otherwise, it's terminal input - send to PTY
 			if session.ptmx != nil && !session.closed {
 				session.mu.Lock()
@@ -146,7 +146,7 @@ func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 
 	// Start the TUI client
 	cmd := exec.Command(dikuclientPath, "--host", connectMsg.Host, "--port", fmt.Sprintf("%d", connectMsg.Port))
-	
+
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -169,7 +169,7 @@ func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 
 	// Start forwarding PTY output to WebSocket
 	go h.forwardPTYOutput(session)
-	
+
 	log.Printf("Started TUI session for %s:%d", connectMsg.Host, connectMsg.Port)
 }
 
@@ -257,7 +257,7 @@ func (s *Session) cleanup() {
 func (s *Session) sendError(message string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	errorMsg := fmt.Sprintf("\r\n\x1b[31mERROR: %s\x1b[0m\r\n", message)
 	err := s.ws.WriteMessage(websocket.TextMessage, []byte(errorMsg))
 	if err != nil {

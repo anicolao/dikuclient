@@ -16,15 +16,15 @@ import (
 )
 
 var (
-	host           = flag.String("host", "", "MUD server hostname")
-	port           = flag.Int("port", 4000, "MUD server port")
-	logAll         = flag.Bool("log-all", false, "Enable logging of MUD output and TUI content")
-	accountName    = flag.String("account", "", "Use saved account")
-	saveAccount    = flag.Bool("save-account", false, "Save account credentials")
-	listAccounts   = flag.Bool("list-accounts", false, "List saved accounts")
-	deleteAccount  = flag.String("delete-account", "", "Delete saved account")
-	webMode        = flag.Bool("web", false, "Start in web mode (HTTP server with WebSocket)")
-	webPort        = flag.Int("web-port", 8080, "Web server port")
+	host          = flag.String("host", "", "MUD server hostname")
+	port          = flag.Int("port", 4000, "MUD server port")
+	logAll        = flag.Bool("log-all", false, "Enable logging of MUD output and TUI content")
+	accountName   = flag.String("account", "", "Use saved account")
+	saveAccount   = flag.Bool("save-account", false, "Save account credentials")
+	listAccounts  = flag.Bool("list-accounts", false, "List saved accounts")
+	deleteAccount = flag.String("delete-account", "", "Delete saved account")
+	webMode       = flag.Bool("web", false, "Start in web mode (HTTP server with WebSocket)")
+	webPort       = flag.Int("web-port", 8080, "Web server port")
 )
 
 func main() {
@@ -79,7 +79,7 @@ func main() {
 		// Use command line parameters
 		finalHost = *host
 		finalPort = *port
-		
+
 		// If save-account is set, prompt for account name and credentials
 		if *saveAccount {
 			account, err := promptForAccountDetails(finalHost, finalPort)
@@ -89,7 +89,7 @@ func main() {
 			}
 			username = account.Username
 			password = account.Password
-			
+
 			if err := cfg.AddAccount(*account); err != nil {
 				fmt.Printf("Error saving account: %v\n", err)
 				os.Exit(1)
@@ -118,21 +118,21 @@ func main() {
 	// Create log files if --log-all flag is set
 	if *logAll {
 		timestamp := time.Now().Format("20060102-150405")
-		
+
 		mudLogFile, err = os.Create(fmt.Sprintf("mud-output-%s.log", timestamp))
 		if err != nil {
 			fmt.Printf("Error creating MUD log file: %v\n", err)
 			os.Exit(1)
 		}
 		defer mudLogFile.Close()
-		
+
 		tuiLogFile, err = os.Create(fmt.Sprintf("tui-content-%s.log", timestamp))
 		if err != nil {
 			fmt.Printf("Error creating TUI log file: %v\n", err)
 			os.Exit(1)
 		}
 		defer tuiLogFile.Close()
-		
+
 		fmt.Printf("Logging enabled:\n")
 		fmt.Printf("  MUD output: mud-output-%s.log\n", timestamp)
 		fmt.Printf("  TUI content: tui-content-%s.log\n", timestamp)
@@ -162,7 +162,7 @@ func handleListAccounts(cfg *config.Config) {
 		fmt.Println("No saved accounts.")
 		return
 	}
-	
+
 	fmt.Println("Saved accounts:")
 	for i, account := range accounts {
 		fmt.Printf("  %d. %s (%s:%d)\n", i+1, account.Name, account.Host, account.Port)
@@ -182,28 +182,28 @@ func handleDeleteAccount(cfg *config.Config, name string) {
 
 func promptForAccountDetails(host string, port int) (*config.Account, error) {
 	reader := bufio.NewReader(os.Stdin)
-	
+
 	fmt.Print("Enter account name: ")
 	name, err := reader.ReadString('\n')
 	if err != nil {
 		return nil, err
 	}
 	name = strings.TrimSpace(name)
-	
+
 	fmt.Print("Enter username (optional): ")
 	username, err := reader.ReadString('\n')
 	if err != nil {
 		return nil, err
 	}
 	username = strings.TrimSpace(username)
-	
+
 	fmt.Print("Enter password (optional): ")
 	password, err := reader.ReadString('\n')
 	if err != nil {
 		return nil, err
 	}
 	password = strings.TrimSpace(password)
-	
+
 	return &config.Account{
 		Name:     name,
 		Host:     host,
@@ -215,10 +215,10 @@ func promptForAccountDetails(host string, port int) (*config.Account, error) {
 
 func selectOrCreateAccount(cfg *config.Config) (*config.Account, error) {
 	accounts := cfg.ListAccounts()
-	
+
 	fmt.Println("\nDikuMUD Client - Account Selection")
 	fmt.Println("===================================")
-	
+
 	if len(accounts) > 0 {
 		fmt.Println("\nSaved accounts:")
 		for i, account := range accounts {
@@ -231,7 +231,7 @@ func selectOrCreateAccount(cfg *config.Config) (*config.Account, error) {
 		fmt.Println("  1. Connect to new server")
 		fmt.Println("  2. Exit")
 	}
-	
+
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print("\nSelect option: ")
 	input, err := reader.ReadString('\n')
@@ -239,12 +239,12 @@ func selectOrCreateAccount(cfg *config.Config) (*config.Account, error) {
 		return nil, err
 	}
 	input = strings.TrimSpace(input)
-	
+
 	choice, err := strconv.Atoi(input)
 	if err != nil {
 		return nil, fmt.Errorf("invalid choice")
 	}
-	
+
 	if len(accounts) > 0 {
 		if choice >= 1 && choice <= len(accounts) {
 			// Use existing account
@@ -265,7 +265,7 @@ func selectOrCreateAccount(cfg *config.Config) (*config.Account, error) {
 			return nil, nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("invalid choice")
 }
 
@@ -276,7 +276,7 @@ func createNewAccount(cfg *config.Config, reader *bufio.Reader) (*config.Account
 		return nil, err
 	}
 	host = strings.TrimSpace(host)
-	
+
 	fmt.Print("Enter port (default 4000): ")
 	portStr, err := reader.ReadString('\n')
 	if err != nil {
@@ -290,14 +290,14 @@ func createNewAccount(cfg *config.Config, reader *bufio.Reader) (*config.Account
 			return nil, fmt.Errorf("invalid port: %w", err)
 		}
 	}
-	
+
 	fmt.Print("Save this account? (y/n): ")
 	save, err := reader.ReadString('\n')
 	if err != nil {
 		return nil, err
 	}
 	save = strings.TrimSpace(strings.ToLower(save))
-	
+
 	var account config.Account
 	if save == "y" || save == "yes" {
 		fmt.Print("Enter account name: ")
@@ -306,21 +306,21 @@ func createNewAccount(cfg *config.Config, reader *bufio.Reader) (*config.Account
 			return nil, err
 		}
 		name = strings.TrimSpace(name)
-		
+
 		fmt.Print("Enter username (optional): ")
 		username, err := reader.ReadString('\n')
 		if err != nil {
 			return nil, err
 		}
 		username = strings.TrimSpace(username)
-		
+
 		fmt.Print("Enter password (optional): ")
 		password, err := reader.ReadString('\n')
 		if err != nil {
 			return nil, err
 		}
 		password = strings.TrimSpace(password)
-		
+
 		account = config.Account{
 			Name:     name,
 			Host:     host,
@@ -328,7 +328,7 @@ func createNewAccount(cfg *config.Config, reader *bufio.Reader) (*config.Account
 			Username: username,
 			Password: password,
 		}
-		
+
 		if err := cfg.AddAccount(account); err != nil {
 			return nil, fmt.Errorf("failed to save account: %w", err)
 		}
@@ -339,6 +339,6 @@ func createNewAccount(cfg *config.Config, reader *bufio.Reader) (*config.Account
 			Port: port,
 		}
 	}
-	
+
 	return &account, nil
 }

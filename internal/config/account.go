@@ -29,12 +29,12 @@ func GetConfigPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get home directory: %w", err)
 	}
-	
+
 	configDir := filepath.Join(homeDir, ".config", "dikuclient")
 	if err := os.MkdirAll(configDir, 0700); err != nil {
 		return "", fmt.Errorf("failed to create config directory: %w", err)
 	}
-	
+
 	return filepath.Join(configDir, "accounts.json"), nil
 }
 
@@ -44,7 +44,7 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return LoadConfigFromPath(configPath)
 }
 
@@ -58,13 +58,13 @@ func LoadConfigFromPath(configPath string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
-	
+
 	var config Config
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 	config.configPath = configPath
-	
+
 	return &config, nil
 }
 
@@ -78,16 +78,16 @@ func (c *Config) SaveConfig() error {
 			return err
 		}
 	}
-	
+
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
-	
+
 	if err := os.WriteFile(configPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -101,7 +101,7 @@ func (c *Config) AddAccount(account Account) error {
 			return c.SaveConfig()
 		}
 	}
-	
+
 	// Add new account
 	c.Accounts = append(c.Accounts, account)
 	return c.SaveConfig()

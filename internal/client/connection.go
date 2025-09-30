@@ -30,17 +30,18 @@ const (
 
 // Connection represents a connection to a MUD server
 type Connection struct {
-	conn       net.Conn
-	reader     *bufio.Reader
-	writer     *bufio.Writer
-	outChan    chan string
-	inChan     chan string
-	errChan    chan error
-	echoChan   chan bool // Sends echo suppression state changes
-	closeCh    chan struct{}
-	mu         sync.RWMutex
-	closed     bool
-	serverEcho bool // Whether server is echoing (false = password mode)
+	conn         net.Conn
+	reader       *bufio.Reader
+	writer       *bufio.Writer
+	outChan      chan string
+	inChan       chan string
+	errChan      chan error
+	echoChan     chan bool // Sends echo suppression state changes
+	closeCh      chan struct{}
+	mu           sync.RWMutex
+	closed       bool
+	serverEcho   bool   // Whether server is echoing (false = password mode)
+	telnetBuffer []byte // Buffer for incomplete telnet sequences
 }
 
 // NewConnection creates a new MUD connection
@@ -70,12 +71,26 @@ func NewConnection(host string, port int) (*Connection, error) {
 }
 
 // processTelnetData strips telnet IAC sequences and handles negotiation
+// It properly handles telnet sequences that span buffer boundaries
 func (c *Connection) processTelnetData(data []byte) []byte {
+	// Prepend any buffered incomplete sequence from previous call
+	if len(c.telnetBuffer) > 0 {
+		data = append(c.telnetBuffer, data...)
+		c.telnetBuffer = nil
+	}
+
 	result := make([]byte, 0, len(data))
 	i := 0
-	
+
 	for i < len(data) {
-		if data[i] == IAC && i+1 < len(data) {
+		if data[i] == IAC {
+			// Check if we have enough bytes for a complete sequence
+			if i+1 >= len(data) {
+				// Incomplete sequence - buffer it for next call
+				c.telnetBuffer = append(c.telnetBuffer, data[i:]...)
+				break
+			}
+
 			// Handle IAC sequences
 			cmd := data[i+1]
 			switch cmd {
@@ -85,7 +100,12 @@ func (c *Connection) processTelnetData(data []byte) []byte {
 				i += 2
 			case WILL, WONT, DO, DONT:
 				// Three-byte sequence: IAC WILL/WONT/DO/DONT <option>
-				if i+2 < len(data) {
+				if i+2 >= len(data) {
+					// Incomplete sequence - buffer it for next call
+					c.telnetBuffer = append(c.telnetBuffer, data[i:]...)
+					// Exit the outer loop
+					i = len(data)
+				} else {
 					option := data[i+2]
 					// Handle ECHO option
 					if option == TELOPT_ECHO {
@@ -112,20 +132,36 @@ func (c *Connection) processTelnetData(data []byte) []byte {
 						c.mu.Unlock()
 					}
 					i += 3
-				} else {
-					i += 2
 				}
 			case GA:
 				// Go Ahead - marks end of prompt, just skip it
 				i += 2
 			case SB:
 				// Subnegotiation - skip until SE
+				sbStart := i
 				i += 2
-				for i < len(data) && !(data[i] == IAC && i+1 < len(data) && data[i+1] == SE) {
+				foundSE := false
+				// Find IAC SE
+				for i < len(data) {
+					if data[i] == IAC {
+						if i+1 >= len(data) {
+							// Incomplete - buffer from start of SB and exit
+							c.telnetBuffer = append(c.telnetBuffer, data[sbStart:]...)
+							i = len(data)
+							break
+						}
+						if data[i+1] == SE {
+							i += 2 // Skip IAC SE
+							foundSE = true
+							break
+						}
+					}
 					i++
 				}
-				if i < len(data) {
-					i += 2 // Skip IAC SE
+				// If we didn't find SE and didn't buffer, we hit end of data
+				if !foundSE && i >= len(data) && len(c.telnetBuffer) == 0 {
+					// Buffer the entire incomplete subnegotiation
+					c.telnetBuffer = append(c.telnetBuffer, data[sbStart:]...)
 				}
 			default:
 				// Unknown two-byte sequence
@@ -137,7 +173,7 @@ func (c *Connection) processTelnetData(data []byte) []byte {
 			i++
 		}
 	}
-	
+
 	return result
 }
 
@@ -149,7 +185,7 @@ func (c *Connection) readLoop() {
 
 	buffer := make([]byte, 4096)
 	var accumulated bytes.Buffer
-	
+
 	for {
 		select {
 		case <-c.closeCh:
@@ -157,7 +193,7 @@ func (c *Connection) readLoop() {
 		default:
 			// Set read timeout to check for partial data (prompts)
 			c.conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-			
+
 			n, err := c.conn.Read(buffer)
 			if err != nil {
 				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -180,10 +216,10 @@ func (c *Connection) readLoop() {
 				}
 				return
 			}
-			
+
 			if n > 0 {
 				accumulated.Write(buffer[:n])
-				
+
 				// Check if we have complete lines
 				data := accumulated.Bytes()
 				dataStr := string(data)
