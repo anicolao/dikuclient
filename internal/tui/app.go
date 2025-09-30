@@ -52,6 +52,7 @@ var (
 
 	inputStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("229")). // Bright yellow for user input
+			Background(lipgloss.Color("234")). // Dark background to match viewport
 			Bold(true)
 )
 
@@ -204,11 +205,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // updateViewport updates the viewport content with output and current input
 func (m *Model) updateViewport() {
-	// Check if the last output line is a prompt and append input to same line
+	// Always append input to the last line (all lines are treated as potential prompts)
 	var content string
 	if len(m.output) > 0 {
-		// Check if we should append input to the last line
-		// The last line doesn't end with newline if it's a prompt
 		lastLine := m.output[len(m.output)-1]
 		
 		if m.currentInput != "" || m.connected {
@@ -222,21 +221,11 @@ func (m *Model) updateViewport() {
 				inputLine = m.currentInput + "█"
 			}
 			
-			// If last line looks like a prompt (short and doesn't look like full sentence),
-			// append input to the same line
-			// Simple heuristic: if last line is short and has ">" or ends with ":", it's likely a prompt
-			isPromptLine := len(lastLine) < 40 && (strings.Contains(lastLine, ">") || strings.HasSuffix(lastLine, ":"))
-			
-			if isPromptLine && len(m.output) > 0 {
-				// Replace the last line with prompt + input
-				lines := make([]string, len(m.output)-1)
-				copy(lines, m.output[:len(m.output)-1])
-				lines = append(lines, lastLine+" "+inputStyle.Render(inputLine))
-				content = strings.Join(lines, "\n")
-			} else {
-				// Add input on a new line
-				content = strings.Join(m.output, "\n") + "\n" + inputStyle.Render(inputLine)
-			}
+			// Always append input to the last line
+			lines := make([]string, len(m.output)-1)
+			copy(lines, m.output[:len(m.output)-1])
+			lines = append(lines, lastLine+" "+inputStyle.Render(inputLine))
+			content = strings.Join(lines, "\n")
 		} else {
 			content = strings.Join(m.output, "\n")
 		}
