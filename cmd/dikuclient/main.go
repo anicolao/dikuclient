@@ -51,7 +51,10 @@ func main() {
 	if *webMode {
 		fmt.Printf("Starting web server on port %d...\n", *webPort)
 		fmt.Printf("Open http://localhost:%d in your browser\n", *webPort)
-		if err := web.Start(*webPort); err != nil {
+		if *logAll {
+			fmt.Printf("Logging enabled for spawned TUI instances (--log-all)\n")
+		}
+		if err := web.StartWithLogging(*webPort, *logAll); err != nil {
 			fmt.Printf("Error starting web server: %v\n", err)
 			os.Exit(1)
 		}

@@ -25,8 +25,9 @@ var upgrader = websocket.Upgrader{
 
 // WebSocketHandler handles WebSocket connections
 type WebSocketHandler struct {
-	sessions map[*websocket.Conn]*Session
-	mu       sync.RWMutex
+	sessions   map[*websocket.Conn]*Session
+	mu         sync.RWMutex
+	enableLogs bool // Whether to enable logging for spawned TUI instances
 }
 
 // Session represents a WebSocket session with a PTY running the TUI
@@ -56,8 +57,14 @@ type ResizeMessage struct {
 
 // NewWebSocketHandler creates a new WebSocket handler
 func NewWebSocketHandler() *WebSocketHandler {
+	return NewWebSocketHandlerWithLogging(false)
+}
+
+// NewWebSocketHandlerWithLogging creates a new WebSocket handler with logging option
+func NewWebSocketHandlerWithLogging(enableLogs bool) *WebSocketHandler {
 	return &WebSocketHandler{
-		sessions: make(map[*websocket.Conn]*Session),
+		sessions:   make(map[*websocket.Conn]*Session),
+		enableLogs: enableLogs,
 	}
 }
 
@@ -144,8 +151,14 @@ func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 		dikuclientPath = "./dikuclient"
 	}
 
+	// Build command arguments
+	args := []string{"--host", connectMsg.Host, "--port", fmt.Sprintf("%d", connectMsg.Port)}
+	if h.enableLogs {
+		args = append(args, "--log-all")
+	}
+
 	// Start the TUI client
-	cmd := exec.Command(dikuclientPath, "--host", connectMsg.Host, "--port", fmt.Sprintf("%d", connectMsg.Port))
+	cmd := exec.Command(dikuclientPath, args...)
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
