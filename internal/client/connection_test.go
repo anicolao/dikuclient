@@ -187,3 +187,94 @@ func TestProcessTelnetData_PartialSequenceAtEnd(t *testing.T) {
 		t.Errorf("Buffer should be empty, got %v", conn.telnetBuffer)
 	}
 }
+
+func TestProcessTelnetData_UTF8Boundaries(t *testing.T) {
+	conn := &Connection{}
+
+	tests := []struct {
+		name     string
+		chunks   [][]byte
+		expected string
+	}{
+		{
+			name: "2-byte UTF-8 at boundary (é = 0xC3 0xA9)",
+			chunks: [][]byte{
+				[]byte("Hello " + string([]byte{0xC3})),
+				[]byte{0xA9, '!'},
+			},
+			expected: "Hello é!",
+		},
+		{
+			name: "3-byte UTF-8 at boundary (€ = 0xE2 0x82 0xAC)",
+			chunks: [][]byte{
+				[]byte("Price: " + string([]byte{0xE2})),
+				[]byte{0x82, 0xAC},
+			},
+			expected: "Price: €",
+		},
+		{
+			name: "3-byte UTF-8 split 2-1",
+			chunks: [][]byte{
+				[]byte("Test " + string([]byte{0xE2, 0x82})),
+				[]byte{0xAC, ' ', 'O', 'K'},
+			},
+			expected: "Test € OK",
+		},
+		{
+			name: "4-byte UTF-8 at boundary (😀 = 0xF0 0x9F 0x98 0x80)",
+			chunks: [][]byte{
+				[]byte("Emoji " + string([]byte{0xF0})),
+				[]byte{0x9F, 0x98, 0x80},
+			},
+			expected: "Emoji 😀",
+		},
+		{
+			name: "4-byte UTF-8 split 2-2",
+			chunks: [][]byte{
+				[]byte("Hi " + string([]byte{0xF0, 0x9F})),
+				[]byte{0x98, 0x80, '!'},
+			},
+			expected: "Hi 😀!",
+		},
+		{
+			name: "4-byte UTF-8 split 3-1",
+			chunks: [][]byte{
+				[]byte("Wow " + string([]byte{0xF0, 0x9F, 0x98})),
+				[]byte{0x80},
+			},
+			expected: "Wow 😀",
+		},
+		{
+			name: "Multiple multi-byte characters",
+			chunks: [][]byte{
+				[]byte("Test " + string([]byte{0xC3})),
+				[]byte{0xA9, ' ', 0xE2},
+				[]byte{0x82, 0xAC, ' ', 0xF0},
+				[]byte{0x9F, 0x98, 0x80},
+			},
+			expected: "Test é € 😀",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset telnet buffer for each test
+			conn.telnetBuffer = nil
+
+			var result []byte
+			for _, chunk := range tt.chunks {
+				processed := conn.processTelnetData(chunk)
+				result = append(result, processed...)
+			}
+
+			if string(result) != tt.expected {
+				t.Errorf("processTelnetData() = %q (bytes: %v), want %q", string(result), result, tt.expected)
+			}
+
+			// Verify buffer is empty at end
+			if len(conn.telnetBuffer) > 0 {
+				t.Errorf("telnetBuffer not empty at end: %v", conn.telnetBuffer)
+			}
+		})
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // Telnet IAC (Interpret As Command) constants
@@ -68,6 +69,71 @@ func NewConnection(host string, port int) (*Connection, error) {
 	go c.writeLoop()
 
 	return c, nil
+}
+
+// incompleteUTF8Tail returns the number of trailing bytes that form an incomplete UTF-8 sequence
+func incompleteUTF8Tail(data []byte) int {
+	if len(data) == 0 {
+		return 0
+	}
+
+	// Check last 1-4 bytes for incomplete UTF-8
+	// UTF-8 encoding:
+	// - 1 byte:  0xxxxxxx (0x00-0x7F)
+	// - 2 bytes: 110xxxxx 10xxxxxx (0xC0-0xDF, 0x80-0xBF)
+	// - 3 bytes: 1110xxxx 10xxxxxx 10xxxxxx (0xE0-0xEF, 0x80-0xBF, 0x80-0xBF)
+	// - 4 bytes: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx (0xF0-0xF7, 0x80-0xBF, 0x80-0xBF, 0x80-0xBF)
+
+	maxCheck := 4
+	if len(data) < maxCheck {
+		maxCheck = len(data)
+	}
+
+	// Start from the end and look for the beginning of a UTF-8 sequence
+	for i := 1; i <= maxCheck; i++ {
+		pos := len(data) - i
+		b := data[pos]
+
+		// Check if this is a start byte
+		if b < 0x80 {
+			// ASCII character, complete
+			return 0
+		} else if b >= 0xC0 && b < 0xE0 {
+			// Start of 2-byte sequence
+			expected := 2
+			if i < expected {
+				return i // Incomplete
+			}
+			// Check if the sequence is valid
+			if i == expected && utf8.Valid(data[pos:]) {
+				return 0
+			}
+			return i
+		} else if b >= 0xE0 && b < 0xF0 {
+			// Start of 3-byte sequence
+			expected := 3
+			if i < expected {
+				return i // Incomplete
+			}
+			if i == expected && utf8.Valid(data[pos:]) {
+				return 0
+			}
+			return i
+		} else if b >= 0xF0 && b < 0xF8 {
+			// Start of 4-byte sequence
+			expected := 4
+			if i < expected {
+				return i // Incomplete
+			}
+			if i == expected && utf8.Valid(data[pos:]) {
+				return 0
+			}
+			return i
+		}
+		// Continue looking backwards (this byte is a continuation byte 0x80-0xBF)
+	}
+
+	return 0
 }
 
 // processTelnetData strips telnet IAC sequences and handles negotiation
@@ -176,6 +242,15 @@ func (c *Connection) processTelnetData(data []byte) []byte {
 			result = append(result, data[i])
 			i++
 		}
+	}
+
+	// Check if result ends with incomplete UTF-8 sequence
+	incompleteLen := incompleteUTF8Tail(result)
+	if incompleteLen > 0 {
+		// Buffer the incomplete UTF-8 bytes for next call
+		splitPoint := len(result) - incompleteLen
+		c.telnetBuffer = append(c.telnetBuffer, result[splitPoint:]...)
+		result = result[:splitPoint]
 	}
 
 	return result
