@@ -113,7 +113,7 @@ func main() {
 		password = account.Password
 	}
 
-	var mudLogFile, tuiLogFile *os.File
+	var mudLogFile, tuiLogFile, telnetDebugLog *os.File
 
 	// Create log files if --log-all flag is set
 	if *logAll {
@@ -133,14 +133,22 @@ func main() {
 		}
 		defer tuiLogFile.Close()
 
+		telnetDebugLog, err = os.Create(fmt.Sprintf("telnet-debug-%s.log", timestamp))
+		if err != nil {
+			fmt.Printf("Error creating telnet debug log file: %v\n", err)
+			os.Exit(1)
+		}
+		defer telnetDebugLog.Close()
+
 		fmt.Printf("Logging enabled:\n")
 		fmt.Printf("  MUD output: mud-output-%s.log\n", timestamp)
 		fmt.Printf("  TUI content: tui-content-%s.log\n", timestamp)
+		fmt.Printf("  Telnet/UTF-8 debug: telnet-debug-%s.log\n", timestamp)
 		fmt.Println()
 	}
 
 	// Create the TUI model with auto-login credentials
-	model := tui.NewModelWithAuth(finalHost, finalPort, username, password, mudLogFile, tuiLogFile)
+	model := tui.NewModelWithAuth(finalHost, finalPort, username, password, mudLogFile, tuiLogFile, telnetDebugLog)
 
 	// Create the Bubble Tea program
 	p := tea.NewProgram(

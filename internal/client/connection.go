@@ -3,9 +3,11 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -41,12 +43,18 @@ type Connection struct {
 	closeCh      chan struct{}
 	mu           sync.RWMutex
 	closed       bool
-	serverEcho   bool   // Whether server is echoing (false = password mode)
-	telnetBuffer []byte // Buffer for incomplete telnet sequences
+	serverEcho   bool     // Whether server is echoing (false = password mode)
+	telnetBuffer []byte   // Buffer for incomplete telnet sequences
+	debugLog     *os.File // Optional debug log file for telnet/UTF-8 processing
 }
 
 // NewConnection creates a new MUD connection
 func NewConnection(host string, port int) (*Connection, error) {
+	return NewConnectionWithDebug(host, port, nil)
+}
+
+// NewConnectionWithDebug creates a new MUD connection with optional debug logging
+func NewConnectionWithDebug(host string, port int, debugLog *os.File) (*Connection, error) {
 	address := fmt.Sprintf("%s:%d", host, port)
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
@@ -63,6 +71,11 @@ func NewConnection(host string, port int) (*Connection, error) {
 		echoChan:   make(chan bool, 10),
 		closeCh:    make(chan struct{}),
 		serverEcho: true, // Assume server echoes initially
+		debugLog:   debugLog,
+	}
+
+	if c.debugLog != nil {
+		fmt.Fprintf(c.debugLog, "[%s] === Connection established to %s ===\n\n", time.Now().Format("15:04:05.000"), address)
 	}
 
 	go c.readLoop()
@@ -139,6 +152,15 @@ func incompleteUTF8Tail(data []byte) int {
 // processTelnetData strips telnet IAC sequences and handles negotiation
 // It properly handles telnet sequences that span buffer boundaries
 func (c *Connection) processTelnetData(data []byte) []byte {
+	if c.debugLog != nil {
+		fmt.Fprintf(c.debugLog, "[%s] === processTelnetData called ===\n", time.Now().Format("15:04:05.000"))
+		fmt.Fprintf(c.debugLog, "Input length: %d bytes\n", len(data))
+		fmt.Fprintf(c.debugLog, "Input hex: %s\n", hex.EncodeToString(data))
+		if len(c.telnetBuffer) > 0 {
+			fmt.Fprintf(c.debugLog, "Buffered from previous call: %d bytes: %s\n", len(c.telnetBuffer), hex.EncodeToString(c.telnetBuffer))
+		}
+	}
+
 	// Prepend any buffered incomplete sequence from previous call
 	if len(c.telnetBuffer) > 0 {
 		data = append(c.telnetBuffer, data...)
@@ -150,29 +172,48 @@ func (c *Connection) processTelnetData(data []byte) []byte {
 
 	for i < len(data) {
 		if data[i] == IAC {
+			if c.debugLog != nil {
+				fmt.Fprintf(c.debugLog, "Found IAC at position %d\n", i)
+			}
 			// Check if we have enough bytes for a complete sequence
 			if i+1 >= len(data) {
 				// Incomplete sequence - buffer it for next call
+				if c.debugLog != nil {
+					fmt.Fprintf(c.debugLog, "  Incomplete IAC at end of buffer, buffering %d bytes\n", len(data)-i)
+				}
 				c.telnetBuffer = append(c.telnetBuffer, data[i:]...)
 				break
 			}
 
 			// Handle IAC sequences
 			cmd := data[i+1]
+			if c.debugLog != nil {
+				fmt.Fprintf(c.debugLog, "  IAC command: 0x%02X\n", cmd)
+			}
 			switch cmd {
 			case IAC:
 				// Escaped IAC (0xFF 0xFF) = literal 0xFF
+				if c.debugLog != nil {
+					fmt.Fprintf(c.debugLog, "  -> Escaped IAC, keeping literal 0xFF\n")
+				}
 				result = append(result, IAC)
 				i += 2
 			case WILL, WONT, DO, DONT:
 				// Three-byte sequence: IAC WILL/WONT/DO/DONT <option>
 				if i+2 >= len(data) {
 					// Incomplete sequence - buffer it for next call
+					if c.debugLog != nil {
+						fmt.Fprintf(c.debugLog, "  Incomplete WILL/WONT/DO/DONT at end, buffering %d bytes\n", len(data)-i)
+					}
 					c.telnetBuffer = append(c.telnetBuffer, data[i:]...)
 					// Exit the outer loop
 					i = len(data)
 				} else {
 					option := data[i+2]
+					if c.debugLog != nil {
+						fmt.Fprintf(c.debugLog, "  -> IAC %s option %d, stripping\n",
+							map[byte]string{WILL: "WILL", WONT: "WONT", DO: "DO", DONT: "DONT"}[cmd], option)
+					}
 					// Handle ECHO option
 					if option == TELOPT_ECHO {
 						c.mu.Lock()
@@ -201,9 +242,15 @@ func (c *Connection) processTelnetData(data []byte) []byte {
 				}
 			case GA:
 				// Go Ahead - marks end of prompt, just skip it
+				if c.debugLog != nil {
+					fmt.Fprintf(c.debugLog, "  -> IAC GA (Go Ahead), stripping\n")
+				}
 				i += 2
 			case SB:
 				// Subnegotiation - skip until SE
+				if c.debugLog != nil {
+					fmt.Fprintf(c.debugLog, "  -> IAC SB (Subnegotiation), searching for IAC SE...\n")
+				}
 				sbStart := i
 				i += 2
 				foundSE := false
@@ -212,11 +259,17 @@ func (c *Connection) processTelnetData(data []byte) []byte {
 					if data[i] == IAC {
 						if i+1 >= len(data) {
 							// Incomplete - buffer from start of SB and exit
+							if c.debugLog != nil {
+								fmt.Fprintf(c.debugLog, "  Incomplete subnegotiation at end, buffering %d bytes\n", len(data)-sbStart)
+							}
 							c.telnetBuffer = append(c.telnetBuffer, data[sbStart:]...)
 							i = len(data)
 							break
 						}
 						if data[i+1] == SE {
+							if c.debugLog != nil {
+								fmt.Fprintf(c.debugLog, "  Found IAC SE, stripping entire subnegotiation\n")
+							}
 							i += 2 // Skip IAC SE
 							foundSE = true
 							break
@@ -231,10 +284,16 @@ func (c *Connection) processTelnetData(data []byte) []byte {
 				// If we didn't find SE and didn't buffer, we hit end of data
 				if !foundSE && i >= len(data) && len(c.telnetBuffer) == 0 {
 					// Buffer the entire incomplete subnegotiation
+					if c.debugLog != nil {
+						fmt.Fprintf(c.debugLog, "  Subnegotiation incomplete (no SE found), buffering %d bytes\n", len(data)-sbStart)
+					}
 					c.telnetBuffer = append(c.telnetBuffer, data[sbStart:]...)
 				}
 			default:
 				// Unknown two-byte sequence
+				if c.debugLog != nil {
+					fmt.Fprintf(c.debugLog, "  -> Unknown IAC command 0x%02X, stripping 2 bytes\n", cmd)
+				}
 				i += 2
 			}
 		} else {
@@ -249,8 +308,25 @@ func (c *Connection) processTelnetData(data []byte) []byte {
 	if incompleteLen > 0 {
 		// Buffer the incomplete UTF-8 bytes for next call
 		splitPoint := len(result) - incompleteLen
+		if c.debugLog != nil {
+			fmt.Fprintf(c.debugLog, "Incomplete UTF-8 at end: %d bytes: %s\n",
+				incompleteLen, hex.EncodeToString(result[splitPoint:]))
+		}
 		c.telnetBuffer = append(c.telnetBuffer, result[splitPoint:]...)
 		result = result[:splitPoint]
+	}
+
+	if c.debugLog != nil {
+		fmt.Fprintf(c.debugLog, "Output length: %d bytes\n", len(result))
+		fmt.Fprintf(c.debugLog, "Output hex: %s\n", hex.EncodeToString(result))
+		if len(c.telnetBuffer) > 0 {
+			fmt.Fprintf(c.debugLog, "Buffered for next call: %d bytes: %s\n",
+				len(c.telnetBuffer), hex.EncodeToString(c.telnetBuffer))
+		}
+		// Try to show as string (may have invalid UTF-8, but useful for debugging)
+		fmt.Fprintf(c.debugLog, "Output string (may contain invalid UTF-8): %q\n", string(result))
+		fmt.Fprintf(c.debugLog, "\n")
+		c.debugLog.Sync()
 	}
 
 	return result
