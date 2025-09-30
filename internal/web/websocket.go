@@ -1,13 +1,16 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
-	"strings"
+	"os"
+	"os/exec"
 	"sync"
 
-	"github.com/anicolao/dikuclient/internal/client"
+	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 )
 
@@ -26,11 +29,29 @@ type WebSocketHandler struct {
 	mu       sync.RWMutex
 }
 
-// Session represents a WebSocket session with a MUD connection
+// Session represents a WebSocket session with a PTY running the TUI
 type Session struct {
-	ws   *websocket.Conn
-	conn *client.Connection
-	mu   sync.Mutex
+	ws     *websocket.Conn
+	ptmx   *os.File
+	cmd    *exec.Cmd
+	mu     sync.Mutex
+	closed bool
+}
+
+// ConnectMessage represents the connection request from client
+type ConnectMessage struct {
+	Type string `json:"type"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
+	Cols int    `json:"cols"`
+	Rows int    `json:"rows"`
+}
+
+// ResizeMessage represents a terminal resize request
+type ResizeMessage struct {
+	Type string `json:"type"`
+	Cols int    `json:"cols"`
+	Rows int    `json:"rows"`
 }
 
 // NewWebSocketHandler creates a new WebSocket handler
@@ -64,9 +85,7 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 		h.mu.Lock()
 		delete(h.sessions, ws)
 		h.mu.Unlock()
-		if session.conn != nil {
-			session.conn.Close()
-		}
+		session.cleanup()
 	}()
 
 	// Handle incoming messages
@@ -80,97 +99,166 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 		}
 
 		if messageType == websocket.TextMessage {
-			h.handleMessage(session, string(message))
+			// Try to parse as JSON for control messages
+			var msg map[string]interface{}
+			if err := json.Unmarshal(message, &msg); err == nil {
+				if msgType, ok := msg["type"].(string); ok {
+					switch msgType {
+					case "connect":
+						h.handleConnect(session, message)
+						continue
+					case "resize":
+						h.handleResize(session, message)
+						continue
+					}
+				}
+			}
+			
+			// Otherwise, it's terminal input - send to PTY
+			if session.ptmx != nil && !session.closed {
+				session.mu.Lock()
+				_, err := session.ptmx.Write(message)
+				session.mu.Unlock()
+				if err != nil {
+					log.Printf("Error writing to PTY: %v", err)
+					break
+				}
+			}
 		}
 	}
 }
 
-// handleMessage processes incoming WebSocket messages
-func (h *WebSocketHandler) handleMessage(session *Session, message string) {
-	// Parse message format: {"type": "command", "data": "..."}
-	// For now, we'll use a simple protocol
+// handleConnect starts the TUI client in a PTY
+func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
+	var connectMsg ConnectMessage
+	if err := json.Unmarshal(message, &connectMsg); err != nil {
+		session.sendError(fmt.Sprintf("Invalid connect message: %v", err))
+		return
+	}
+
+	// Get the path to the dikuclient binary
+	// In production, this should be configurable
+	dikuclientPath, err := exec.LookPath("dikuclient")
+	if err != nil {
+		// Try relative path
+		dikuclientPath = "./dikuclient"
+	}
+
+	// Start the TUI client
+	cmd := exec.Command(dikuclientPath, "--host", connectMsg.Host, "--port", fmt.Sprintf("%d", connectMsg.Port))
 	
-	// Check if it's a connect command
-	if len(message) > 8 && message[:8] == "CONNECT:" {
-		// Format: CONNECT:host:port
-		parts := strings.Split(message[8:], ":")
-		if len(parts) != 2 {
-			session.sendError("Invalid connect command format. Expected: CONNECT:host:port")
-			return
-		}
-		
-		host := parts[0]
-		port := 0
-		_, err := fmt.Sscanf(parts[1], "%d", &port)
-		if err != nil {
-			session.sendError(fmt.Sprintf("Invalid port number: %v", err))
-			return
-		}
-
-		// Create MUD connection
-		conn, err := client.NewConnection(host, port)
-		if err != nil {
-			session.sendError(fmt.Sprintf("Failed to connect: %v", err))
-			return
-		}
-
-		session.mu.Lock()
-		session.conn = conn
-		session.mu.Unlock()
-
-		// Send success message
-		session.send("CONNECTED")
-
-		// Start forwarding MUD output to WebSocket
-		go h.forwardMUDOutput(session)
-
+	// Start the command with a PTY
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		session.sendError(fmt.Sprintf("Failed to start TUI: %v", err))
 		return
 	}
 
-	// If connected, send to MUD
+	// Set PTY size
+	if connectMsg.Cols > 0 && connectMsg.Rows > 0 {
+		pty.Setsize(ptmx, &pty.Winsize{
+			Rows: uint16(connectMsg.Rows),
+			Cols: uint16(connectMsg.Cols),
+		})
+	}
+
 	session.mu.Lock()
-	conn := session.conn
+	session.ptmx = ptmx
+	session.cmd = cmd
 	session.mu.Unlock()
 
-	if conn != nil && !conn.IsClosed() {
-		conn.Send(message)
-	} else {
-		session.sendError("Not connected to MUD server")
+	// Start forwarding PTY output to WebSocket
+	go h.forwardPTYOutput(session)
+	
+	log.Printf("Started TUI session for %s:%d", connectMsg.Host, connectMsg.Port)
+}
+
+// handleResize handles terminal resize requests
+func (h *WebSocketHandler) handleResize(session *Session, message []byte) {
+	var resizeMsg ResizeMessage
+	if err := json.Unmarshal(message, &resizeMsg); err != nil {
+		log.Printf("Invalid resize message: %v", err)
+		return
+	}
+
+	session.mu.Lock()
+	defer session.mu.Unlock()
+
+	if session.ptmx != nil && !session.closed {
+		pty.Setsize(session.ptmx, &pty.Winsize{
+			Rows: uint16(resizeMsg.Rows),
+			Cols: uint16(resizeMsg.Cols),
+		})
 	}
 }
 
-// forwardMUDOutput forwards output from MUD to WebSocket
-func (h *WebSocketHandler) forwardMUDOutput(session *Session) {
+// forwardPTYOutput forwards output from PTY to WebSocket
+func (h *WebSocketHandler) forwardPTYOutput(session *Session) {
 	session.mu.Lock()
-	conn := session.conn
+	ptmx := session.ptmx
 	session.mu.Unlock()
 
-	if conn == nil {
+	if ptmx == nil {
 		return
 	}
 
+	buf := make([]byte, 4096)
 	for {
-		select {
-		case msg := <-conn.Receive():
-			session.send(msg)
-		case err := <-conn.Errors():
-			session.sendError(fmt.Sprintf("MUD error: %v", err))
-			return
+		n, err := ptmx.Read(buf)
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("Error reading from PTY: %v", err)
+			}
+			break
+		}
+
+		if n > 0 {
+			session.mu.Lock()
+			if !session.closed {
+				err = session.ws.WriteMessage(websocket.TextMessage, buf[:n])
+				if err != nil {
+					log.Printf("Error writing to WebSocket: %v", err)
+					session.mu.Unlock()
+					break
+				}
+			}
+			session.mu.Unlock()
 		}
 	}
+
+	// PTY closed, clean up
+	session.cleanup()
 }
 
-// send sends a message to the WebSocket client
-func (s *Session) send(message string) {
+// cleanup closes the PTY and terminates the process
+func (s *Session) cleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	err := s.ws.WriteMessage(websocket.TextMessage, []byte(message))
-	if err != nil {
-		log.Printf("Error sending message: %v", err)
+
+	if s.closed {
+		return
+	}
+	s.closed = true
+
+	if s.ptmx != nil {
+		s.ptmx.Close()
+		s.ptmx = nil
+	}
+
+	if s.cmd != nil && s.cmd.Process != nil {
+		s.cmd.Process.Kill()
+		s.cmd.Wait()
 	}
 }
 
 // sendError sends an error message to the WebSocket client
 func (s *Session) sendError(message string) {
-	s.send("ERROR:" + message)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	errorMsg := fmt.Sprintf("\r\n\x1b[31mERROR: %s\x1b[0m\r\n", message)
+	err := s.ws.WriteMessage(websocket.TextMessage, []byte(errorMsg))
+	if err != nil {
+		log.Printf("Error sending error message: %v", err)
+	}
 }

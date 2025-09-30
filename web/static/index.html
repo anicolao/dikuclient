@@ -9,27 +9,38 @@
 <body>
     <div class="container">
         <header>
-            <h1>DikuMUD Client</h1>
+            <h1>DikuMUD Client - Terminal Emulation Mode</h1>
             <div class="connection-controls">
-                <input type="text" id="host" placeholder="Host (e.g., aardmud.org)" value="aardmud.org">
-                <input type="number" id="port" placeholder="Port" value="23">
+                <input type="text" id="host" placeholder="Host (e.g., localhost)" value="localhost">
+                <input type="number" id="port" placeholder="Port" value="4000">
                 <button id="connectBtn">Connect</button>
                 <button id="disconnectBtn" disabled>Disconnect</button>
                 <span id="status" class="status disconnected">Disconnected</span>
             </div>
+            <div class="info-bar">
+                <span>This interface runs the full TUI client in the browser via WebSocket</span>
+            </div>
         </header>
         
         <main>
-            <div class="output-area">
-                <div id="output"></div>
-            </div>
-            <div class="input-area">
-                <input type="text" id="input" placeholder="Enter command..." disabled>
-                <button id="sendBtn" disabled>Send</button>
-            </div>
+            <div id="terminal"></div>
         </main>
     </div>
     
+    <!-- Try to load xterm.js from CDN, fall back to built-in if blocked -->
+    <script>
+        // Check if xterm.js loaded successfully
+        window.xtermLoaded = false;
+        window.fitAddonLoaded = false;
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js" 
+            onload="window.xtermLoaded = true" 
+            onerror="console.warn('xterm.js CDN blocked, using fallback')"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"
+            onload="window.fitAddonLoaded = true"
+            onerror="console.warn('fit addon CDN blocked, using fallback')"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css"
+          onerror="this.remove()">
     <script src="app.js"></script>
 </body>
 </html>

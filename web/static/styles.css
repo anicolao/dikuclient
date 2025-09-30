@@ -11,13 +11,14 @@ body {
     height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
 .container {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    max-width: 1200px;
+    max-width: 100%;
     margin: 0 auto;
     width: 100%;
 }
@@ -26,6 +27,7 @@ header {
     background-color: #2d2d2d;
     padding: 1rem;
     border-bottom: 2px solid #444;
+    flex-shrink: 0;
 }
 
 h1 {
@@ -38,6 +40,13 @@ h1 {
     display: flex;
     gap: 0.5rem;
     align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.info-bar {
+    font-size: 0.85rem;
+    color: #888;
+    margin-top: 0.5rem;
 }
 
 .connection-controls input {
@@ -97,75 +106,40 @@ main {
     flex-direction: column;
     padding: 1rem;
     overflow: hidden;
+    min-height: 0;
 }
 
-.output-area {
+#terminal {
     flex: 1;
-    background-color: #1e1e1e;
+    background-color: #000;
     border: 1px solid #444;
-    padding: 1rem;
-    overflow-y: auto;
-    margin-bottom: 1rem;
+    overflow: auto;
+    padding: 10px;
+    font-family: 'Courier New', monospace;
     font-size: 14px;
-    line-height: 1.4;
-}
-
-#output {
-    white-space: pre-wrap;
-    word-wrap: break-word;
-}
-
-.output-line {
-    margin-bottom: 0.2rem;
-}
-
-.input-area {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.input-area input {
-    flex: 1;
-    padding: 0.5rem;
-    background-color: #2d2d2d;
-    border: 1px solid #444;
+    line-height: 1.2;
+    white-space: pre;
     color: #d4d4d4;
-    font-family: inherit;
-    font-size: 14px;
 }
 
-.input-area button {
-    padding: 0.5rem 1.5rem;
-    background-color: #007acc;
-    color: white;
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
+/* Styles for xterm.js if it loads */
+#terminal .xterm {
+    height: 100%;
+    padding: 10px;
 }
 
-.input-area button:hover:not(:disabled) {
-    background-color: #005a9e;
+/* Fallback terminal styles */
+#terminal.fallback {
+    overflow-y: auto;
+    white-space: pre-wrap;
 }
 
-.input-area button:disabled {
-    background-color: #3e3e3e;
-    color: #666;
-    cursor: not-allowed;
+#terminal:focus {
+    outline: 1px solid #007acc;
 }
 
-/* Scrollbar styling */
-.output-area::-webkit-scrollbar {
-    width: 10px;
-}
-
-.output-area::-webkit-scrollbar-track {
-    background: #1e1e1e;
-}
-
-.output-area::-webkit-scrollbar-thumb {
-    background: #444;
-}
-
-.output-area::-webkit-scrollbar-thumb:hover {
-    background: #555;
+/* Cursor for fallback terminal */
+.cursor {
+    background-color: #d4d4d4;
+    color: #000;
 }
