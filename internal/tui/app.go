@@ -29,7 +29,8 @@ type Model struct {
 var (
 	mainStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("62"))
+			BorderForeground(lipgloss.Color("62")).
+			Background(lipgloss.Color("234")) // Dark background
 
 	viewportStyle = lipgloss.NewStyle().
 				Background(lipgloss.Color("234")). // Dark background
@@ -44,10 +45,12 @@ var (
 	sidebarStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("62")).
+			Background(lipgloss.Color("234")). // Dark background
 			Padding(1)
 
 	emptyPanelStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
+			Background(lipgloss.Color("234")). // Dark background
 			Italic(true)
 
 	inputStyle = lipgloss.NewStyle().
@@ -62,6 +65,7 @@ type errMsg error
 // NewModel creates a new application model
 func NewModel(host string, port int) Model {
 	vp := viewport.New(0, 0)
+	vp.Style = viewportStyle
 
 	return Model{
 		viewport:     vp,
@@ -164,6 +168,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.viewport.Width = mainWidth
 		m.viewport.Height = m.height - headerHeight - 2
+		m.viewport.Style = viewportStyle
 
 		m.updateViewport()
 		return m, nil
@@ -296,17 +301,12 @@ func (m Model) renderMainContent() string {
 	mainWidth := m.width - sidebarWidth - 6
 	contentHeight := m.height - headerHeight - 2
 
-	// Game output viewport with full background
-	viewportContent := viewportStyle.
-		Width(mainWidth).
-		Height(contentHeight).
-		Render(m.viewport.View())
-	
+	// Game output viewport (already has dark background style applied)
 	// Wrap in border
 	gameOutput := mainStyle.
 		Width(mainWidth).
 		Height(contentHeight).
-		Render(viewportContent)
+		Render(m.viewport.View())
 
 	// Sidebar with empty panels
 	sidebar := m.renderSidebar(sidebarWidth, contentHeight)
