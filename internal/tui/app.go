@@ -29,14 +29,7 @@ type Model struct {
 var (
 	mainStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("62")).
-			BorderBackground(lipgloss.Color("234")). // Dark background for border
-			Background(lipgloss.Color("234"))        // Dark background
-
-	viewportStyle = lipgloss.NewStyle().
-				Background(lipgloss.Color("234")). // Dark background
-				Foreground(lipgloss.Color("252")).  // Light text
-				Inline(false)                       // Fill entire background
+			BorderForeground(lipgloss.Color("62"))
 
 	statusStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("229")).
@@ -46,20 +39,11 @@ var (
 	sidebarStyle = lipgloss.NewStyle().
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("62")).
-			BorderBackground(lipgloss.Color("234")). // Dark background for border
-			Background(lipgloss.Color("234")).       // Dark background
 			Padding(1)
 
 	emptyPanelStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
-			Background(lipgloss.Color("234")). // Dark background
 			Italic(true)
-
-	inputStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("229")). // Bright yellow for user input
-			Background(lipgloss.Color("234")). // Dark background to match viewport
-			Bold(true).
-			Inline(false) // Fill entire line background
 )
 
 type mudMsg string
@@ -68,7 +52,7 @@ type errMsg error
 // NewModel creates a new application model
 func NewModel(host string, port int) Model {
 	vp := viewport.New(0, 0)
-	vp.Style = viewportStyle
+	// Don't apply any style to viewport - let ANSI codes pass through naturally
 
 	return Model{
 		viewport:     vp,
@@ -171,7 +155,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.viewport.Width = mainWidth
 		m.viewport.Height = m.height - headerHeight - 2
-		m.viewport.Style = viewportStyle
+		// Don't apply viewport style - let ANSI codes pass through
 
 		m.updateViewport()
 		return m, nil
@@ -229,12 +213,11 @@ func (m *Model) updateViewport() {
 				inputLine = m.currentInput + "█"
 			}
 			
-			// Always append input to the last line
+			// Append input inline to the last line with yellow color
+			// Use bright yellow (93) for better visibility
 			lines := make([]string, len(m.output)-1)
 			copy(lines, m.output[:len(m.output)-1])
-			// Add last line with input - use ANSI color code for yellow text
-			// Don't apply lipgloss styling here as it interferes with MUD ANSI codes
-			lines = append(lines, lastLine+" \x1b[1;33m"+inputLine+"\x1b[0m")
+			lines = append(lines, lastLine+"\x1b[93m"+inputLine+"\x1b[0m")
 			content = strings.Join(lines, "\n")
 		} else {
 			content = strings.Join(m.output, "\n")
@@ -248,8 +231,8 @@ func (m *Model) updateViewport() {
 			} else {
 				inputLine = m.currentInput + "█"
 			}
-			// Use ANSI color code for yellow text
-			content = "\x1b[1;33m" + inputLine + "\x1b[0m"
+			// Use bright yellow for better visibility
+			content = "\x1b[93m" + inputLine + "\x1b[0m"
 		}
 	}
 	
