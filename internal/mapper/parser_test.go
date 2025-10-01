@@ -20,6 +20,10 @@ func TestParseExitsLine(t *testing.T) {
 		{"Exits:NESW>", []string{"north", "east", "south", "west"}},
 		{"119H 131V 4923X 0.00% 60C T:60 Exits:EW> ", []string{"east", "west"}},
 		{"Exits:N>", []string{"north"}},
+		// Test with up and down
+		{"Exits:UD>", []string{"up", "down"}},
+		{"86H 81V 7886X 0.00% 37C T:40 Exits:UD>", []string{"up", "down"}},
+		{"Exits:NESWUD>", []string{"north", "east", "south", "west", "up", "down"}},
 	}
 
 	for _, test := range tests {
@@ -226,3 +230,94 @@ func TestParseRoomInfo_ShrineOfTheHolyPaladin(t *testing.T) {
 	t.Logf("Description: %q", info.Description)
 	t.Logf("Exits: %v", info.Exits)
 }
+
+// Test case from user feedback: Reception -> Inn of the Last Home with get/d commands
+func TestParseRoomInfo_ReceptionToInn(t *testing.T) {
+	// This is the exact output when moving down from Reception to Inn
+	// The issue: parser was grabbing "The Reception" from earlier output instead of "The Inn of the Last Home"
+	lines := []string{
+		"\x1b[36mThe Reception\x1b[0;37m",
+		"    The reception contains a small desk. A long hall leads behind the desk",
+		"here and you can tell this is where adventurers rest and take time off from",
+		"their journeys. A small stairway goes down towards what appears to be a",
+		"lively tavern.",
+		"\x1b[33m\x1b[1mA long sword has been left here.",
+		"A gardening spade made of gold lies here in the dirt.",
+		"A sharp stinger lies on the ground here.",
+		"\x1b[0;37m\x1b[31m\x1b[1mA red-haired young lady is wiping down a table here.",
+		"You see the outline of a life form here, carrying: a glowing scroll of recall; a glowing scroll of recall; a glowing scroll of recall.",
+		"A beautiful dragonhorse flies here, ready to carry a passenger.",
+		"A girl twirls her hair in the Solace Tourist Information booth.",
+		"A man wearing heavy armor is standing here.",
+		"A receptionist sits here doing her nails.",
+		"\x1b[0;37m",
+		"\x1b[32m\x1b[0;37m\x1b[33m\x1b[1m86H \x1b[0;37m\x1b[33m\x1b[1m82V \x1b[0;37m7886X 0.00% 37C \x1b[0;37mT:46 Exits:D>",
+		"",
+		"Tika Waylan leaves down.",
+		"",
+		"\x1b[32m\x1b[0;37m\x1b[33m\x1b[1m86H \x1b[0;37m\x1b[33m\x1b[1m82V \x1b[0;37m7886X 0.00% 37C \x1b[0;37mT:43 Exits:D>",
+		"You get a long sword.",
+		"You get a golden spade.",
+		"You get the queen bee's stinger.",
+		"",
+		"\x1b[32m\x1b[0;37m\x1b[33m\x1b[1m86H \x1b[0;37m\x1b[33m\x1b[1m82V \x1b[0;37m7886X 0.00% 37C \x1b[0;37mT:42 Exits:D>",
+		"The wonderful smell of spiced potatoes makes your stomach rumble.",
+		"\x1b[36mThe Inn of the Last Home\x1b[0;37m",
+		"    The Inn of the Last Home is a cozy tavern. The smells of rich food and",
+		"the sounds of merry music overflow your senses. A huge fireplace dominates",
+		"one wall and a warm glow emanates from its flames. Small tables fill the",
+		"room. A stairway leads up, further into the tree, while another stairway",
+		"leads down to the forest below.",
+		"\x1b[33m\x1b[1mA loaf of bread lies here. [5]",
+		"\x1b[0;37m\x1b[31m\x1b[1mA red-haired young lady is wiping down a table here.",
+		"A small child plays with some colorful objects.",
+		"Otik watches you calmly, while he skillfully mixes a drink.",
+		"\x1b[0;37m",
+		"\x1b[32m\x1b[0;37m\x1b[33m\x1b[1m86H \x1b[0;37m\x1b[33m\x1b[1m81V \x1b[0;37m7886X 0.00% 37C \x1b[0;37mT:40 Exits:UD>",
+	}
+
+	info := ParseRoomInfo(lines, true)
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil")
+	}
+
+	// Print debug info
+	if info.DebugInfo != "" {
+		t.Logf("Debug Info:\n%s", info.DebugInfo)
+	}
+
+	// Should parse "The Inn of the Last Home" as the title, NOT "The Reception"
+	if info.Title != "The Inn of the Last Home" {
+		t.Errorf("Title = %q, want %q", info.Title, "The Inn of the Last Home")
+	}
+
+	// Should have parsed exits (up and down)
+	if len(info.Exits) != 2 {
+		t.Errorf("Got %d exits, want 2", len(info.Exits))
+	}
+
+	// Should have up and down exits
+	hasUp := false
+	hasDown := false
+	for _, exit := range info.Exits {
+		if exit == "up" {
+			hasUp = true
+		}
+		if exit == "down" {
+			hasDown = true
+		}
+	}
+	if !hasUp || !hasDown {
+		t.Errorf("Exits = %v, want [up, down]", info.Exits)
+	}
+
+	// Description should contain "cozy tavern"
+	if info.Description == "" {
+		t.Error("Description is empty")
+	}
+
+	t.Logf("Parsed room: %q", info.Title)
+	t.Logf("Description: %q", info.Description)
+	t.Logf("Exits: %v", info.Exits)
+}
+

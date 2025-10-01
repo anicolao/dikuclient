@@ -22,8 +22,8 @@ var exitPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^\[\s*exits?\s*:\s*(.+?)\s*\]$`),
 	// "Obvious exits: north, south"
 	regexp.MustCompile(`(?i)^obvious\s+exits?\s*:\s*(.+)$`),
-	// "Exits:EW>" or "Exits:NESW>" (compact format, no spaces)
-	regexp.MustCompile(`(?i)exits?\s*:\s*([neswd]+)\s*>`),
+	// "Exits:EW>" or "Exits:NESW>" or "Exits:UD>" (compact format, no spaces)
+	regexp.MustCompile(`(?i)exits?\s*:\s*([neswud]+)\s*>`),
 }
 
 // directionAliases maps short direction names to full names
@@ -84,20 +84,13 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 	}
 
 	// Search backwards from just before exits line to find previous prompt
-	// OR stop at an earlier exit line (previous room)
+	// We look for a prompt line first, as that's the most reliable boundary
+	// Only fall back to previous exits line if no prompt is found
 	previousPromptIdx := -1
+	previousExitsIdx := -1
 	for i := exitsLineIdx - 1; i >= 0; i-- {
 		line := stripANSI(lines[i])
 		line = strings.TrimSpace(line)
-		
-		// Stop if we find another exits line (this is from the previous room)
-		if parseExitsLine(line) != nil {
-			if enableDebug {
-				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found previous exits line at index %d, stopping search\n", i))
-			}
-			previousPromptIdx = i
-			break
-		}
 		
 		// A prompt line typically ends with > and contains stats (H, V, X, etc.)
 		if isPromptLine(line) {
@@ -108,6 +101,14 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 			break
 		}
 		
+		// Track if we find another exits line (but don't stop immediately)
+		if previousExitsIdx == -1 && parseExitsLine(line) != nil {
+			previousExitsIdx = i
+			if enableDebug {
+				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found previous exits line at index %d\n", i))
+			}
+		}
+		
 		// Don't search too far back
 		if exitsLineIdx - i > 25 {
 			if enableDebug {
@@ -116,11 +117,19 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 			break
 		}
 	}
-
-	// Now search forwards from after the prompt (or from beginning) to find first indented line
+	
+	// Use the prompt as boundary if found, otherwise use previous exits line
 	startSearchIdx := 0
 	if previousPromptIdx >= 0 {
 		startSearchIdx = previousPromptIdx + 1
+		if enableDebug {
+			debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Using prompt at %d as boundary\n", previousPromptIdx))
+		}
+	} else if previousExitsIdx >= 0 {
+		startSearchIdx = previousExitsIdx + 1
+		if enableDebug {
+			debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Using previous exits at %d as boundary\n", previousExitsIdx))
+		}
 	}
 	
 	firstIndentedIdx := -1
