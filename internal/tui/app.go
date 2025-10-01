@@ -28,7 +28,8 @@ type Model struct {
 	err            error
 	mudLogFile     *os.File
 	tuiLogFile     *os.File
-	echoSuppressed bool // Server has disabled echo (e.g., for passwords)
+	telnetDebugLog *os.File // Debug log for telnet/UTF-8 processing
+	echoSuppressed bool     // Server has disabled echo (e.g., for passwords)
 	username       string
 	password       string
 	autoLoginState int // 0=idle, 1=sent username, 2=sent password
@@ -60,11 +61,11 @@ type echoStateMsg bool // true if echo suppressed (password mode)
 
 // NewModel creates a new application model
 func NewModel(host string, port int, mudLogFile, tuiLogFile *os.File) Model {
-	return NewModelWithAuth(host, port, "", "", mudLogFile, tuiLogFile)
+	return NewModelWithAuth(host, port, "", "", mudLogFile, tuiLogFile, nil)
 }
 
 // NewModelWithAuth creates a new application model with authentication credentials
-func NewModelWithAuth(host string, port int, username, password string, mudLogFile, tuiLogFile *os.File) Model {
+func NewModelWithAuth(host string, port int, username, password string, mudLogFile, tuiLogFile, telnetDebugLog *os.File) Model {
 	vp := viewport.New(0, 0)
 	// Don't apply any style to viewport - let ANSI codes pass through naturally
 
@@ -78,6 +79,7 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		sidebarWidth:   30,
 		mudLogFile:     mudLogFile,
 		tuiLogFile:     tuiLogFile,
+		telnetDebugLog: telnetDebugLog,
 		username:       username,
 		password:       password,
 		autoLoginState: 0,
@@ -91,7 +93,7 @@ func (m Model) Init() tea.Cmd {
 
 // connect establishes a connection to the MUD server
 func (m Model) connect() tea.Msg {
-	conn, err := client.NewConnection(m.host, m.port)
+	conn, err := client.NewConnectionWithDebug(m.host, m.port, m.telnetDebugLog)
 	if err != nil {
 		return errMsg(err)
 	}

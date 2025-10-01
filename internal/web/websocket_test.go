@@ -7,11 +7,11 @@ import (
 
 func TestWebSocketHandler_parseConnectMessage(t *testing.T) {
 	tests := []struct {
-		name        string
-		message     string
-		wantHost    string
-		wantPort    int
-		wantErr     bool
+		name     string
+		message  string
+		wantHost string
+		wantPort int
+		wantErr  bool
 	}{
 		{
 			name:     "valid connect message",

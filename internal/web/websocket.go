@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
@@ -25,17 +26,19 @@ var upgrader = websocket.Upgrader{
 
 // WebSocketHandler handles WebSocket connections
 type WebSocketHandler struct {
-	sessions map[*websocket.Conn]*Session
-	mu       sync.RWMutex
+	sessions   map[*websocket.Conn]*Session
+	mu         sync.RWMutex
+	enableLogs bool // Whether to enable logging for spawned TUI instances
 }
 
 // Session represents a WebSocket session with a PTY running the TUI
 type Session struct {
-	ws     *websocket.Conn
-	ptmx   *os.File
-	cmd    *exec.Cmd
-	mu     sync.Mutex
-	closed bool
+	ws         *websocket.Conn
+	ptmx       *os.File
+	cmd        *exec.Cmd
+	mu         sync.Mutex
+	closed     bool
+	utf8Buffer []byte // Buffer for incomplete UTF-8 sequences at PTY read boundaries
 }
 
 // ConnectMessage represents the connection request from client
@@ -56,8 +59,14 @@ type ResizeMessage struct {
 
 // NewWebSocketHandler creates a new WebSocket handler
 func NewWebSocketHandler() *WebSocketHandler {
+	return NewWebSocketHandlerWithLogging(false)
+}
+
+// NewWebSocketHandlerWithLogging creates a new WebSocket handler with logging option
+func NewWebSocketHandlerWithLogging(enableLogs bool) *WebSocketHandler {
 	return &WebSocketHandler{
-		sessions: make(map[*websocket.Conn]*Session),
+		sessions:   make(map[*websocket.Conn]*Session),
+		enableLogs: enableLogs,
 	}
 }
 
@@ -113,7 +122,7 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 					}
 				}
 			}
-			
+
 			// Otherwise, it's terminal input - send to PTY
 			if session.ptmx != nil && !session.closed {
 				session.mu.Lock()
@@ -144,9 +153,15 @@ func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 		dikuclientPath = "./dikuclient"
 	}
 
+	// Build command arguments
+	args := []string{"--host", connectMsg.Host, "--port", fmt.Sprintf("%d", connectMsg.Port)}
+	if h.enableLogs {
+		args = append(args, "--log-all")
+	}
+
 	// Start the TUI client
-	cmd := exec.Command(dikuclientPath, "--host", connectMsg.Host, "--port", fmt.Sprintf("%d", connectMsg.Port))
-	
+	cmd := exec.Command(dikuclientPath, args...)
+
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
@@ -169,7 +184,7 @@ func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 
 	// Start forwarding PTY output to WebSocket
 	go h.forwardPTYOutput(session)
-	
+
 	log.Printf("Started TUI session for %s:%d", connectMsg.Host, connectMsg.Port)
 }
 
@@ -190,6 +205,64 @@ func (h *WebSocketHandler) handleResize(session *Session, message []byte) {
 			Cols: uint16(resizeMsg.Cols),
 		})
 	}
+}
+
+// incompleteUTF8Tail returns the number of trailing bytes that form an incomplete UTF-8 sequence
+func incompleteUTF8Tail(data []byte) int {
+	if len(data) == 0 {
+		return 0
+	}
+
+	// Check last 1-4 bytes for incomplete UTF-8
+	maxCheck := 4
+	if len(data) < maxCheck {
+		maxCheck = len(data)
+	}
+
+	// Start from the end and look for the beginning of a UTF-8 sequence
+	for i := 1; i <= maxCheck; i++ {
+		pos := len(data) - i
+		b := data[pos]
+
+		// Check if this is a start byte
+		if b < 0x80 {
+			// ASCII character, complete
+			return 0
+		} else if b >= 0xC0 && b < 0xE0 {
+			// Start of 2-byte sequence
+			expected := 2
+			if i < expected {
+				return i // Incomplete
+			}
+			if i == expected && utf8.Valid(data[pos:]) {
+				return 0
+			}
+			return i
+		} else if b >= 0xE0 && b < 0xF0 {
+			// Start of 3-byte sequence
+			expected := 3
+			if i < expected {
+				return i // Incomplete
+			}
+			if i == expected && utf8.Valid(data[pos:]) {
+				return 0
+			}
+			return i
+		} else if b >= 0xF0 && b < 0xF8 {
+			// Start of 4-byte sequence
+			expected := 4
+			if i < expected {
+				return i // Incomplete
+			}
+			if i == expected && utf8.Valid(data[pos:]) {
+				return 0
+			}
+			return i
+		}
+		// Continue looking backwards (this byte is a continuation byte 0x80-0xBF)
+	}
+
+	return 0
 }
 
 // forwardPTYOutput forwards output from PTY to WebSocket
@@ -215,13 +288,32 @@ func (h *WebSocketHandler) forwardPTYOutput(session *Session) {
 		if n > 0 {
 			session.mu.Lock()
 			if !session.closed {
-				// Use BinaryMessage to avoid UTF-8 validation issues
-				// PTY output may contain binary telnet sequences
-				err = session.ws.WriteMessage(websocket.BinaryMessage, buf[:n])
-				if err != nil {
-					log.Printf("Error writing to WebSocket: %v", err)
-					session.mu.Unlock()
-					break
+				// Prepend any buffered UTF-8 bytes from previous read
+				data := buf[:n]
+				if len(session.utf8Buffer) > 0 {
+					data = append(session.utf8Buffer, data...)
+					session.utf8Buffer = nil
+				}
+
+				// Check if data ends with incomplete UTF-8 sequence
+				incompleteLen := incompleteUTF8Tail(data)
+				if incompleteLen > 0 {
+					// Buffer the incomplete UTF-8 bytes for next read
+					splitPoint := len(data) - incompleteLen
+					session.utf8Buffer = append(session.utf8Buffer, data[splitPoint:]...)
+					data = data[:splitPoint]
+				}
+
+				// Only send if we have data after UTF-8 boundary handling
+				if len(data) > 0 {
+					// Use BinaryMessage to avoid UTF-8 validation issues
+					// PTY output may contain binary telnet sequences
+					err = session.ws.WriteMessage(websocket.BinaryMessage, data)
+					if err != nil {
+						log.Printf("Error writing to WebSocket: %v", err)
+						session.mu.Unlock()
+						break
+					}
 				}
 			}
 			session.mu.Unlock()
@@ -257,7 +349,7 @@ func (s *Session) cleanup() {
 func (s *Session) sendError(message string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	errorMsg := fmt.Sprintf("\r\n\x1b[31mERROR: %s\x1b[0m\r\n", message)
 	err := s.ws.WriteMessage(websocket.TextMessage, []byte(errorMsg))
 	if err != nil {
