@@ -37,3 +37,7 @@ Thumbs.db
 # Log files
 mud-output-*.log
 tui-content-*.log
+telnet-debug-*.log
+
+# Web session directories
+.websessions/

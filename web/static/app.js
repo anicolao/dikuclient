@@ -7,11 +7,6 @@ let useFallback = false;
 let fallbackContent = '';
 
 // DOM elements
-const hostInput = document.getElementById('host');
-const portInput = document.getElementById('port');
-const connectBtn = document.getElementById('connectBtn');
-const disconnectBtn = document.getElementById('disconnectBtn');
-const statusSpan = document.getElementById('status');
 const terminalDiv = document.getElementById('terminal');
 
 // Wait for page load to check if xterm loaded
@@ -22,8 +17,11 @@ window.addEventListener('load', () => {
             console.log('xterm.js not available, using fallback terminal');
             useFallback = true;
             initFallbackTerminal();
+        } else {
+            initTerminal();
         }
-        hostInput.focus();
+        // Auto-connect on page load
+        connectToServer();
     }, 100);
 });
 
@@ -146,56 +144,21 @@ function writeFallback(data) {
 }
 
 // Connect to WebSocket server
-connectBtn.addEventListener('click', () => {
-    const host = hostInput.value.trim();
-    const port = parseInt(portInput.value);
-
-    if (!host || !port) {
-        const errorMsg = '\r\n\x1b[31mERROR: Please enter both host and port\x1b[0m\r\n';
-        if (useFallback) {
-            writeFallback(errorMsg);
-        } else if (term) {
-            term.writeln(errorMsg);
-        }
-        return;
-    }
-
-    // Initialize terminal if not already done
-    if (!term && !useFallback) {
-        initTerminal();
-    } else if (useFallback && !terminalDiv.classList.contains('fallback')) {
-        initFallbackTerminal();
-    }
-
+function connectToServer() {
     // Connect to local WebSocket server
     const wsUrl = `ws://${window.location.hostname}:${window.location.port || 8080}/ws`;
-    const connectMsg = `\r\nConnecting to WebSocket server at ${wsUrl}...\r\n`;
     
-    if (useFallback) {
-        writeFallback(connectMsg);
-    } else if (term) {
-        term.write(connectMsg);
-    }
-
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-        const msg = 'WebSocket connected. Starting TUI session...\r\n';
-        if (useFallback) {
-            writeFallback(msg);
-        } else if (term) {
-            term.write(msg);
-        }
+        connected = true;
         
-        // Send connect command with host and port
-        const connectData = {
-            type: 'connect',
-            host: host,
-            port: port,
-            cols: term ? term.cols : 80,
-            rows: term ? term.rows : 24
-        };
-        ws.send(JSON.stringify(connectData));
+        // Focus the terminal
+        if (term) {
+            term.focus();
+        } else if (useFallback) {
+            terminalDiv.focus();
+        }
     };
 
     ws.onmessage = (event) => {
@@ -221,27 +184,14 @@ connectBtn.addEventListener('click', () => {
                 term.write(event.data);
             }
         }
-        
-        // Update connection state if needed
-        if (!connected) {
-            connected = true;
-            updateConnectionState(true);
-        }
     };
 
     ws.onerror = (error) => {
-        const errorMsg = '\r\n\x1b[31mWebSocket error\x1b[0m\r\n';
-        if (useFallback) {
-            writeFallback(errorMsg);
-        } else if (term) {
-            term.write(errorMsg);
-        }
         console.error('WebSocket error:', error);
     };
 
     ws.onclose = () => {
         connected = false;
-        updateConnectionState(false);
         const msg = '\r\n\x1b[33mDisconnected from server\x1b[0m\r\n';
         if (useFallback) {
             writeFallback(msg);
@@ -249,36 +199,10 @@ connectBtn.addEventListener('click', () => {
             term.write(msg);
         }
         ws = null;
+        
+        // Try to reconnect after 3 seconds
+        setTimeout(() => {
+            connectToServer();
+        }, 3000);
     };
-});
-
-// Disconnect button
-disconnectBtn.addEventListener('click', () => {
-    if (ws) {
-        ws.close();
-    }
-});
-
-// Update connection state UI
-function updateConnectionState(isConnected) {
-    if (isConnected) {
-        statusSpan.textContent = 'Connected';
-        statusSpan.className = 'status connected';
-        connectBtn.disabled = true;
-        disconnectBtn.disabled = false;
-        hostInput.disabled = true;
-        portInput.disabled = true;
-        if (term) {
-            term.focus();
-        } else if (useFallback) {
-            terminalDiv.focus();
-        }
-    } else {
-        statusSpan.textContent = 'Disconnected';
-        statusSpan.className = 'status disconnected';
-        connectBtn.disabled = false;
-        disconnectBtn.disabled = true;
-        hostInput.disabled = false;
-        portInput.disabled = false;
-    }
 }
