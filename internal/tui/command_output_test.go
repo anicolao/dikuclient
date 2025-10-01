@@ -32,7 +32,8 @@ func TestClientCommandOutputFormatting(t *testing.T) {
 	
 	m.handleClientCommand("/help")
 	
-	// Add empty line and restore prompt after command output
+	// Add two empty lines and restore prompt after command output
+	m.output = append(m.output, "")
 	m.output = append(m.output, "")
 	m.output = append(m.output, savedPrompt)
 
@@ -59,9 +60,12 @@ func TestClientCommandOutputFormatting(t *testing.T) {
 		t.Error("Expected to find 'Client Commands' in output after command line")
 	}
 
-	// Second-to-last line should be empty
+	// Second-to-last and third-to-last lines should be empty (two newlines)
 	if m.output[len(m.output)-2] != "" {
 		t.Errorf("Second-to-last line should be empty, got: %q", m.output[len(m.output)-2])
+	}
+	if m.output[len(m.output)-3] != "" {
+		t.Errorf("Third-to-last line should be empty, got: %q", m.output[len(m.output)-3])
 	}
 
 	// Last line should be the restored prompt
@@ -98,5 +102,87 @@ func TestClientCommandWithoutPrompt(t *testing.T) {
 	// Should still work - output should be added
 	if len(m.output) == 0 {
 		t.Error("Expected output to be added even without existing prompt")
+	}
+}
+
+// TestMultipleClientCommands verifies behavior when multiple commands are executed
+func TestMultipleClientCommands(t *testing.T) {
+	// Create a model with a simple setup
+	m := Model{
+		output:    []string{"Welcome", "> "},
+		connected: true,
+		worldMap:  mapper.NewMap(),
+	}
+
+	// Execute first command
+	savedPrompt := m.output[len(m.output)-1]
+	m.output[len(m.output)-1] = savedPrompt + "\x1b[93m/map\x1b[0m"
+	m.handleClientCommand("/map")
+	m.output = append(m.output, "")
+	m.output = append(m.output, "")
+	m.output = append(m.output, savedPrompt)
+
+	firstCommandOutputLen := len(m.output)
+
+	// Execute second command
+	savedPrompt = m.output[len(m.output)-1]
+	m.output[len(m.output)-1] = savedPrompt + "\x1b[93m/help\x1b[0m"
+	m.handleClientCommand("/help")
+	m.output = append(m.output, "")
+	m.output = append(m.output, "")
+	m.output = append(m.output, savedPrompt)
+
+	// Verify both commands are in output with proper spacing
+	if len(m.output) <= firstCommandOutputLen {
+		t.Errorf("Expected output to grow after second command")
+	}
+
+	// Last line should be prompt
+	if m.output[len(m.output)-1] != savedPrompt {
+		t.Errorf("Last line should be prompt")
+	}
+
+	// Second-to-last should be empty
+	if m.output[len(m.output)-2] != "" {
+		t.Errorf("Second-to-last line should be empty")
+	}
+}
+
+// TestErrorCommand verifies error messages also follow the same format
+func TestErrorCommand(t *testing.T) {
+	m := Model{
+		output:    []string{"> "},
+		connected: true,
+		worldMap:  mapper.NewMap(),
+	}
+
+	savedPrompt := m.output[len(m.output)-1]
+	m.output[len(m.output)-1] = savedPrompt + "\x1b[93m/unknown\x1b[0m"
+	m.handleClientCommand("/unknown")
+	m.output = append(m.output, "")
+	m.output = append(m.output, "")
+	m.output = append(m.output, savedPrompt)
+
+	// Should have error message
+	hasError := false
+	for _, line := range m.output {
+		if strings.Contains(line, "Unknown command") {
+			hasError = true
+			break
+		}
+	}
+	if !hasError {
+		t.Error("Expected error message for unknown command")
+	}
+
+	// Should still have proper structure with two empty lines and prompt
+	if m.output[len(m.output)-1] != savedPrompt {
+		t.Error("Last line should be prompt")
+	}
+	if m.output[len(m.output)-2] != "" {
+		t.Error("Second-to-last line should be empty")
+	}
+	if m.output[len(m.output)-3] != "" {
+		t.Error("Third-to-last line should be empty")
 	}
 }

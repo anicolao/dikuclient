@@ -152,7 +152,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					
 					clientCmd := m.handleClientCommand(command)
 					
-					// Add empty line and restore prompt after command output
+					// Add two newlines (empty lines) and restore prompt after command output
+					m.output = append(m.output, "")
 					m.output = append(m.output, "")
 					m.output = append(m.output, savedPrompt)
 					
