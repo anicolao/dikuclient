@@ -24,13 +24,22 @@ type Config struct {
 }
 
 // GetConfigPath returns the path to the configuration file
+// If DIKUCLIENT_CONFIG_DIR environment variable is set, it will be used as the config directory
+// Otherwise, it defaults to ~/.config/dikuclient
 func GetConfigPath() (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
+	var configDir string
+	
+	// Check for environment variable override
+	if envConfigDir := os.Getenv("DIKUCLIENT_CONFIG_DIR"); envConfigDir != "" {
+		configDir = envConfigDir
+	} else {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %w", err)
+		}
+		configDir = filepath.Join(homeDir, ".config", "dikuclient")
 	}
 
-	configDir := filepath.Join(homeDir, ".config", "dikuclient")
 	if err := os.MkdirAll(configDir, 0700); err != nil {
 		return "", fmt.Errorf("failed to create config directory: %w", err)
 	}

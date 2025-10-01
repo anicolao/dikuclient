@@ -202,6 +202,10 @@ func (h *WebSocketHandler) autoStartTUI(session *Session) {
 	
 	// Set working directory to session directory
 	cmd.Dir = absSessionDir
+	
+	// Set environment variable to use session-specific config directory
+	configDir := filepath.Join(absSessionDir, ".config", "dikuclient")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir))
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
@@ -259,8 +263,19 @@ func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 	// Start the TUI client
 	cmd := exec.Command(dikuclientPath, args...)
 	
+	// Get absolute path for session directory
+	absSessionDir, err := filepath.Abs(sessionDir)
+	if err != nil {
+		session.sendError(fmt.Sprintf("Failed to get absolute path: %v", err))
+		return
+	}
+	
 	// Set working directory to session directory
-	cmd.Dir = sessionDir
+	cmd.Dir = absSessionDir
+	
+	// Set environment variable to use session-specific config directory
+	configDir := filepath.Join(absSessionDir, ".config", "dikuclient")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir))
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
