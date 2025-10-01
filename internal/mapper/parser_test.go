@@ -44,7 +44,7 @@ func TestParseRoomInfo(t *testing.T) {
 		"Exits: north, south, east",
 	}
 
-	info := ParseRoomInfo(lines)
+	info := ParseRoomInfo(lines, false)
 	if info == nil {
 		t.Fatal("ParseRoomInfo returned nil")
 	}
@@ -111,7 +111,7 @@ func TestParseRoomInfo_RealMUDOutput(t *testing.T) {
 		"119H 108V 3674X 0.00% 77C T:34 Exits:ND>",
 	}
 
-	info := ParseRoomInfo(lines)
+	info := ParseRoomInfo(lines, true) // Enable debug for this test
 	if info == nil {
 		t.Fatal("ParseRoomInfo returned nil")
 	}

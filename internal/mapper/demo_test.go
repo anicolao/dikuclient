@@ -86,7 +86,7 @@ func TestRoomParsingDemo(t *testing.T) {
 		"Exits: north, south, east",
 	}
 
-	info1 := ParseRoomInfo(lines1)
+	info1 := ParseRoomInfo(lines1, false)
 	if info1 == nil {
 		t.Fatal("Failed to parse room 1")
 	}
@@ -102,7 +102,7 @@ func TestRoomParsingDemo(t *testing.T) {
 		"[ Exits: n s e w ]",
 	}
 
-	info2 := ParseRoomInfo(lines2)
+	info2 := ParseRoomInfo(lines2, false)
 	if info2 == nil {
 		t.Fatal("Failed to parse room 2")
 	}
@@ -118,7 +118,7 @@ func TestRoomParsingDemo(t *testing.T) {
 		"\x1b[0;32mObvious exits: north and south\x1b[0m",
 	}
 
-	info3 := ParseRoomInfo(lines3)
+	info3 := ParseRoomInfo(lines3, false)
 	if info3 == nil {
 		t.Fatal("Failed to parse room 3")
 	}

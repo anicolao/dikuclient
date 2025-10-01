@@ -19,6 +19,7 @@ var (
 	host          = flag.String("host", "", "MUD server hostname")
 	port          = flag.Int("port", 4000, "MUD server port")
 	logAll        = flag.Bool("log-all", false, "Enable logging of MUD output and TUI content")
+	mapDebug      = flag.Bool("map-debug", false, "Enable mapper debug output")
 	accountName   = flag.String("account", "", "Use saved account")
 	saveAccount   = flag.Bool("save-account", false, "Save account credentials")
 	listAccounts  = flag.Bool("list-accounts", false, "List saved accounts")
@@ -151,7 +152,7 @@ func main() {
 	}
 
 	// Create the TUI model with auto-login credentials
-	model := tui.NewModelWithAuth(finalHost, finalPort, username, password, mudLogFile, tuiLogFile, telnetDebugLog)
+	model := tui.NewModelWithAuth(finalHost, finalPort, username, password, mudLogFile, tuiLogFile, telnetDebugLog, *mapDebug)
 
 	// Create the Bubble Tea program
 	p := tea.NewProgram(

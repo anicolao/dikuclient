@@ -37,6 +37,7 @@ type Model struct {
 	worldMap          *mapper.Map       // World map for navigation
 	recentOutput      []string          // Buffer for recent output to detect rooms
 	pendingMovement   string            // Last movement command sent
+	mapDebug          bool              // Enable mapper debug output
 }
 
 var (
@@ -65,11 +66,11 @@ type echoStateMsg bool // true if echo suppressed (password mode)
 
 // NewModel creates a new application model
 func NewModel(host string, port int, mudLogFile, tuiLogFile *os.File) Model {
-	return NewModelWithAuth(host, port, "", "", mudLogFile, tuiLogFile, nil)
+	return NewModelWithAuth(host, port, "", "", mudLogFile, tuiLogFile, nil, false)
 }
 
 // NewModelWithAuth creates a new application model with authentication credentials
-func NewModelWithAuth(host string, port int, username, password string, mudLogFile, tuiLogFile, telnetDebugLog *os.File) Model {
+func NewModelWithAuth(host string, port int, username, password string, mudLogFile, tuiLogFile, telnetDebugLog *os.File, mapDebug bool) Model {
 	vp := viewport.New(0, 0)
 	// Don't apply any style to viewport - let ANSI codes pass through naturally
 
@@ -96,6 +97,7 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		autoLoginState: 0,
 		worldMap:       worldMap,
 		recentOutput:   []string{},
+		mapDebug:       mapDebug,
 	}
 }
 
@@ -522,10 +524,10 @@ func (m *Model) detectAndUpdateRoom() {
 	}
 
 	// Try to parse room info from recent output
-	roomInfo := mapper.ParseRoomInfo(m.recentOutput)
+	roomInfo := mapper.ParseRoomInfo(m.recentOutput, m.mapDebug)
 	
-	// Always display debug info if available
-	if roomInfo != nil && roomInfo.DebugInfo != "" {
+	// Only display debug info if mapDebug flag is enabled
+	if m.mapDebug && roomInfo != nil && roomInfo.DebugInfo != "" {
 		// Add debug info to output
 		debugLines := strings.Split(strings.TrimSpace(roomInfo.DebugInfo), "\n")
 		for _, line := range debugLines {
@@ -549,8 +551,10 @@ func (m *Model) detectAndUpdateRoom() {
 	// Save map periodically (every room visit)
 	m.worldMap.Save()
 	
-	// Notify user that room was added
-	m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, roomInfo.Exits))
+	// Notify user that room was added (only if debug enabled)
+	if m.mapDebug {
+		m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, roomInfo.Exits))
+	}
 }
 
 // handleClientCommand processes client-side commands starting with /

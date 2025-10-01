@@ -42,15 +42,18 @@ var directionAliases = map[string]string{
 
 // ParseRoomInfo attempts to parse room information from MUD output
 // It looks for a title line, description, and exits line
-func ParseRoomInfo(lines []string) *RoomInfo {
+// New heuristic: search backwards for previous prompt, then forwards for first indented line
+func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 	if len(lines) == 0 {
 		return nil
 	}
 
 	var debugInfo strings.Builder
-	debugInfo.WriteString("[MAPPER DEBUG] Attempting to parse room from lines:\n")
-	for i := len(lines) - 1; i >= 0 && i >= len(lines)-10; i-- {
-		debugInfo.WriteString(fmt.Sprintf("  Line %d: %q\n", i, lines[i]))
+	if enableDebug {
+		debugInfo.WriteString("[MAPPER DEBUG] Attempting to parse room from lines:\n")
+		for i := len(lines) - 1; i >= 0 && i >= len(lines)-10; i-- {
+			debugInfo.WriteString(fmt.Sprintf("  Line %d: %q\n", i, lines[i]))
+		}
 	}
 
 	// Find the exits line first by scanning backwards
@@ -63,112 +66,150 @@ func ParseRoomInfo(lines []string) *RoomInfo {
 		if parsedExits := parseExitsLine(line); len(parsedExits) > 0 {
 			exits = parsedExits
 			exitsLineIdx = i
-			debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found exits line at index %d: %q -> %v\n", i, line, parsedExits))
+			if enableDebug {
+				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found exits line at index %d: %q -> %v\n", i, line, parsedExits))
+			}
 			break
 		}
 	}
 
 	// If no exits line found, we can't parse the room
 	if exitsLineIdx == -1 {
-		debugInfo.WriteString("[MAPPER DEBUG] No exits line found\n")
+		if enableDebug {
+			debugInfo.WriteString("[MAPPER DEBUG] No exits line found\n")
+		}
 		return &RoomInfo{
 			DebugInfo: debugInfo.String(),
 		}
 	}
 
-	// Now look for the contiguous block of room text just before the exits line
-	// We'll collect non-empty, non-status lines working backwards from just before exits
-	var roomLines []string
-	startSearchIdx := exitsLineIdx - 1
-	
-	// Skip backwards over empty lines and status/mob lines to find the end of room description
-	for startSearchIdx >= 0 {
-		line := stripANSI(lines[startSearchIdx])
-		line = strings.TrimSpace(line)
-		
-		// If it's empty or a status/mob line, skip it
-		if line == "" || isStatusOrCombatLine(line) {
-			startSearchIdx--
-			continue
-		}
-		
-		// Found a non-status line, this is likely the end of room description
-		break
-	}
-	
-	// Now collect the contiguous block of room text going backwards
-	emptyLineCount := 0
-	for i := startSearchIdx; i >= 0; i-- {
+	// Search backwards from just before exits line to find previous prompt
+	previousPromptIdx := -1
+	for i := exitsLineIdx - 1; i >= 0; i-- {
 		line := stripANSI(lines[i])
 		line = strings.TrimSpace(line)
 		
-		// If we hit another exits line, stop (we've gone too far back)
-		if parsedExits := parseExitsLine(line); len(parsedExits) > 0 {
-			debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Hit previous exits line at index %d, stopping\n", i))
+		// A prompt line typically ends with > and contains stats (H, V, X, etc.)
+		if isPromptLine(line) {
+			previousPromptIdx = i
+			if enableDebug {
+				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found previous prompt at index %d: %q\n", i, line))
+			}
 			break
 		}
 		
-		// Count empty lines - if we hit 2+ consecutive empty lines, stop
-		if line == "" {
-			emptyLineCount++
-			if emptyLineCount >= 2 {
-				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Hit multiple empty lines at index %d, stopping\n", i))
-				break
+		// Don't search too far back
+		if exitsLineIdx - i > 25 {
+			if enableDebug {
+				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Reached search limit at index %d\n", i))
 			}
-			continue
-		}
-		
-		// Reset empty line count when we see content
-		emptyLineCount = 0
-		
-		// Add this line to the beginning of our collection
-		roomLines = append([]string{line}, roomLines...)
-		
-		// Don't go back more than 15 lines from where we started
-		if startSearchIdx - i > 15 {
-			debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Reached 15 line limit at index %d\n", i))
 			break
 		}
 	}
 
-	debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Collected %d room lines\n", len(roomLines)))
-
-	// The first line that looks like a room title is the title, the rest is description
-	var title string
-	var descriptionLines []string
+	// Now search forwards from after the prompt (or from beginning) to find first indented line
+	startSearchIdx := 0
+	if previousPromptIdx >= 0 {
+		startSearchIdx = previousPromptIdx + 1
+	}
 	
-	if len(roomLines) > 0 {
-		// Find the first line that looks like a room title
-		titleFound := false
-		for i, line := range roomLines {
-			if isRoomTitle(line) {
-				title = line
-				// Everything after the title is description
-				if i+1 < len(roomLines) {
-					descriptionLines = roomLines[i+1:]
-				}
-				titleFound = true
-				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found title at line %d: %q\n", i, title))
-				break
-			}
+	firstIndentedIdx := -1
+	for i := startSearchIdx; i < exitsLineIdx; i++ {
+		line := lines[i] // Don't strip ANSI yet - we need to check original indentation
+		stripped := stripANSI(line)
+		
+		// Skip empty lines
+		if strings.TrimSpace(stripped) == "" {
+			continue
 		}
 		
-		// If no clear title found, use the first line as title
-		if !titleFound && len(roomLines) > 0 {
-			title = roomLines[0]
-			if len(roomLines) > 1 {
-				descriptionLines = roomLines[1:]
+		// Check if line is indented (starts with whitespace)
+		if len(stripped) > 0 && (stripped[0] == ' ' || stripped[0] == '\t') {
+			firstIndentedIdx = i
+			if enableDebug {
+				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found first indented line at index %d: %q\n", i, stripped))
 			}
-			debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Using first line as title: %q\n", title))
+			break
+		}
+	}
+
+	// The title is the line before the first indented line
+	var title string
+	var descriptionStartIdx int
+	
+	if firstIndentedIdx > startSearchIdx {
+		// Found indented line, so title is the line before it
+		for i := firstIndentedIdx - 1; i >= startSearchIdx; i-- {
+			line := stripANSI(lines[i])
+			line = strings.TrimSpace(line)
+			
+			// Skip empty lines
+			if line == "" {
+				continue
+			}
+			
+			// This is the title
+			title = line
+			descriptionStartIdx = firstIndentedIdx
+			if enableDebug {
+				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found title at index %d: %q\n", i, title))
+			}
+			break
+		}
+	}
+	
+	// If we didn't find a title using indentation, fall back to old heuristic
+	if title == "" {
+		if enableDebug {
+			debugInfo.WriteString("[MAPPER DEBUG] No indented line found, using fallback heuristic\n")
+		}
+		// Look for first non-empty, non-status line after prompt
+		for i := startSearchIdx; i < exitsLineIdx; i++ {
+			line := stripANSI(lines[i])
+			line = strings.TrimSpace(line)
+			
+			if line == "" || isStatusOrCombatLine(line) {
+				continue
+			}
+			
+			title = line
+			descriptionStartIdx = i + 1
+			if enableDebug {
+				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Using fallback title at index %d: %q\n", i, title))
+			}
+			break
+		}
+	}
+
+	// Collect description from descriptionStartIdx until we hit exits or status/mob lines
+	var descriptionLines []string
+	for i := descriptionStartIdx; i < exitsLineIdx; i++ {
+		line := stripANSI(lines[i])
+		line = strings.TrimSpace(line)
+		
+		// Skip empty lines
+		if line == "" {
+			continue
 		}
 		
-		debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Description lines: %d\n", len(descriptionLines)))
+		// Stop if we hit status/mob lines (these come after description)
+		if isStatusOrCombatLine(line) {
+			break
+		}
+		
+		descriptionLines = append(descriptionLines, line)
+	}
+
+	if enableDebug {
+		debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Collected %d description lines\n", len(descriptionLines)))
 	}
 
 	// If we found title and exits, return the room info
 	if title != "" && len(exits) > 0 {
 		description := strings.Join(descriptionLines, " ")
-		debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Successfully parsed room: %q with exits %v\n", title, exits))
+		if enableDebug {
+			debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Successfully parsed room: %q with exits %v\n", title, exits))
+		}
 		return &RoomInfo{
 			Title:       title,
 			Description: description,
@@ -177,10 +218,23 @@ func ParseRoomInfo(lines []string) *RoomInfo {
 		}
 	}
 
-	debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Failed to parse room (title=%q, exits=%v)\n", title, exits))
+	if enableDebug {
+		debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Failed to parse room (title=%q, exits=%v)\n", title, exits))
+	}
 	return &RoomInfo{
 		DebugInfo: debugInfo.String(),
 	}
+}
+
+// isPromptLine checks if a line looks like a MUD prompt
+func isPromptLine(line string) bool {
+	// Prompts typically end with > and contain stats like "119H 108V"
+	if !strings.HasSuffix(line, ">") {
+		return false
+	}
+	
+	// Look for stat indicators (H for health, V for movement, etc.)
+	return strings.Contains(line, "H ") && strings.Contains(line, "V ")
 }
 
 // isStatusOrCombatLine checks if a line is a status update or combat message
