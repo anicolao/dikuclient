@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -38,6 +39,9 @@ type Model struct {
 	recentOutput      []string          // Buffer for recent output to detect rooms
 	pendingMovement   string            // Last movement command sent
 	mapDebug          bool              // Enable mapper debug output
+	autoWalking       bool              // Currently auto-walking with /go
+	autoWalkPath      []string          // Path to auto-walk
+	autoWalkIndex     int               // Current step in auto-walk
 }
 
 var (
@@ -63,6 +67,7 @@ var (
 type mudMsg string
 type errMsg error
 type echoStateMsg bool // true if echo suppressed (password mode)
+type autoWalkTickMsg struct{}
 
 // NewModel creates a new application model
 func NewModel(host string, port int, mudLogFile, tuiLogFile *os.File) Model {
@@ -137,11 +142,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Check if this is a client command (starts with /)
 				if strings.HasPrefix(command, "/") {
-					m.handleClientCommand(command)
+					clientCmd := m.handleClientCommand(command)
 					m.currentInput = ""
 					m.cursorPos = 0
 					m.updateViewport()
-					return m, nil
+					return m, clientCmd
 				}
 
 				// Check if this is a movement command
@@ -314,6 +319,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg
 		m.output = append(m.output, fmt.Sprintf("Error: %v", msg))
 		m.updateViewport()
+		return m, nil
+		
+	case autoWalkTickMsg:
+		// Process next step in auto-walk
+		if m.autoWalking && m.autoWalkIndex < len(m.autoWalkPath) {
+			direction := m.autoWalkPath[m.autoWalkIndex]
+			m.autoWalkIndex++
+			
+			// Send the movement command
+			if m.conn != nil && m.connected {
+				m.conn.Send(direction)
+				m.pendingMovement = direction
+				m.output = append(m.output, fmt.Sprintf("\x1b[90m[Auto-walk: %s (%d/%d)]\x1b[0m", direction, m.autoWalkIndex, len(m.autoWalkPath)))
+				m.updateViewport()
+			}
+			
+			// If more steps remain, schedule next tick
+			if m.autoWalkIndex < len(m.autoWalkPath) {
+				return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+					return autoWalkTickMsg{}
+				})
+			} else {
+				// Auto-walk complete
+				m.autoWalking = false
+				m.autoWalkPath = nil
+				m.autoWalkIndex = 0
+				m.output = append(m.output, "\x1b[92m[Auto-walk complete!]\x1b[0m")
+				m.updateViewport()
+			}
+		}
 		return m, nil
 	}
 
@@ -558,10 +593,10 @@ func (m *Model) detectAndUpdateRoom() {
 }
 
 // handleClientCommand processes client-side commands starting with /
-func (m *Model) handleClientCommand(command string) {
+func (m *Model) handleClientCommand(command string) tea.Cmd {
 	command = strings.TrimSpace(command)
 	if !strings.HasPrefix(command, "/") {
-		return
+		return nil
 	}
 
 	// Remove the leading /
@@ -570,7 +605,7 @@ func (m *Model) handleClientCommand(command string) {
 	
 	if len(parts) == 0 {
 		m.output = append(m.output, "\x1b[91mError: Empty command\x1b[0m")
-		return
+		return nil
 	}
 
 	cmd := strings.ToLower(parts[0])
@@ -579,14 +614,24 @@ func (m *Model) handleClientCommand(command string) {
 	switch cmd {
 	case "point":
 		m.handlePointCommand(args)
+		return nil
 	case "wayfind":
 		m.handleWayfindCommand(args)
+		return nil
 	case "map":
 		m.handleMapCommand(args)
+		return nil
+	case "rooms":
+		m.handleRoomsCommand(args)
+		return nil
+	case "go":
+		return m.handleGoCommand(args)
 	case "help":
 		m.handleHelpCommand()
+		return nil
 	default:
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mError: Unknown command '/%s'. Type /help for available commands.\x1b[0m", cmd))
+		return nil
 	}
 }
 
@@ -707,8 +752,115 @@ func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "\x1b[92m=== Client Commands ===\x1b[0m")
 	m.output = append(m.output, "  \x1b[96m/point <room>\x1b[0m    - Show next direction to reach a room")
 	m.output = append(m.output, "  \x1b[96m/wayfind <room>\x1b[0m - Show full path to reach a room")
+	m.output = append(m.output, "  \x1b[96m/go <room>\x1b[0m      - Auto-walk to a room (one step per second)")
 	m.output = append(m.output, "  \x1b[96m/map\x1b[0m            - Show map information")
+	m.output = append(m.output, "  \x1b[96m/rooms\x1b[0m          - List all known rooms")
 	m.output = append(m.output, "  \x1b[96m/help\x1b[0m           - Show this help message")
 	m.output = append(m.output, "")
 	m.output = append(m.output, "\x1b[90mRoom search matches all terms in room title, description, or exits\x1b[0m")
+}
+
+// handleRoomsCommand lists all known rooms
+func (m *Model) handleRoomsCommand(args []string) {
+	rooms := m.worldMap.GetAllRooms()
+	
+	if len(rooms) == 0 {
+		m.output = append(m.output, "\x1b[93mNo rooms have been explored yet.\x1b[0m")
+		return
+	}
+	
+	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== Known Rooms (%d) ===\x1b[0m", len(rooms)))
+	
+	// Sort rooms by title for consistent display
+	type roomEntry struct {
+		title string
+		room  *mapper.Room
+	}
+	entries := make([]roomEntry, 0, len(rooms))
+	for _, room := range rooms {
+		entries = append(entries, roomEntry{title: room.Title, room: room})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].title < entries[j].title
+	})
+	
+	// Display rooms
+	for i, entry := range entries {
+		room := entry.room
+		exitList := make([]string, 0, len(room.Exits))
+		for dir := range room.Exits {
+			exitList = append(exitList, dir)
+		}
+		sort.Strings(exitList)
+		
+		exitsStr := strings.Join(exitList, ", ")
+		if exitsStr == "" {
+			exitsStr = "none"
+		}
+		
+		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", i+1, room.Title, exitsStr))
+	}
+}
+
+// handleGoCommand starts auto-walking to a destination
+func (m *Model) handleGoCommand(args []string) tea.Cmd {
+	if len(args) == 0 {
+		m.output = append(m.output, "\x1b[91mUsage: /go <room search terms>\x1b[0m")
+		return nil
+	}
+	
+	// If already auto-walking, stop it
+	if m.autoWalking {
+		m.autoWalking = false
+		m.autoWalkPath = nil
+		m.autoWalkIndex = 0
+		m.output = append(m.output, "\x1b[93mAuto-walk cancelled.\x1b[0m")
+		return nil
+	}
+	
+	query := strings.Join(args, " ")
+	rooms := m.worldMap.FindRooms(query)
+	
+	if len(rooms) == 0 {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mNo rooms found matching '%s'\x1b[0m", query))
+		return nil
+	}
+	
+	if len(rooms) > 1 {
+		m.output = append(m.output, fmt.Sprintf("\x1b[93mFound %d rooms matching '%s':\x1b[0m", len(rooms), query))
+		for i, room := range rooms {
+			if i >= 5 {
+				m.output = append(m.output, fmt.Sprintf("  \x1b[90m... and %d more\x1b[0m", len(rooms)-5))
+				break
+			}
+			m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m", i+1, room.Title))
+		}
+		m.output = append(m.output, "\x1b[93mPlease be more specific.\x1b[0m")
+		return nil
+	}
+	
+	// Find path to the room
+	targetRoom := rooms[0]
+	path := m.worldMap.FindPath(targetRoom.ID)
+	
+	if path == nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mNo path found to '%s'\x1b[0m", targetRoom.Title))
+		return nil
+	}
+	
+	if len(path) == 0 {
+		m.output = append(m.output, "\x1b[92mYou are already at that location!\x1b[0m")
+		return nil
+	}
+	
+	// Start auto-walking
+	m.autoWalking = true
+	m.autoWalkPath = path
+	m.autoWalkIndex = 0
+	m.output = append(m.output, fmt.Sprintf("\x1b[92mAuto-walking to '%s' (%d steps). Type /go to cancel.\x1b[0m", targetRoom.Title, len(path)))
+	
+	// Return a command that starts the first tick after 1 second
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return autoWalkTickMsg{}
+	})
 }

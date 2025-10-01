@@ -223,6 +223,11 @@ func (m *Map) GetCurrentRoom() *Room {
 	return m.Rooms[m.CurrentRoomID]
 }
 
+// GetAllRooms returns all rooms in the map
+func (m *Map) GetAllRooms() map[string]*Room {
+	return m.Rooms
+}
+
 // getReverseDirection returns the opposite direction
 func getReverseDirection(direction string) string {
 	reverseMap := map[string]string{
