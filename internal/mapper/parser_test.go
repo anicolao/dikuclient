@@ -148,3 +148,81 @@ func TestParseRoomInfo_RealMUDOutput(t *testing.T) {
 	t.Logf("Description: %q", info.Description)
 	t.Logf("Exits: %v", info.Exits)
 }
+
+func TestParseRoomInfo_ArcticWelcomeScreen(t *testing.T) {
+	// Test with welcome screen - should NOT detect a room
+	lines := []string{
+		"Connected to mud.arctic.org:2700",
+		"                               Welcome to",
+		"     ___",
+		"    (___)     @@@@@ @@@@@@@@@   @@@@@@@@ @@@@@@@@@@@ @@@@@@@ @@@@@@@@",
+		"     ==_     @@@@@@ @@@   @@@@ @@@@  @@@@    @@@       @@@  @@@@  @@@@",
+		"     =/./   @@@@@@@ @@@    @@@ @@@    @@@    @@@  @@@",
+		"",
+		"By what name do you wish to be known?",
+	}
+
+	info := ParseRoomInfo(lines, true) // Enable debug
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil")
+	}
+
+	// Print debug info
+	if info.DebugInfo != "" {
+		t.Logf("Debug Info:\n%s", info.DebugInfo)
+	}
+
+	// Should NOT parse welcome screen as a room (no exits)
+	if info.Title != "" {
+		t.Errorf("Unexpected title parsed from welcome screen: %q", info.Title)
+	}
+}
+
+func TestParseRoomInfo_ShrineOfTheHolyPaladin(t *testing.T) {
+	// Test with actual room from user's session
+	lines := []string{
+		"Shrine of the Holy Paladin",
+		"    This shrine is sparse except for a single white marble statue depicting",
+		"a knight with his sword arm raised in an action of beheading a dragon adorning",
+		"the middle of the shrine. Small cushions are placed around the statue to provide",
+		"comfort for those meditating. This shrine gives you both a sense of awe and",
+		"serenity.",
+		"A paladin stands here radiating holiness.",
+		"",
+		"119H 131V 4923X 0.00% 60C T:60 Exits:E>",
+	}
+
+	info := ParseRoomInfo(lines, true) // Enable debug
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil")
+	}
+
+	// Print debug info
+	if info.DebugInfo != "" {
+		t.Logf("Debug Info:\n%s", info.DebugInfo)
+	}
+
+	// Should parse "Shrine of the Holy Paladin" as the title
+	if info.Title != "Shrine of the Holy Paladin" {
+		t.Errorf("Title = %q, want %q", info.Title, "Shrine of the Holy Paladin")
+	}
+
+	// Should have parsed exits
+	if len(info.Exits) != 1 {
+		t.Errorf("Got %d exits, want 1", len(info.Exits))
+	}
+
+	// Should have east exit
+	if len(info.Exits) > 0 && info.Exits[0] != "east" {
+		t.Errorf("Exit = %q, want %q", info.Exits[0], "east")
+	}
+
+	// Description should not be empty
+	if info.Description == "" {
+		t.Error("Description is empty")
+	}
+
+	t.Logf("Parsed room: %q", info.Title)
+	t.Logf("Description: %q", info.Description)
+	t.Logf("Exits: %v", info.Exits)
+}

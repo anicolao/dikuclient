@@ -84,10 +84,20 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 	}
 
 	// Search backwards from just before exits line to find previous prompt
+	// OR stop at an earlier exit line (previous room)
 	previousPromptIdx := -1
 	for i := exitsLineIdx - 1; i >= 0; i-- {
 		line := stripANSI(lines[i])
 		line = strings.TrimSpace(line)
+		
+		// Stop if we find another exits line (this is from the previous room)
+		if parseExitsLine(line) != nil {
+			if enableDebug {
+				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found previous exits line at index %d, stopping search\n", i))
+			}
+			previousPromptIdx = i
+			break
+		}
 		
 		// A prompt line typically ends with > and contains stats (H, V, X, etc.)
 		if isPromptLine(line) {
