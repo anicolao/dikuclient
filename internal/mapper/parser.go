@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -10,6 +11,7 @@ type RoomInfo struct {
 	Title       string
 	Description string
 	Exits       []string
+	DebugInfo   string // Debug information about parsing
 }
 
 // exitPatterns are common patterns for exit lines in MUDs
@@ -20,6 +22,8 @@ var exitPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^\[\s*exits?\s*:\s*(.+?)\s*\]$`),
 	// "Obvious exits: north, south"
 	regexp.MustCompile(`(?i)^obvious\s+exits?\s*:\s*(.+)$`),
+	// "Exits:EW>" or "Exits:NESW>" (compact format, no spaces)
+	regexp.MustCompile(`(?i)exits?\s*:\s*([neswd]+)\s*>`),
 }
 
 // directionAliases maps short direction names to full names
@@ -46,6 +50,14 @@ func ParseRoomInfo(lines []string) *RoomInfo {
 	var title string
 	var descriptionLines []string
 	var exits []string
+	var debugInfo strings.Builder
+
+	debugInfo.WriteString("[MAPPER DEBUG] Attempting to parse room from lines:\n")
+	for i, line := range lines {
+		if i < 5 { // Only show first 5 lines in debug
+			debugInfo.WriteString(fmt.Sprintf("  Line %d: %q\n", i, line))
+		}
+	}
 
 	// First non-empty line is usually the title
 	foundTitle := false
@@ -60,6 +72,7 @@ func ParseRoomInfo(lines []string) *RoomInfo {
 		// Check if this is an exits line
 		if parsedExits := parseExitsLine(line); len(parsedExits) > 0 {
 			exits = parsedExits
+			debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found exits line: %q -> %v\n", line, parsedExits))
 			// If we haven't found a title yet and have description lines, 
 			// the first description line might be the title
 			if !foundTitle && len(descriptionLines) > 0 {
@@ -73,6 +86,7 @@ func ParseRoomInfo(lines []string) *RoomInfo {
 			// First non-exit line is the title
 			title = line
 			foundTitle = true
+			debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found title: %q\n", title))
 		} else {
 			// Subsequent lines are description (until we hit exits)
 			descriptionLines = append(descriptionLines, line)
@@ -86,14 +100,19 @@ func ParseRoomInfo(lines []string) *RoomInfo {
 	// If we found title and exits, return the room info
 	if title != "" && len(exits) > 0 {
 		description := strings.Join(descriptionLines, " ")
+		debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Successfully parsed room: %q with exits %v\n", title, exits))
 		return &RoomInfo{
 			Title:       title,
 			Description: description,
 			Exits:       exits,
+			DebugInfo:   debugInfo.String(),
 		}
 	}
 
-	return nil
+	debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Failed to parse room (title=%q, exits=%v)\n", title, exits))
+	return &RoomInfo{
+		DebugInfo: debugInfo.String(),
+	}
 }
 
 // parseExitsLine extracts exit directions from an exits line
@@ -109,6 +128,26 @@ func parseExitsLine(line string) []string {
 
 // parseExitsList parses a comma/space separated list of exits
 func parseExitsList(exitText string) []string {
+	exitText = strings.TrimSpace(exitText)
+	
+	// Check if it's compact format (no spaces, just letters like "EW" or "NESW")
+	if len(exitText) > 0 && !strings.Contains(exitText, " ") && !strings.Contains(exitText, ",") {
+		// Split each character as a direction
+		var exits []string
+		for _, ch := range exitText {
+			dir := strings.ToLower(string(ch))
+			if isValidDirection(dir) {
+				// Expand alias to full direction name
+				if fullDir, ok := directionAliases[dir]; ok {
+					exits = append(exits, fullDir)
+				} else {
+					exits = append(exits, dir)
+				}
+			}
+		}
+		return exits
+	}
+	
 	// Replace commas with spaces for uniform splitting
 	exitText = strings.ReplaceAll(exitText, ",", " ")
 	

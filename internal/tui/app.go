@@ -512,29 +512,45 @@ func max(a, b int) int {
 
 // detectAndUpdateRoom tries to parse room information from recent output
 func (m *Model) detectAndUpdateRoom() {
+	// Only detect rooms when we have a pending movement (user just moved)
+	if m.pendingMovement == "" {
+		return
+	}
+	
 	if len(m.recentOutput) < 3 {
 		return // Need at least a few lines to detect a room
 	}
 
 	// Try to parse room info from recent output
 	roomInfo := mapper.ParseRoomInfo(m.recentOutput)
-	if roomInfo == nil {
-		return // No room detected
+	
+	// Always display debug info if available
+	if roomInfo != nil && roomInfo.DebugInfo != "" {
+		// Add debug info to output
+		debugLines := strings.Split(strings.TrimSpace(roomInfo.DebugInfo), "\n")
+		for _, line := range debugLines {
+			m.output = append(m.output, "\x1b[90m"+line+"\x1b[0m") // Gray color for debug
+		}
+	}
+	
+	if roomInfo == nil || roomInfo.Title == "" {
+		return // No valid room detected
 	}
 
 	// Create or update room in map
 	room := mapper.NewRoom(roomInfo.Title, roomInfo.Description, roomInfo.Exits)
 	
-	// If we had a pending movement, set it now
-	if m.pendingMovement != "" {
-		m.worldMap.SetLastDirection(m.pendingMovement)
-		m.pendingMovement = ""
-	}
+	// Set the movement direction
+	m.worldMap.SetLastDirection(m.pendingMovement)
+	m.pendingMovement = ""
 	
 	m.worldMap.AddOrUpdateRoom(room)
 	
 	// Save map periodically (every room visit)
 	m.worldMap.Save()
+	
+	// Notify user that room was added
+	m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, roomInfo.Exits))
 }
 
 // handleClientCommand processes client-side commands starting with /

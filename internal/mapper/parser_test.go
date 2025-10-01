@@ -15,6 +15,11 @@ func TestParseExitsLine(t *testing.T) {
 		{"exits: up down", []string{"up", "down"}},
 		{"Exits: ne, sw", []string{"northeast", "southwest"}},
 		{"Not an exit line", nil},
+		// New compact format tests
+		{"Exits:EW>", []string{"east", "west"}},
+		{"Exits:NESW>", []string{"north", "east", "south", "west"}},
+		{"119H 131V 4923X 0.00% 60C T:60 Exits:EW> ", []string{"east", "west"}},
+		{"Exits:N>", []string{"north"}},
 	}
 
 	for _, test := range tests {
