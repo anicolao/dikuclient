@@ -66,6 +66,56 @@ Path to 'Temple Square' (3 steps):
   south -> west -> south
 ```
 
+#### `/go <room>`
+
+Auto-walks to the specified room, executing one movement command per second.
+
+**Usage:**
+```
+/go temple square
+/go market
+```
+
+The auto-walk can be cancelled at any time by typing `/go` again (without a destination).
+
+**Example:**
+```
+> /go temple square
+[Auto-walk: south (1/3)]
+[Auto-walk: west (2/3)]
+[Auto-walk: south (3/3)]
+[Auto-walk complete!]
+```
+
+#### `/rooms [filter]`
+
+Lists all explored rooms. Optionally filter by search terms to find specific rooms.
+
+**Usage:**
+```
+/rooms                  # List all rooms
+/rooms temple           # List only rooms matching 'temple'
+/rooms market street    # List rooms matching both 'market' and 'street'
+```
+
+**Example:**
+```
+> /rooms
+=== Known Rooms (42) ===
+  1. Dark Alley [north, south]
+  2. Market Square [north, south, east, west]
+  3. Temple Entrance [north, east]
+  ...
+
+> /rooms temple
+=== Rooms matching 'temple' (3) ===
+  1. Inner Sanctum [south]
+  2. Temple Entrance [north, east]
+  3. Temple Square [north, south, east]
+```
+
+This is useful for checking which rooms match your search terms before using `/point`, `/wayfind`, or `/go`.
+
 #### `/map`
 
 Shows information about the current map state.
@@ -87,12 +137,22 @@ Shows a list of available client commands.
 
 ### Room Identification
 
-Each room is identified by a unique ID generated from:
-1. Room title
-2. First sentence of the description
-3. Available exits (sorted)
+Each room is identified by a unique ID in a human-readable format:
 
-This ensures that rooms are uniquely identified even if they have similar names, and the same room is always recognized as the same location.
+**Format:** `title|first_sentence|exits`
+
+**Example:** `temple square|a large temple square with ancient stones.|east,north`
+
+The ID is generated from:
+1. Room title (lowercase)
+2. First sentence of the description (lowercase)
+3. Available exits (sorted, comma-separated)
+
+This format ensures:
+- Rooms are uniquely identified even if they have similar names
+- The same room is always recognized as the same location
+- The map JSON file is human-readable for debugging and manual inspection
+- You can easily see room connections when viewing the map file
 
 ### Room Linking
 

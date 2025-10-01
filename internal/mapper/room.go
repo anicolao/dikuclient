@@ -1,8 +1,6 @@
 package mapper
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"sort"
 	"strings"
 )
@@ -18,6 +16,7 @@ type Room struct {
 }
 
 // GenerateRoomID creates a unique ID from title, first sentence, and exits
+// Returns human-readable format: "title|first_sentence|exits"
 func GenerateRoomID(title, description string, exits []string) string {
 	// Extract first sentence from description
 	firstSentence := extractFirstSentence(description)
@@ -27,14 +26,13 @@ func GenerateRoomID(title, description string, exits []string) string {
 	copy(sortedExits, exits)
 	sort.Strings(sortedExits)
 
-	// Combine elements
+	// Combine elements in human-readable format
+	// Use lowercase for consistency but keep it readable
 	combined := strings.ToLower(title) + "|" +
 		strings.ToLower(firstSentence) + "|" +
 		strings.Join(sortedExits, ",")
 
-	// Generate hash to keep ID manageable
-	hash := sha256.Sum256([]byte(combined))
-	return hex.EncodeToString(hash[:])[:16] // Use first 16 chars of hash
+	return combined
 }
 
 // extractFirstSentence extracts the first sentence from a description

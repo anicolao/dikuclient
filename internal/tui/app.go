@@ -754,39 +754,53 @@ func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "  \x1b[96m/wayfind <room>\x1b[0m - Show full path to reach a room")
 	m.output = append(m.output, "  \x1b[96m/go <room>\x1b[0m      - Auto-walk to a room (one step per second)")
 	m.output = append(m.output, "  \x1b[96m/map\x1b[0m            - Show map information")
-	m.output = append(m.output, "  \x1b[96m/rooms\x1b[0m          - List all known rooms")
+	m.output = append(m.output, "  \x1b[96m/rooms [filter]\x1b[0m - List all known rooms (optionally filtered)")
 	m.output = append(m.output, "  \x1b[96m/help\x1b[0m           - Show this help message")
 	m.output = append(m.output, "")
 	m.output = append(m.output, "\x1b[90mRoom search matches all terms in room title, description, or exits\x1b[0m")
 }
 
-// handleRoomsCommand lists all known rooms
+// handleRoomsCommand lists all known rooms or filters by search terms
 func (m *Model) handleRoomsCommand(args []string) {
-	rooms := m.worldMap.GetAllRooms()
+	var roomsToDisplay []*mapper.Room
+	var headerText string
 	
-	if len(rooms) == 0 {
-		m.output = append(m.output, "\x1b[93mNo rooms have been explored yet.\x1b[0m")
-		return
+	if len(args) == 0 {
+		// No filter - show all rooms
+		allRooms := m.worldMap.GetAllRooms()
+		
+		if len(allRooms) == 0 {
+			m.output = append(m.output, "\x1b[93mNo rooms have been explored yet.\x1b[0m")
+			return
+		}
+		
+		roomsToDisplay = make([]*mapper.Room, 0, len(allRooms))
+		for _, room := range allRooms {
+			roomsToDisplay = append(roomsToDisplay, room)
+		}
+		headerText = fmt.Sprintf("\x1b[92m=== Known Rooms (%d) ===\x1b[0m", len(roomsToDisplay))
+	} else {
+		// Filter by search terms
+		query := strings.Join(args, " ")
+		roomsToDisplay = m.worldMap.FindRooms(query)
+		
+		if len(roomsToDisplay) == 0 {
+			m.output = append(m.output, fmt.Sprintf("\x1b[93mNo rooms found matching '%s'\x1b[0m", query))
+			return
+		}
+		
+		headerText = fmt.Sprintf("\x1b[92m=== Rooms matching '%s' (%d) ===\x1b[0m", query, len(roomsToDisplay))
 	}
 	
-	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== Known Rooms (%d) ===\x1b[0m", len(rooms)))
+	m.output = append(m.output, headerText)
 	
 	// Sort rooms by title for consistent display
-	type roomEntry struct {
-		title string
-		room  *mapper.Room
-	}
-	entries := make([]roomEntry, 0, len(rooms))
-	for _, room := range rooms {
-		entries = append(entries, roomEntry{title: room.Title, room: room})
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].title < entries[j].title
+	sort.Slice(roomsToDisplay, func(i, j int) bool {
+		return roomsToDisplay[i].Title < roomsToDisplay[j].Title
 	})
 	
 	// Display rooms
-	for i, entry := range entries {
-		room := entry.room
+	for i, room := range roomsToDisplay {
 		exitList := make([]string, 0, len(room.Exits))
 		for dir := range room.Exits {
 			exitList = append(exitList, dir)
