@@ -5,12 +5,14 @@ A modern, efficient DikuMUD client written in Go with a beautiful Text User Inte
 ## Features
 
 - **Clean TUI Interface**: Modern terminal UI with panels for game output, stats, inventory, and map
+- **Automatic Map Building**: Explores and builds a persistent map as you move through rooms
+- **Navigation Commands**: Find your way with `/point` and `/wayfind` commands
 - **Web Mode with Terminal Emulation**: Run the full TUI in a browser with identical experience to terminal mode
 - **MUD Connection**: Connect to any MUD server via telnet protocol
 - **Command Input/Output**: Interactive command line for sending commands to the MUD
 - **Account Management**: Save and manage multiple MUD accounts with auto-login support
 - **Auto-Login**: Automatically login with saved username and password
-- **Empty Panels**: Placeholder panels for future features (character stats, inventory, map)
+- **Empty Panels**: Placeholder panels for future features (character stats, inventory)
 
 ## Installation
 
@@ -82,6 +84,32 @@ When you save an account with username and password, the client will automatical
 
 This allows seamless automatic login to your favorite MUDs.
 
+### Mapping and Navigation
+
+The client automatically builds a map as you explore:
+- Detects rooms from MUD output (title, description, exits)
+- Links rooms together based on your movement
+- Persists map between sessions
+- Provides navigation commands to find your way
+
+**Client Commands** (start with `/`):
+- `/point <room>` - Show next direction to reach a room
+- `/wayfind <room>` - Show full path to reach a room
+- `/map` - Show map information
+- `/help` - Show available commands
+
+Example:
+```
+> /point temple
+To reach 'Temple Square', go: north
+
+> /wayfind market
+Path to 'Market Street' (3 steps):
+  north -> east -> south
+```
+
+See [MAPPER.md](MAPPER.md) for detailed mapping documentation.
+
 ### Logging
 
 ```bash
@@ -93,6 +121,8 @@ This allows seamless automatic login to your favorite MUDs.
 
 **Terminal Mode:**
 - **Type commands** in the input area at the bottom and press `Enter` to send
+- **Client commands** start with `/` (e.g., `/point temple`, `/wayfind market`, `/help`)
+- **MUD commands** are sent directly (e.g., `north`, `look`, `inventory`)
 - **Ctrl+C** or **Esc** to quit the application
 - **Arrow keys** to navigate through command history (left/right for cursor positioning)
 
@@ -111,11 +141,14 @@ dikuclient/
 │   └── dikuclient/         # Main entry point
 ├── internal/
 │   ├── client/             # MUD connection logic
+│   ├── config/             # Configuration and account management
+│   ├── mapper/             # Automatic mapping and pathfinding
 │   ├── tui/                # TUI application
 │   └── web/                # Web server and WebSocket handler
 ├── web/
 │   └── static/             # Web interface files (HTML/CSS/JS)
 ├── DESIGN.md               # Design documentation
+├── MAPPER.md               # Mapping system documentation
 └── README.md               # This file
 ```
 
@@ -126,12 +159,17 @@ This implementation includes:
 - ✅ MUD connection handling
 - ✅ Command input/output
 - ✅ Web mode with WebSocket support (Phase 3)
-- ✅ Empty placeholder panels for future features
+- ✅ Account management with auto-login
+- ✅ Automatic map building and room tracking
+- ✅ Navigation commands (`/point`, `/wayfind`)
+- ✅ Map persistence between sessions
+- 🔲 Empty placeholder panels for stats and inventory
 
 ### Future Enhancements (Planned)
 
-- Phase 2: Multi-pane layout, syntax highlighting, configuration system
-- Phase 4: Plugin system, mapping, performance optimizations
+- Phase 2: Syntax highlighting, enhanced configuration system
+- Phase 4: Plugin system, visual map display, performance optimizations
+- Additional mapper features: custom movement aliases, special room marking, map sharing
 
 ## License
 
