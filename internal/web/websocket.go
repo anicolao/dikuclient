@@ -99,10 +99,10 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 
 	log.Printf("New WebSocket connection from %s", r.RemoteAddr)
 
-	// Get session ID
-	sessionID := h.GetSessionID()
+	// Get session ID from query parameter
+	sessionID := r.URL.Query().Get("id")
 	if sessionID == "" {
-		log.Printf("Warning: No session ID set for WebSocket connection")
+		log.Printf("Warning: No session ID in WebSocket URL, using default")
 		sessionID = "default"
 	}
 
@@ -123,8 +123,30 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 		session.cleanup()
 	}()
 
-	// Auto-start the TUI client immediately (no connection parameters needed)
-	h.autoStartTUI(session)
+	// Wait for initial message with terminal size before starting TUI
+	// This ensures the PTY is created with the correct size from the start
+	messageType, message, err := ws.ReadMessage()
+	if err != nil {
+		log.Printf("Error reading initial message: %v", err)
+		return
+	}
+
+	var initialSize *ResizeMessage
+	if messageType == websocket.TextMessage {
+		var msg map[string]interface{}
+		if err := json.Unmarshal(message, &msg); err == nil {
+			if msgType, ok := msg["type"].(string); ok && msgType == "init" {
+				var initMsg ResizeMessage
+				if err := json.Unmarshal(message, &initMsg); err == nil {
+					initialSize = &initMsg
+					log.Printf("Initial terminal size: %dx%d", initMsg.Cols, initMsg.Rows)
+				}
+			}
+		}
+	}
+
+	// Auto-start the TUI client with initial size if available
+	h.autoStartTUIWithSize(session, initialSize)
 
 	// Handle incoming messages
 	for {
@@ -163,8 +185,8 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// autoStartTUI automatically starts the TUI client in a PTY with no arguments
-func (h *WebSocketHandler) autoStartTUI(session *Session) {
+// autoStartTUIWithSize automatically starts the TUI client in a PTY with optional initial size
+func (h *WebSocketHandler) autoStartTUIWithSize(session *Session, initialSize *ResizeMessage) {
 	// Create session directory
 	sessionDir := filepath.Join(".websessions", session.sessionID)
 	if err := os.MkdirAll(sessionDir, 0755); err != nil {
@@ -202,6 +224,10 @@ func (h *WebSocketHandler) autoStartTUI(session *Session) {
 	
 	// Set working directory to session directory
 	cmd.Dir = absSessionDir
+	
+	// Set environment variable to use session-specific config directory
+	configDir := filepath.Join(absSessionDir, ".config", "dikuclient")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir))
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
@@ -210,10 +236,16 @@ func (h *WebSocketHandler) autoStartTUI(session *Session) {
 		return
 	}
 
-	// Set initial PTY size (will be updated by client)
+	// Set initial PTY size from client if available, otherwise use defaults
+	rows := uint16(24)
+	cols := uint16(80)
+	if initialSize != nil && initialSize.Rows > 0 && initialSize.Cols > 0 {
+		rows = uint16(initialSize.Rows)
+		cols = uint16(initialSize.Cols)
+	}
 	pty.Setsize(ptmx, &pty.Winsize{
-		Rows: 24,
-		Cols: 80,
+		Rows: rows,
+		Cols: cols,
 	})
 
 	session.mu.Lock()
@@ -224,7 +256,13 @@ func (h *WebSocketHandler) autoStartTUI(session *Session) {
 	// Start forwarding PTY output to WebSocket
 	go h.forwardPTYOutput(session)
 
-	log.Printf("Started TUI session for %s (no host/port - interactive mode)", session.sessionID)
+	log.Printf("Started TUI session for %s with size %dx%d (no host/port - interactive mode)", session.sessionID, cols, rows)
+}
+
+// autoStartTUI automatically starts the TUI client in a PTY with no arguments (deprecated)
+// Kept for compatibility, calls autoStartTUIWithSize with nil initial size
+func (h *WebSocketHandler) autoStartTUI(session *Session) {
+	h.autoStartTUIWithSize(session, nil)
 }
 
 // handleConnect starts the TUI client in a PTY (deprecated - kept for compatibility)
@@ -259,8 +297,19 @@ func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 	// Start the TUI client
 	cmd := exec.Command(dikuclientPath, args...)
 	
+	// Get absolute path for session directory
+	absSessionDir, err := filepath.Abs(sessionDir)
+	if err != nil {
+		session.sendError(fmt.Sprintf("Failed to get absolute path: %v", err))
+		return
+	}
+	
 	// Set working directory to session directory
-	cmd.Dir = sessionDir
+	cmd.Dir = absSessionDir
+	
+	// Set environment variable to use session-specific config directory
+	configDir := filepath.Join(absSessionDir, ".config", "dikuclient")
+	cmd.Env = append(os.Environ(), fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir))
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)

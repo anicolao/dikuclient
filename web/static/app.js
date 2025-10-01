@@ -145,13 +145,37 @@ function writeFallback(data) {
 
 // Connect to WebSocket server
 function connectToServer() {
-    // Connect to local WebSocket server
-    const wsUrl = `ws://${window.location.hostname}:${window.location.port || 8080}/ws`;
+    // Get session ID from URL query parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const sessionId = urlParams.get('id') || '';
+    
+    // Connect to local WebSocket server with session ID
+    const wsUrl = `ws://${window.location.hostname}:${window.location.port || 8080}/ws?id=${sessionId}`;
     
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
         connected = true;
+        
+        // Send initial terminal size before any other messages
+        if (term && fitAddon) {
+            fitAddon.fit(); // Ensure terminal is properly sized
+            const dims = {
+                type: 'init',
+                cols: term.cols,
+                rows: term.rows
+            };
+            ws.send(JSON.stringify(dims));
+            console.log(`Sent initial terminal size: ${term.cols}x${term.rows}`);
+        } else if (useFallback) {
+            // For fallback, estimate a reasonable size
+            const dims = {
+                type: 'init',
+                cols: 80,
+                rows: 24
+            };
+            ws.send(JSON.stringify(dims));
+        }
         
         // Focus the terminal
         if (term) {

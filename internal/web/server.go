@@ -66,18 +66,9 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Validate session ID is a valid UUID
-	if _, err := uuid.Parse(sessionID); err != nil {
-		// Invalid UUID - generate a new one and redirect
-		newSessionID := uuid.New().String()
-		redirectURL := fmt.Sprintf("/?id=%s", newSessionID)
-		http.Redirect(w, r, redirectURL, http.StatusFound)
-		log.Printf("Invalid session ID, created new session: %s", newSessionID)
-		return
-	}
-	
-	// Store session ID for the handler to use
-	s.handler.SetSessionID(sessionID)
+	// Session ID provided - use it directly without validation
+	// This allows users to share URLs with specific session IDs
+	log.Printf("Using session ID from URL: %s", sessionID)
 	
 	// Serve the static index.html file
 	http.ServeFile(w, r, filepath.Join("web", "static", "index.html"))
