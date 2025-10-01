@@ -9,6 +9,7 @@ import (
 
 	"github.com/anicolao/dikuclient/internal/client"
 	"github.com/anicolao/dikuclient/internal/mapper"
+	"github.com/anicolao/dikuclient/internal/triggers"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -42,6 +43,7 @@ type Model struct {
 	autoWalking       bool              // Currently auto-walking with /go
 	autoWalkPath      []string          // Path to auto-walk
 	autoWalkIndex     int               // Current step in auto-walk
+	triggerManager    *triggers.Manager // Trigger manager
 }
 
 var (
@@ -86,6 +88,13 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		worldMap = mapper.NewMap()
 	}
 
+	// Load or create trigger manager
+	triggerManager, err := triggers.Load()
+	if err != nil {
+		// If we can't load triggers, create a new manager
+		triggerManager = triggers.NewManager()
+	}
+
 	return Model{
 		viewport:       vp,
 		output:         []string{},
@@ -103,6 +112,7 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		worldMap:       worldMap,
 		recentOutput:   []string{},
 		mapDebug:       mapDebug,
+		triggerManager: triggerManager,
 	}
 }
 
@@ -262,6 +272,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.output = append(m.output, line)
 			m.recentOutput = append(m.recentOutput, line)
+			
+			// Check if this line matches any triggers
+			if m.triggerManager != nil && m.conn != nil {
+				actions := m.triggerManager.Match(line)
+				for _, action := range actions {
+					// Send the action as if the user typed it
+					m.output = append(m.output, fmt.Sprintf("\x1b[90m[Trigger: %s]\x1b[0m", action))
+					m.conn.Send(action)
+				}
+			}
 		}
 
 		// Keep recentOutput to last 30 lines for room detection
@@ -626,6 +646,12 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 		return nil
 	case "go":
 		return m.handleGoCommand(args)
+	case "trigger":
+		m.handleTriggerCommand(command)
+		return nil
+	case "triggers":
+		m.handleTriggersCommand(args)
+		return nil
 	case "help":
 		m.handleHelpCommand()
 		return nil
@@ -750,14 +776,18 @@ func (m *Model) handleMapCommand(args []string) {
 // handleHelpCommand shows available client commands
 func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "\x1b[92m=== Client Commands ===\x1b[0m")
-	m.output = append(m.output, "  \x1b[96m/point <room>\x1b[0m    - Show next direction to reach a room")
-	m.output = append(m.output, "  \x1b[96m/wayfind <room>\x1b[0m - Show full path to reach a room")
-	m.output = append(m.output, "  \x1b[96m/go <room>\x1b[0m      - Auto-walk to a room (one step per second)")
-	m.output = append(m.output, "  \x1b[96m/map\x1b[0m            - Show map information")
-	m.output = append(m.output, "  \x1b[96m/rooms [filter]\x1b[0m - List all known rooms (optionally filtered)")
-	m.output = append(m.output, "  \x1b[96m/help\x1b[0m           - Show this help message")
+	m.output = append(m.output, "  \x1b[96m/point <room>\x1b[0m            - Show next direction to reach a room")
+	m.output = append(m.output, "  \x1b[96m/wayfind <room>\x1b[0m         - Show full path to reach a room")
+	m.output = append(m.output, "  \x1b[96m/go <room>\x1b[0m              - Auto-walk to a room (one step per second)")
+	m.output = append(m.output, "  \x1b[96m/map\x1b[0m                    - Show map information")
+	m.output = append(m.output, "  \x1b[96m/rooms [filter]\x1b[0m         - List all known rooms (optionally filtered)")
+	m.output = append(m.output, "  \x1b[96m/trigger \"pat\" \"act\"\x1b[0m - Add a trigger (pattern can use <var>)")
+	m.output = append(m.output, "  \x1b[96m/triggers list\x1b[0m          - List all triggers")
+	m.output = append(m.output, "  \x1b[96m/triggers remove <n>\x1b[0m    - Remove trigger by number")
+	m.output = append(m.output, "  \x1b[96m/help\x1b[0m                   - Show this help message")
 	m.output = append(m.output, "")
 	m.output = append(m.output, "\x1b[90mRoom search matches all terms in room title, description, or exits\x1b[0m")
+	m.output = append(m.output, "\x1b[90mTriggers match output lines and execute actions (supports <variable> capture)\x1b[0m")
 }
 
 // handleRoomsCommand lists all known rooms or filters by search terms
@@ -877,4 +907,156 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return autoWalkTickMsg{}
 	})
+}
+
+// handleTriggerCommand adds a new trigger
+func (m *Model) handleTriggerCommand(command string) {
+	// Parse the command to extract pattern and action
+	// Expected format: /trigger "pattern" "action"
+	
+	// Remove "/trigger " prefix
+	command = strings.TrimPrefix(command, "trigger ")
+	command = strings.TrimSpace(command)
+	
+	// Parse quoted strings
+	pattern, action, err := parseQuotedArgs(command)
+	if err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError: %v\x1b[0m", err))
+		m.output = append(m.output, "\x1b[93mUsage: /trigger \"pattern\" \"action\"\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExample: /trigger \"hungry\" \"eat bread\"\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExample: /trigger \"The <subject> dies\" \"get <subject>\"\x1b[0m")
+		return
+	}
+	
+	// Add the trigger
+	trigger, err := m.triggerManager.Add(pattern, action)
+	if err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError adding trigger: %v\x1b[0m", err))
+		return
+	}
+	
+	// Save triggers
+	if err := m.triggerManager.Save(); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving triggers: %v\x1b[0m", err))
+		return
+	}
+	
+	m.output = append(m.output, fmt.Sprintf("\x1b[92mTrigger added: \"%s\" -> \"%s\"\x1b[0m", trigger.Pattern, trigger.Action))
+}
+
+// handleTriggersCommand handles /triggers list and /triggers remove
+func (m *Model) handleTriggersCommand(args []string) {
+	if len(args) == 0 {
+		// Default to list
+		m.handleTriggersListCommand()
+		return
+	}
+	
+	subCmd := strings.ToLower(args[0])
+	switch subCmd {
+	case "list":
+		m.handleTriggersListCommand()
+	case "remove":
+		if len(args) < 2 {
+			m.output = append(m.output, "\x1b[91mUsage: /triggers remove <index>\x1b[0m")
+			return
+		}
+		var index int
+		_, err := fmt.Sscanf(args[1], "%d", &index)
+		if err != nil {
+			m.output = append(m.output, "\x1b[91mError: Invalid index\x1b[0m")
+			return
+		}
+		m.handleTriggersRemoveCommand(index)
+	default:
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError: Unknown subcommand '%s'\x1b[0m", subCmd))
+		m.output = append(m.output, "\x1b[93mUsage: /triggers [list|remove <index>]\x1b[0m")
+	}
+}
+
+// handleTriggersListCommand lists all triggers
+func (m *Model) handleTriggersListCommand() {
+	if len(m.triggerManager.Triggers) == 0 {
+		m.output = append(m.output, "\x1b[93mNo triggers defined.\x1b[0m")
+		m.output = append(m.output, "\x1b[93mUse /trigger \"pattern\" \"action\" to add a trigger.\x1b[0m")
+		return
+	}
+	
+	m.output = append(m.output, "\x1b[92m=== Active Triggers ===\x1b[0m")
+	for i, trigger := range m.triggerManager.Triggers {
+		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. \"%s\" -> \"%s\"\x1b[0m", i+1, trigger.Pattern, trigger.Action))
+	}
+}
+
+// handleTriggersRemoveCommand removes a trigger by index
+func (m *Model) handleTriggersRemoveCommand(index int) {
+	// Convert from 1-based to 0-based index
+	index--
+	
+	if index < 0 || index >= len(m.triggerManager.Triggers) {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError: Invalid trigger index. Use /triggers list to see available triggers.\x1b[0m"))
+		return
+	}
+	
+	trigger := m.triggerManager.Triggers[index]
+	if err := m.triggerManager.Remove(index); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError removing trigger: %v\x1b[0m", err))
+		return
+	}
+	
+	// Save triggers
+	if err := m.triggerManager.Save(); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving triggers: %v\x1b[0m", err))
+		return
+	}
+	
+	m.output = append(m.output, fmt.Sprintf("\x1b[92mRemoved trigger: \"%s\" -> \"%s\"\x1b[0m", trigger.Pattern, trigger.Action))
+}
+
+// parseQuotedArgs parses two quoted strings from a command
+func parseQuotedArgs(input string) (string, string, error) {
+	input = strings.TrimSpace(input)
+	
+	// Find first quoted string
+	if !strings.HasPrefix(input, "\"") {
+		return "", "", fmt.Errorf("expected quoted pattern")
+	}
+	
+	// Find the closing quote for the first string
+	endQuote := 1
+	for endQuote < len(input) {
+		if input[endQuote] == '"' && (endQuote == 1 || input[endQuote-1] != '\\') {
+			break
+		}
+		endQuote++
+	}
+	
+	if endQuote >= len(input) {
+		return "", "", fmt.Errorf("unterminated pattern quote")
+	}
+	
+	pattern := input[1:endQuote]
+	
+	// Find second quoted string
+	rest := strings.TrimSpace(input[endQuote+1:])
+	if !strings.HasPrefix(rest, "\"") {
+		return "", "", fmt.Errorf("expected quoted action")
+	}
+	
+	// Find the closing quote for the second string
+	endQuote = 1
+	for endQuote < len(rest) {
+		if rest[endQuote] == '"' && (endQuote == 1 || rest[endQuote-1] != '\\') {
+			break
+		}
+		endQuote++
+	}
+	
+	if endQuote >= len(rest) {
+		return "", "", fmt.Errorf("unterminated action quote")
+	}
+	
+	action := rest[1:endQuote]
+	
+	return pattern, action, nil
 }
