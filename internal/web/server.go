@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"path/filepath"
+
+	"github.com/google/uuid"
 )
 
 // Server represents the web server
@@ -34,8 +37,12 @@ func Start(port int) error {
 func StartWithLogging(port int, enableLogs bool) error {
 	server := NewServerWithLogging(port, enableLogs)
 
-	// Serve static files from web/static directory
-	http.Handle("/", http.FileServer(http.Dir("web/static")))
+	// Handle root with session management
+	http.HandleFunc("/", server.handleRoot)
+
+	// Serve static files (CSS, JS)
+	http.Handle("/styles.css", http.FileServer(http.Dir("web/static")))
+	http.Handle("/app.js", http.FileServer(http.Dir("web/static")))
 
 	// WebSocket endpoint
 	http.HandleFunc("/ws", server.handler.HandleWebSocket)
@@ -44,3 +51,35 @@ func StartWithLogging(port int, enableLogs bool) error {
 	log.Printf("Starting web server on %s", addr)
 	return http.ListenAndServe(addr, nil)
 }
+
+// handleRoot serves the main page and handles session management
+func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
+	// Check if session ID is provided
+	sessionID := r.URL.Query().Get("id")
+	
+	if sessionID == "" {
+		// No session ID - generate a new GUID and redirect
+		newSessionID := uuid.New().String()
+		redirectURL := fmt.Sprintf("/?id=%s", newSessionID)
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		log.Printf("New session created: %s", newSessionID)
+		return
+	}
+	
+	// Validate session ID is a valid UUID
+	if _, err := uuid.Parse(sessionID); err != nil {
+		// Invalid UUID - generate a new one and redirect
+		newSessionID := uuid.New().String()
+		redirectURL := fmt.Sprintf("/?id=%s", newSessionID)
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		log.Printf("Invalid session ID, created new session: %s", newSessionID)
+		return
+	}
+	
+	// Store session ID for the handler to use
+	s.handler.SetSessionID(sessionID)
+	
+	// Serve the static index.html file
+	http.ServeFile(w, r, filepath.Join("web", "static", "index.html"))
+}
+

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"unicode/utf8"
 
@@ -26,9 +27,11 @@ var upgrader = websocket.Upgrader{
 
 // WebSocketHandler handles WebSocket connections
 type WebSocketHandler struct {
-	sessions   map[*websocket.Conn]*Session
-	mu         sync.RWMutex
-	enableLogs bool // Whether to enable logging for spawned TUI instances
+	sessions      map[*websocket.Conn]*Session
+	mu            sync.RWMutex
+	enableLogs    bool   // Whether to enable logging for spawned TUI instances
+	currentSessID string // Current session ID to use for new connections
+	sessionIDMu   sync.RWMutex
 }
 
 // Session represents a WebSocket session with a PTY running the TUI
@@ -39,6 +42,7 @@ type Session struct {
 	mu         sync.Mutex
 	closed     bool
 	utf8Buffer []byte // Buffer for incomplete UTF-8 sequences at PTY read boundaries
+	sessionID  string // Session ID for this connection
 }
 
 // ConnectMessage represents the connection request from client
@@ -70,6 +74,20 @@ func NewWebSocketHandlerWithLogging(enableLogs bool) *WebSocketHandler {
 	}
 }
 
+// SetSessionID sets the current session ID for the next connection
+func (h *WebSocketHandler) SetSessionID(sessionID string) {
+	h.sessionIDMu.Lock()
+	defer h.sessionIDMu.Unlock()
+	h.currentSessID = sessionID
+}
+
+// GetSessionID gets the current session ID
+func (h *WebSocketHandler) GetSessionID() string {
+	h.sessionIDMu.RLock()
+	defer h.sessionIDMu.RUnlock()
+	return h.currentSessID
+}
+
 // HandleWebSocket handles WebSocket connections
 func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
@@ -81,9 +99,17 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 
 	log.Printf("New WebSocket connection from %s", r.RemoteAddr)
 
+	// Get session ID
+	sessionID := h.GetSessionID()
+	if sessionID == "" {
+		log.Printf("Warning: No session ID set for WebSocket connection")
+		sessionID = "default"
+	}
+
 	// Create a new session
 	session := &Session{
-		ws: ws,
+		ws:        ws,
+		sessionID: sessionID,
 	}
 
 	h.mu.Lock()
@@ -96,6 +122,9 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 		h.mu.Unlock()
 		session.cleanup()
 	}()
+
+	// Auto-start the TUI client immediately (no connection parameters needed)
+	h.autoStartTUI(session)
 
 	// Handle incoming messages
 	for {
@@ -113,9 +142,6 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 			if err := json.Unmarshal(message, &msg); err == nil {
 				if msgType, ok := msg["type"].(string); ok {
 					switch msgType {
-					case "connect":
-						h.handleConnect(session, message)
-						continue
 					case "resize":
 						h.handleResize(session, message)
 						continue
@@ -137,11 +163,82 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// handleConnect starts the TUI client in a PTY
+// autoStartTUI automatically starts the TUI client in a PTY with no arguments
+func (h *WebSocketHandler) autoStartTUI(session *Session) {
+	// Create session directory
+	sessionDir := filepath.Join(".websessions", session.sessionID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		session.sendError(fmt.Sprintf("Failed to create session directory: %v", err))
+		return
+	}
+
+	// Get the path to the dikuclient binary
+	dikuclientPath, err := exec.LookPath("dikuclient")
+	if err != nil {
+		// Try relative path from current working directory
+		cwd, _ := os.Getwd()
+		dikuclientPath = filepath.Join(cwd, "dikuclient")
+		// Check if it exists
+		if _, err := os.Stat(dikuclientPath); err != nil {
+			dikuclientPath = "./dikuclient"
+		}
+	}
+
+	// Build command arguments - no host/port, just optional logging
+	args := []string{}
+	if h.enableLogs {
+		args = append(args, "--log-all")
+	}
+
+	// Start the TUI client
+	cmd := exec.Command(dikuclientPath, args...)
+	
+	// Get absolute path for session directory
+	absSessionDir, err := filepath.Abs(sessionDir)
+	if err != nil {
+		session.sendError(fmt.Sprintf("Failed to get absolute path: %v", err))
+		return
+	}
+	
+	// Set working directory to session directory
+	cmd.Dir = absSessionDir
+
+	// Start the command with a PTY
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		session.sendError(fmt.Sprintf("Failed to start TUI: %v", err))
+		return
+	}
+
+	// Set initial PTY size (will be updated by client)
+	pty.Setsize(ptmx, &pty.Winsize{
+		Rows: 24,
+		Cols: 80,
+	})
+
+	session.mu.Lock()
+	session.ptmx = ptmx
+	session.cmd = cmd
+	session.mu.Unlock()
+
+	// Start forwarding PTY output to WebSocket
+	go h.forwardPTYOutput(session)
+
+	log.Printf("Started TUI session for %s (no host/port - interactive mode)", session.sessionID)
+}
+
+// handleConnect starts the TUI client in a PTY (deprecated - kept for compatibility)
 func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 	var connectMsg ConnectMessage
 	if err := json.Unmarshal(message, &connectMsg); err != nil {
 		session.sendError(fmt.Sprintf("Invalid connect message: %v", err))
+		return
+	}
+
+	// Create session directory
+	sessionDir := filepath.Join(".websessions", session.sessionID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		session.sendError(fmt.Sprintf("Failed to create session directory: %v", err))
 		return
 	}
 
@@ -161,6 +258,9 @@ func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 
 	// Start the TUI client
 	cmd := exec.Command(dikuclientPath, args...)
+	
+	// Set working directory to session directory
+	cmd.Dir = sessionDir
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)

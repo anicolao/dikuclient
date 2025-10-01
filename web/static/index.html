@@ -7,24 +7,8 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>DikuMUD Client - Terminal Emulation Mode</h1>
-            <div class="connection-controls">
-                <input type="text" id="host" placeholder="Host (e.g., localhost)" value="localhost">
-                <input type="number" id="port" placeholder="Port" value="4000">
-                <button id="connectBtn">Connect</button>
-                <button id="disconnectBtn" disabled>Disconnect</button>
-                <span id="status" class="status disconnected">Disconnected</span>
-            </div>
-            <div class="info-bar">
-                <span>This interface runs the full TUI client in the browser via WebSocket</span>
-            </div>
-        </header>
-        
-        <main>
-            <div id="terminal"></div>
-        </main>
+    <div class="terminal-container">
+        <div id="terminal"></div>
     </div>
     
     <!-- Try to load xterm.js from CDN, fall back to built-in if blocked -->
