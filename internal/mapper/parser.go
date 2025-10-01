@@ -28,16 +28,12 @@ var exitPatterns = []*regexp.Regexp{
 
 // directionAliases maps short direction names to full names
 var directionAliases = map[string]string{
-	"n":  "north",
-	"s":  "south",
-	"e":  "east",
-	"w":  "west",
-	"u":  "up",
-	"d":  "down",
-	"ne": "northeast",
-	"nw": "northwest",
-	"se": "southeast",
-	"sw": "southwest",
+	"n": "north",
+	"s": "south",
+	"e": "east",
+	"w": "west",
+	"u": "up",
+	"d": "down",
 }
 
 // ParseRoomInfo attempts to parse room information from MUD output
@@ -177,26 +173,13 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 		}
 	}
 	
-	// If we didn't find a title using indentation, fall back to old heuristic
+	// If we didn't find a title using indentation, fail
 	if title == "" {
 		if enableDebug {
-			debugInfo.WriteString("[MAPPER DEBUG] No indented line found, using fallback heuristic\n")
+			debugInfo.WriteString("[MAPPER DEBUG] No indented line found, cannot parse room\n")
 		}
-		// Look for first non-empty, non-status line after prompt
-		for i := startSearchIdx; i < exitsLineIdx; i++ {
-			line := stripANSI(lines[i])
-			line = strings.TrimSpace(line)
-			
-			if line == "" || isStatusOrCombatLine(line) {
-				continue
-			}
-			
-			title = line
-			descriptionStartIdx = i + 1
-			if enableDebug {
-				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Using fallback title at index %d: %q\n", i, title))
-			}
-			break
+		return &RoomInfo{
+			DebugInfo: debugInfo.String(),
 		}
 	}
 

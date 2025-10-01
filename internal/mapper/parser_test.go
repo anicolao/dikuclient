@@ -13,7 +13,6 @@ func TestParseExitsLine(t *testing.T) {
 		{"[ Exits: n s e w ]", []string{"north", "south", "east", "west"}},
 		{"Obvious exits: north and south", []string{"north", "south"}},
 		{"exits: up down", []string{"up", "down"}},
-		{"Exits: ne, sw", []string{"northeast", "southwest"}},
 		{"Not an exit line", nil},
 		// New compact format tests
 		{"Exits:EW>", []string{"east", "west"}},
@@ -48,8 +47,9 @@ func TestParseExitsLine(t *testing.T) {
 
 func TestParseRoomInfo(t *testing.T) {
 	lines := []string{
+		"119H 110V 3674X 0.00% 77C T:56 Exits:EW>",
 		"Temple Square",
-		"You are standing in a large temple square. The ancient stones",
+		"    You are standing in a large temple square. The ancient stones",
 		"speak of a glorious past.",
 		"Exits: north, south, east",
 	}
