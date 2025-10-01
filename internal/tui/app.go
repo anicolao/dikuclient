@@ -142,7 +142,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Check if this is a client command (starts with /)
 				if strings.HasPrefix(command, "/") {
+					// Save the current prompt line before executing command
+					var savedPrompt string
+					if len(m.output) > 0 {
+						savedPrompt = m.output[len(m.output)-1]
+						// Replace the prompt line with the command
+						m.output[len(m.output)-1] = savedPrompt + "\x1b[93m" + command + "\x1b[0m"
+					}
+					
 					clientCmd := m.handleClientCommand(command)
+					
+					// Add empty line and restore prompt after command output
+					m.output = append(m.output, "")
+					m.output = append(m.output, savedPrompt)
+					
 					m.currentInput = ""
 					m.cursorPos = 0
 					m.updateViewport()
