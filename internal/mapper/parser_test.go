@@ -24,6 +24,12 @@ func TestParseExitsLine(t *testing.T) {
 		{"Exits:UD>", []string{"up", "down"}},
 		{"86H 81V 7886X 0.00% 37C T:40 Exits:UD>", []string{"up", "down"}},
 		{"Exits:NESWUD>", []string{"north", "east", "south", "west", "up", "down"}},
+		// Test with closed doors (parentheses)
+		{"Exits:N(S)E>", []string{"north", "south", "east"}},
+		{"Exits:N(SE)W>", []string{"north", "south", "east", "west"}},
+		{"Exits:(N)S>", []string{"north", "south"}},
+		{"Exits:N(S)(E)W>", []string{"north", "south", "east", "west"}},
+		{"120H 100V 5000X 0.00% 50C T:30 Exits:N(S)E>", []string{"north", "south", "east"}},
 	}
 
 	for _, test := range tests {

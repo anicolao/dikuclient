@@ -22,8 +22,8 @@ var exitPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^\[\s*exits?\s*:\s*(.+?)\s*\]$`),
 	// "Obvious exits: north, south"
 	regexp.MustCompile(`(?i)^obvious\s+exits?\s*:\s*(.+)$`),
-	// "Exits:EW>" or "Exits:NESW>" or "Exits:UD>" (compact format, no spaces)
-	regexp.MustCompile(`(?i)exits?\s*:\s*([neswud]+)\s*>`),
+	// "Exits:EW>" or "Exits:NESW>" or "Exits:UD>" or "Exits:N(S)E>" (compact format, closed doors in parentheses)
+	regexp.MustCompile(`(?i)exits?\s*:\s*([neswud()]+)\s*>`),
 }
 
 // directionAliases maps short direction names to full names
@@ -334,11 +334,16 @@ func parseExitsLine(line string) []string {
 func parseExitsList(exitText string) []string {
 	exitText = strings.TrimSpace(exitText)
 	
-	// Check if it's compact format (no spaces, just letters like "EW" or "NESW")
+	// Check if it's compact format (no spaces, just letters like "EW" or "NESW" or "N(S)E")
 	if len(exitText) > 0 && !strings.Contains(exitText, " ") && !strings.Contains(exitText, ",") {
-		// Split each character as a direction
+		// Split each character as a direction, handling parentheses for closed doors
 		var exits []string
 		for _, ch := range exitText {
+			// Skip parentheses - they indicate closed doors but we still want the exit
+			if ch == '(' || ch == ')' {
+				continue
+			}
+			
 			dir := strings.ToLower(string(ch))
 			if isValidDirection(dir) {
 				// Expand alias to full direction name
