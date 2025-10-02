@@ -44,6 +44,8 @@ type Model struct {
 	autoWalkPath      []string          // Path to auto-walk
 	autoWalkIndex     int               // Current step in auto-walk
 	triggerManager    *triggers.Manager // Trigger manager
+	inventory         []string          // Current inventory items
+	inventoryTime     time.Time         // Time when inventory was last updated
 }
 
 var (
@@ -305,6 +307,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Try to detect room information from recent output
 		m.detectAndUpdateRoom()
+		
+		// Try to detect inventory information from recent output
+		m.detectAndUpdateInventory()
 
 		// Check for auto-login prompts
 		if m.username != "" && m.autoLoginState < 2 {
@@ -540,16 +545,43 @@ func (m Model) renderSidebar(width, height int) string {
 			),
 		)
 
-	// Inventory panel (empty placeholder)
+	// Inventory panel
+	var inventoryContent []string
+	if len(m.inventory) > 0 {
+		// Add timestamp header
+		timeStr := m.inventoryTime.Format("15:04:05")
+		inventoryContent = append(inventoryContent, lipgloss.NewStyle().Bold(true).Render("Inventory"))
+		inventoryContent = append(inventoryContent, lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("("+timeStr+")"))
+		inventoryContent = append(inventoryContent, "")
+		
+		// Add items (truncate if too many for the panel)
+		maxItems := panelHeight - 5 // Account for header, timestamp, spacing, and borders
+		for i, item := range m.inventory {
+			if i >= maxItems {
+				inventoryContent = append(inventoryContent, lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Italic(true).Render("..."))
+				break
+			}
+			// Truncate long item names to fit in panel
+			displayItem := item
+			maxLen := width - 6 // Account for borders and padding
+			if len(displayItem) > maxLen {
+				displayItem = displayItem[:maxLen-3] + "..."
+			}
+			inventoryContent = append(inventoryContent, displayItem)
+		}
+	} else {
+		inventoryContent = append(inventoryContent, lipgloss.NewStyle().Bold(true).Render("Inventory"))
+		inventoryContent = append(inventoryContent, "")
+		inventoryContent = append(inventoryContent, emptyPanelStyle.Render("(not populated)"))
+	}
+	
 	inventoryPanel := sidebarStyle.
 		Width(width - 2).
 		Height(panelHeight).
 		Render(
 			lipgloss.JoinVertical(
 				lipgloss.Left,
-				lipgloss.NewStyle().Bold(true).Render("Inventory"),
-				"",
-				emptyPanelStyle.Render("(not implemented)"),
+				inventoryContent...,
 			),
 		)
 
@@ -624,6 +656,24 @@ func (m *Model) detectAndUpdateRoom() {
 	if m.mapDebug {
 		m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, roomInfo.Exits))
 	}
+}
+
+// detectAndUpdateInventory tries to parse inventory information from recent output
+func (m *Model) detectAndUpdateInventory() {
+	if len(m.recentOutput) < 3 {
+		return // Need at least a few lines to detect inventory
+	}
+
+	// Try to parse inventory info from recent output
+	invInfo := mapper.ParseInventoryInfo(m.recentOutput, false)
+	
+	if invInfo == nil {
+		return // No valid inventory detected
+	}
+
+	// Update inventory and timestamp
+	m.inventory = invInfo.Items
+	m.inventoryTime = time.Now()
 }
 
 // handleClientCommand processes client-side commands starting with /
