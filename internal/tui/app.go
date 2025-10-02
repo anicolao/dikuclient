@@ -43,6 +43,7 @@ type Model struct {
 	autoWalking       bool              // Currently auto-walking with /go
 	autoWalkPath      []string          // Path to auto-walk
 	autoWalkIndex     int               // Current step in auto-walk
+	lastRoomSearch    []*mapper.Room    // Last room search results for disambiguation
 	triggerManager    *triggers.Manager // Trigger manager
 	inventory         []string          // Current inventory items
 	inventoryTime     time.Time         // Time when inventory was last updated
@@ -736,12 +737,52 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 // handlePointCommand shows the next direction to reach a destination
 func (m *Model) handlePointCommand(args []string) {
 	if len(args) == 0 {
-		m.output = append(m.output, "\x1b[91mUsage: /point <room search terms>\x1b[0m")
+		m.output = append(m.output, "\x1b[91mUsage: /point <room search terms> or /point <number> [search terms]\x1b[0m")
 		return
 	}
 
-	query := strings.Join(args, " ")
-	rooms := m.worldMap.FindRooms(query)
+	var rooms []*mapper.Room
+	var query string
+	
+	// Check if first argument is a number for room selection
+	if roomNum, err := fmt.Sscanf(args[0], "%d", new(int)); err == nil && roomNum == 1 {
+		var index int
+		fmt.Sscanf(args[0], "%d", &index)
+		
+		// If only a number is provided, use lastRoomSearch
+		if len(args) == 1 {
+			if len(m.lastRoomSearch) == 0 {
+				m.output = append(m.output, "\x1b[91mNo previous room search to select from. Use /rooms to see all rooms.\x1b[0m")
+				return
+			}
+			if index < 1 || index > len(m.lastRoomSearch) {
+				m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Must be between 1 and %d.\x1b[0m", len(m.lastRoomSearch)))
+				return
+			}
+			rooms = []*mapper.Room{m.lastRoomSearch[index-1]}
+		} else {
+			// Number followed by search terms - search first, then select by index
+			query = strings.Join(args[1:], " ")
+			allMatches := m.worldMap.FindRooms(query)
+			
+			if len(allMatches) == 0 {
+				m.output = append(m.output, fmt.Sprintf("\x1b[91mNo rooms found matching '%s'\x1b[0m", query))
+				return
+			}
+			
+			if index < 1 || index > len(allMatches) {
+				m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Found %d rooms matching '%s'. Must be between 1 and %d.\x1b[0m", len(allMatches), query, len(allMatches)))
+				return
+			}
+			
+			rooms = []*mapper.Room{allMatches[index-1]}
+			m.lastRoomSearch = allMatches
+		}
+	} else {
+		// Regular search without numeric selection
+		query = strings.Join(args, " ")
+		rooms = m.worldMap.FindRooms(query)
+	}
 
 	if len(rooms) == 0 {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mNo rooms found matching '%s'\x1b[0m", query))
@@ -749,6 +790,9 @@ func (m *Model) handlePointCommand(args []string) {
 	}
 
 	if len(rooms) > 1 {
+		// Store results for later disambiguation
+		m.lastRoomSearch = rooms
+		
 		m.output = append(m.output, fmt.Sprintf("\x1b[93mFound %d rooms matching '%s':\x1b[0m", len(rooms), query))
 		for i, room := range rooms {
 			if i >= 5 {
@@ -757,7 +801,7 @@ func (m *Model) handlePointCommand(args []string) {
 			}
 			m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m", i+1, room.Title))
 		}
-		m.output = append(m.output, "\x1b[93mPlease be more specific.\x1b[0m")
+		m.output = append(m.output, "\x1b[93mPlease be more specific, or use /point <number> to select a room.\x1b[0m")
 		return
 	}
 
@@ -781,12 +825,52 @@ func (m *Model) handlePointCommand(args []string) {
 // handleWayfindCommand shows the full path to reach a destination
 func (m *Model) handleWayfindCommand(args []string) {
 	if len(args) == 0 {
-		m.output = append(m.output, "\x1b[91mUsage: /wayfind <room search terms>\x1b[0m")
+		m.output = append(m.output, "\x1b[91mUsage: /wayfind <room search terms> or /wayfind <number> [search terms]\x1b[0m")
 		return
 	}
 
-	query := strings.Join(args, " ")
-	rooms := m.worldMap.FindRooms(query)
+	var rooms []*mapper.Room
+	var query string
+	
+	// Check if first argument is a number for room selection
+	if roomNum, err := fmt.Sscanf(args[0], "%d", new(int)); err == nil && roomNum == 1 {
+		var index int
+		fmt.Sscanf(args[0], "%d", &index)
+		
+		// If only a number is provided, use lastRoomSearch
+		if len(args) == 1 {
+			if len(m.lastRoomSearch) == 0 {
+				m.output = append(m.output, "\x1b[91mNo previous room search to select from. Use /rooms to see all rooms.\x1b[0m")
+				return
+			}
+			if index < 1 || index > len(m.lastRoomSearch) {
+				m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Must be between 1 and %d.\x1b[0m", len(m.lastRoomSearch)))
+				return
+			}
+			rooms = []*mapper.Room{m.lastRoomSearch[index-1]}
+		} else {
+			// Number followed by search terms - search first, then select by index
+			query = strings.Join(args[1:], " ")
+			allMatches := m.worldMap.FindRooms(query)
+			
+			if len(allMatches) == 0 {
+				m.output = append(m.output, fmt.Sprintf("\x1b[91mNo rooms found matching '%s'\x1b[0m", query))
+				return
+			}
+			
+			if index < 1 || index > len(allMatches) {
+				m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Found %d rooms matching '%s'. Must be between 1 and %d.\x1b[0m", len(allMatches), query, len(allMatches)))
+				return
+			}
+			
+			rooms = []*mapper.Room{allMatches[index-1]}
+			m.lastRoomSearch = allMatches
+		}
+	} else {
+		// Regular search without numeric selection
+		query = strings.Join(args, " ")
+		rooms = m.worldMap.FindRooms(query)
+	}
 
 	if len(rooms) == 0 {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mNo rooms found matching '%s'\x1b[0m", query))
@@ -794,6 +878,9 @@ func (m *Model) handleWayfindCommand(args []string) {
 	}
 
 	if len(rooms) > 1 {
+		// Store results for later disambiguation
+		m.lastRoomSearch = rooms
+		
 		m.output = append(m.output, fmt.Sprintf("\x1b[93mFound %d rooms matching '%s':\x1b[0m", len(rooms), query))
 		for i, room := range rooms {
 			if i >= 5 {
@@ -802,7 +889,7 @@ func (m *Model) handleWayfindCommand(args []string) {
 			}
 			m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m", i+1, room.Title))
 		}
-		m.output = append(m.output, "\x1b[93mPlease be more specific.\x1b[0m")
+		m.output = append(m.output, "\x1b[93mPlease be more specific, or use /wayfind <number> to select a room.\x1b[0m")
 		return
 	}
 
@@ -901,6 +988,9 @@ func (m *Model) handleRoomsCommand(args []string) {
 		return roomsToDisplay[i].Title < roomsToDisplay[j].Title
 	})
 	
+	// Store results for later disambiguation
+	m.lastRoomSearch = roomsToDisplay
+	
 	// Display rooms
 	for i, room := range roomsToDisplay {
 		exitList := make([]string, 0, len(room.Exits))
@@ -920,11 +1010,6 @@ func (m *Model) handleRoomsCommand(args []string) {
 
 // handleGoCommand starts auto-walking to a destination
 func (m *Model) handleGoCommand(args []string) tea.Cmd {
-	if len(args) == 0 {
-		m.output = append(m.output, "\x1b[91mUsage: /go <room search terms>\x1b[0m")
-		return nil
-	}
-	
 	// If already auto-walking, stop it
 	if m.autoWalking {
 		m.autoWalking = false
@@ -934,8 +1019,53 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 		return nil
 	}
 	
-	query := strings.Join(args, " ")
-	rooms := m.worldMap.FindRooms(query)
+	if len(args) == 0 {
+		m.output = append(m.output, "\x1b[91mUsage: /go <room search terms> or /go <number> [search terms]\x1b[0m")
+		return nil
+	}
+	
+	var rooms []*mapper.Room
+	var query string
+	
+	// Check if first argument is a number for room selection
+	if roomNum, err := fmt.Sscanf(args[0], "%d", new(int)); err == nil && roomNum == 1 {
+		var index int
+		fmt.Sscanf(args[0], "%d", &index)
+		
+		// If only a number is provided, use lastRoomSearch
+		if len(args) == 1 {
+			if len(m.lastRoomSearch) == 0 {
+				m.output = append(m.output, "\x1b[91mNo previous room search to select from. Use /rooms to see all rooms.\x1b[0m")
+				return nil
+			}
+			if index < 1 || index > len(m.lastRoomSearch) {
+				m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Must be between 1 and %d.\x1b[0m", len(m.lastRoomSearch)))
+				return nil
+			}
+			rooms = []*mapper.Room{m.lastRoomSearch[index-1]}
+		} else {
+			// Number followed by search terms - search first, then select by index
+			query = strings.Join(args[1:], " ")
+			allMatches := m.worldMap.FindRooms(query)
+			
+			if len(allMatches) == 0 {
+				m.output = append(m.output, fmt.Sprintf("\x1b[91mNo rooms found matching '%s'\x1b[0m", query))
+				return nil
+			}
+			
+			if index < 1 || index > len(allMatches) {
+				m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Found %d rooms matching '%s'. Must be between 1 and %d.\x1b[0m", len(allMatches), query, len(allMatches)))
+				return nil
+			}
+			
+			rooms = []*mapper.Room{allMatches[index-1]}
+			m.lastRoomSearch = allMatches
+		}
+	} else {
+		// Regular search without numeric selection
+		query = strings.Join(args, " ")
+		rooms = m.worldMap.FindRooms(query)
+	}
 	
 	if len(rooms) == 0 {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mNo rooms found matching '%s'\x1b[0m", query))
@@ -943,6 +1073,9 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 	}
 	
 	if len(rooms) > 1 {
+		// Store results for later disambiguation
+		m.lastRoomSearch = rooms
+		
 		m.output = append(m.output, fmt.Sprintf("\x1b[93mFound %d rooms matching '%s':\x1b[0m", len(rooms), query))
 		for i, room := range rooms {
 			if i >= 5 {
@@ -951,7 +1084,7 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 			}
 			m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m", i+1, room.Title))
 		}
-		m.output = append(m.output, "\x1b[93mPlease be more specific.\x1b[0m")
+		m.output = append(m.output, "\x1b[93mPlease be more specific, or use /go <number> to select a room.\x1b[0m")
 		return nil
 	}
 	

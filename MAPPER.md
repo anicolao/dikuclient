@@ -39,14 +39,26 @@ Shows the next direction to take to reach a destination.
 /point temple square
 /point market
 /point fountain north
+/point 1              # Select first room from previous search
+/point 2 temple       # Select second room matching 'temple'
 ```
 
-The command searches for rooms matching all the provided terms (case-insensitive). If multiple rooms match, it will list them and ask you to be more specific.
+The command searches for rooms matching all the provided terms (case-insensitive). If multiple rooms match, it will list them and ask you to be more specific. You can then use `/point <number>` to select a specific room from the list, or `/point <number> <search terms>` to search and select in one command.
 
 **Example:**
 ```
 > /point temple square
 To reach 'Temple Square', go: south
+
+> /point temple
+Found 3 rooms matching 'temple':
+  1. Inner Sanctum
+  2. Temple Entrance
+  3. Temple Square
+Please be more specific, or use /point <number> to select a room.
+
+> /point 2
+To reach 'Temple Entrance', go: north
 ```
 
 #### `/wayfind <room>`
@@ -57,11 +69,24 @@ Shows the complete path from your current location to the destination.
 ```
 /wayfind temple square
 /wayfind market
+/wayfind 1              # Select first room from previous search
+/wayfind 2 temple       # Select second room matching 'temple'
 ```
 
 **Example:**
 ```
 > /wayfind temple square
+Path to 'Temple Square' (3 steps):
+  south -> west -> south
+
+> /wayfind temple
+Found 3 rooms matching 'temple':
+  1. Inner Sanctum
+  2. Temple Entrance
+  3. Temple Square
+Please be more specific, or use /wayfind <number> to select a room.
+
+> /wayfind 3
 Path to 'Temple Square' (3 steps):
   south -> west -> south
 ```
@@ -74,22 +99,42 @@ Auto-walks to the specified room, executing one movement command per second.
 ```
 /go temple square
 /go market
+/go                   # Cancel current auto-walk
+/go 1                 # Select first room from previous search
+/go 2 temple          # Select second room matching 'temple'
 ```
 
-The auto-walk can be cancelled at any time by typing `/go` again (without a destination).
+The auto-walk can be cancelled at any time by typing `/go` with no arguments.
+
+When multiple rooms match your search, you can use `/go <number>` to select a specific room from the list, or `/go <number> <search terms>` to search and select in one command.
 
 **Example:**
 ```
 > /go temple square
+Auto-walking to 'Temple Square' (3 steps). Type /go to cancel.
 [Auto-walk: south (1/3)]
 [Auto-walk: west (2/3)]
 [Auto-walk: south (3/3)]
 [Auto-walk complete!]
+
+> /go temple
+Found 3 rooms matching 'temple':
+  1. Inner Sanctum
+  2. Temple Entrance
+  3. Temple Square
+Please be more specific, or use /go <number> to select a room.
+
+> /go 1
+Auto-walking to 'Inner Sanctum' (5 steps). Type /go to cancel.
+[...]
+
+> /go
+Auto-walk cancelled.
 ```
 
 #### `/rooms [filter]`
 
-Lists all explored rooms. Optionally filter by search terms to find specific rooms.
+Lists all explored rooms. Optionally filter by search terms to find specific rooms. The room numbers shown can be used with `/go <number>`, `/point <number>`, or `/wayfind <number>`.
 
 **Usage:**
 ```
@@ -112,9 +157,12 @@ Lists all explored rooms. Optionally filter by search terms to find specific roo
   1. Inner Sanctum [south]
   2. Temple Entrance [north, east]
   3. Temple Square [north, south, east]
+
+> /go 2
+Auto-walking to 'Temple Entrance' (2 steps). Type /go to cancel.
 ```
 
-This is useful for checking which rooms match your search terms before using `/point`, `/wayfind`, or `/go`.
+This is useful for checking which rooms match your search terms before using `/point`, `/wayfind`, or `/go`. You can then select a specific room by number.
 
 #### `/map`
 
