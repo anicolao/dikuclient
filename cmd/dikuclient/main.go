@@ -156,7 +156,7 @@ func main() {
 
 	// Create the Bubble Tea program
 	p := tea.NewProgram(
-		model,
+		&model,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	)
