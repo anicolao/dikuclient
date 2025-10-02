@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/bubbles/viewport"
 )
 
 // TestInventoryIntegration simulates receiving inventory output from a MUD server
@@ -89,6 +91,9 @@ func TestInventoryRenderingWithItems(t *testing.T) {
 		height:        40,
 		sidebarWidth:  30,
 	}
+	
+	// Initialize inventory viewport
+	m.inventoryViewport = viewport.New(m.sidebarWidth-4, 10)
 
 	// Render the sidebar
 	result := m.renderSidebar(m.sidebarWidth, m.height-10)
@@ -120,6 +125,9 @@ func TestInventoryRenderingWithoutItems(t *testing.T) {
 		height:       40,
 		sidebarWidth: 30,
 	}
+	
+	// Initialize inventory viewport
+	m.inventoryViewport = viewport.New(m.sidebarWidth-4, 10)
 
 	// Render the sidebar
 	result := m.renderSidebar(m.sidebarWidth, m.height-10)

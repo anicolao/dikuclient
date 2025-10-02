@@ -46,6 +46,7 @@ type Model struct {
 	triggerManager    *triggers.Manager // Trigger manager
 	inventory         []string          // Current inventory items
 	inventoryTime     time.Time         // Time when inventory was last updated
+	inventoryViewport viewport.Model    // Viewport for scrollable inventory
 }
 
 var (
@@ -97,34 +98,37 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		triggerManager = triggers.NewManager()
 	}
 
+	inventoryVp := viewport.New(0, 0)
+
 	return Model{
-		viewport:       vp,
-		output:         []string{},
-		currentInput:   "",
-		cursorPos:      0,
-		host:           host,
-		port:           port,
-		sidebarWidth:   30,
-		mudLogFile:     mudLogFile,
-		tuiLogFile:     tuiLogFile,
-		telnetDebugLog: telnetDebugLog,
-		username:       username,
-		password:       password,
-		autoLoginState: 0,
-		worldMap:       worldMap,
-		recentOutput:   []string{},
-		mapDebug:       mapDebug,
-		triggerManager: triggerManager,
+		viewport:          vp,
+		output:            []string{},
+		currentInput:      "",
+		cursorPos:         0,
+		host:              host,
+		port:              port,
+		sidebarWidth:      60, // Doubled from 30 to 60
+		mudLogFile:        mudLogFile,
+		tuiLogFile:        tuiLogFile,
+		telnetDebugLog:    telnetDebugLog,
+		username:          username,
+		password:          password,
+		autoLoginState:    0,
+		worldMap:          worldMap,
+		recentOutput:      []string{},
+		mapDebug:          mapDebug,
+		triggerManager:    triggerManager,
+		inventoryViewport: inventoryVp,
 	}
 }
 
 // Init initializes the application
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
 	return m.connect
 }
 
 // connect establishes a connection to the MUD server
-func (m Model) connect() tea.Msg {
+func (m *Model) connect() tea.Msg {
 	conn, err := client.NewConnectionWithDebug(m.host, m.port, m.telnetDebugLog)
 	if err != nil {
 		return errMsg(err)
@@ -133,7 +137,7 @@ func (m Model) connect() tea.Msg {
 }
 
 // Update handles messages and updates the model
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
@@ -258,6 +262,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Width = mainWidth
 		m.viewport.Height = m.height - headerHeight - 2
 		// Don't apply viewport style - let ANSI codes pass through
+
+		// Update inventory viewport size
+		panelHeight := (m.height - headerHeight - 2 - 6) / 3
+		m.inventoryViewport.Width = sidebarWidth - 4  // Account for borders and padding
+		m.inventoryViewport.Height = panelHeight - 4  // Account for header, timestamp, and borders
 
 		m.updateViewport()
 		return m, nil
@@ -394,6 +403,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 
+	// Update inventory viewport for mouse wheel scrolling
+	m.inventoryViewport, cmd = m.inventoryViewport.Update(msg)
+	cmds = append(cmds, cmd)
+
 	return m, tea.Batch(cmds...)
 }
 
@@ -461,7 +474,7 @@ func (m *Model) updateViewport() {
 }
 
 // listenForMessages listens for messages from the MUD server
-func (m Model) listenForMessages() tea.Msg {
+func (m *Model) listenForMessages() tea.Msg {
 	if m.conn == nil || m.conn.IsClosed() {
 		return nil
 	}
@@ -477,7 +490,7 @@ func (m Model) listenForMessages() tea.Msg {
 }
 
 // View renders the application
-func (m Model) View() string {
+func (m *Model) View() string {
 	if m.width == 0 {
 		return "Loading..."
 	}
@@ -495,7 +508,7 @@ func (m Model) View() string {
 	)
 }
 
-func (m Model) renderStatusBar() string {
+func (m *Model) renderStatusBar() string {
 	statusText := "Disconnected"
 	if m.connected {
 		statusText = fmt.Sprintf("Connected to %s:%d", m.host, m.port)
@@ -506,7 +519,7 @@ func (m Model) renderStatusBar() string {
 	return lipgloss.JoinHorizontal(lipgloss.Left, status, line)
 }
 
-func (m Model) renderMainContent() string {
+func (m *Model) renderMainContent() string {
 	headerHeight := 3
 	sidebarWidth := m.sidebarWidth
 	mainWidth := m.width - sidebarWidth - 6
@@ -529,7 +542,7 @@ func (m Model) renderMainContent() string {
 	)
 }
 
-func (m Model) renderSidebar(width, height int) string {
+func (m *Model) renderSidebar(width, height int) string {
 	panelHeight := (height - 6) / 3
 
 	// Character Stats panel (empty placeholder)
@@ -545,43 +558,38 @@ func (m Model) renderSidebar(width, height int) string {
 			),
 		)
 
-	// Inventory panel
-	var inventoryContent []string
+	// Inventory panel with scrollable viewport
+	var inventoryHeader string
+	var inventoryContent string
 	if len(m.inventory) > 0 {
-		// Add timestamp header
+		// Build header with timestamp
 		timeStr := m.inventoryTime.Format("15:04:05")
-		inventoryContent = append(inventoryContent, lipgloss.NewStyle().Bold(true).Render("Inventory"))
-		inventoryContent = append(inventoryContent, lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("("+timeStr+")"))
-		inventoryContent = append(inventoryContent, "")
+		inventoryHeader = lipgloss.JoinVertical(
+			lipgloss.Left,
+			lipgloss.NewStyle().Bold(true).Render("Inventory"),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("("+timeStr+")"),
+		)
 		
-		// Add items (truncate if too many for the panel)
-		maxItems := panelHeight - 5 // Account for header, timestamp, spacing, and borders
-		for i, item := range m.inventory {
-			if i >= maxItems {
-				inventoryContent = append(inventoryContent, lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Italic(true).Render("..."))
-				break
-			}
-			// Truncate long item names to fit in panel
-			displayItem := item
-			maxLen := width - 6 // Account for borders and padding
-			if len(displayItem) > maxLen {
-				displayItem = displayItem[:maxLen-3] + "..."
-			}
-			inventoryContent = append(inventoryContent, displayItem)
-		}
+		// Add all items without truncation - viewport will handle scrolling
+		inventoryContent = strings.Join(m.inventory, "\n")
 	} else {
-		inventoryContent = append(inventoryContent, lipgloss.NewStyle().Bold(true).Render("Inventory"))
-		inventoryContent = append(inventoryContent, "")
-		inventoryContent = append(inventoryContent, emptyPanelStyle.Render("(not populated)"))
+		inventoryHeader = lipgloss.NewStyle().Bold(true).Render("Inventory")
+		inventoryContent = emptyPanelStyle.Render("(not populated)")
 	}
 	
+	// Update viewport content
+	m.inventoryViewport.SetContent(inventoryContent)
+	
+	// Render inventory panel with header and scrollable content
 	inventoryPanel := sidebarStyle.
 		Width(width - 2).
 		Height(panelHeight).
 		Render(
 			lipgloss.JoinVertical(
 				lipgloss.Left,
-				inventoryContent...,
+				inventoryHeader,
+				"",
+				m.inventoryViewport.View(),
 			),
 		)
 
