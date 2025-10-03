@@ -81,7 +81,7 @@ This follows DESIGN.md Option 1 (Terminal Emulation - Recommended):
 ### Security Considerations
 - CORS enabled (allow all origins) - should be configured for production
 - No authentication implemented - suitable for local/trusted networks
-- Plain text WebSocket (ws://) - should use WSS for production
+- WebSocket protocol auto-detects (ws:// for HTTP, wss:// for HTTPS) - supports reverse proxy with SSL
 - PTY isolation ensures session separation
 
 ### Files Added
