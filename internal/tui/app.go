@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -48,6 +49,8 @@ type Model struct {
 	inventory         []string          // Current inventory items
 	inventoryTime     time.Time         // Time when inventory was last updated
 	inventoryViewport viewport.Model    // Viewport for scrollable inventory
+	tells             []string          // Recent tells received
+	tellsViewport     viewport.Model    // Viewport for scrollable tells
 }
 
 var (
@@ -100,6 +103,7 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 	}
 
 	inventoryVp := viewport.New(0, 0)
+	tellsVp := viewport.New(0, 0)
 
 	return Model{
 		viewport:          vp,
@@ -120,6 +124,7 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		mapDebug:          mapDebug,
 		triggerManager:    triggerManager,
 		inventoryViewport: inventoryVp,
+		tellsViewport:     tellsVp,
 	}
 }
 
@@ -268,6 +273,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		panelHeight := (m.height - headerHeight - 2 - 6) / 3
 		m.inventoryViewport.Width = sidebarWidth - 4  // Account for borders and padding
 		m.inventoryViewport.Height = panelHeight - 4  // Account for header, timestamp, and borders
+		
+		// Update tells viewport size
+		m.tellsViewport.Width = sidebarWidth - 4  // Account for borders and padding
+		m.tellsViewport.Height = panelHeight - 4  // Account for header and borders
 
 		m.updateViewport()
 		return m, nil
@@ -298,6 +307,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.output = append(m.output, line)
 			m.recentOutput = append(m.recentOutput, line)
+			
+			// Check if this line is a tell message
+			m.detectAndParseTell(line)
 			
 			// Check if this line matches any triggers
 			if m.triggerManager != nil && m.conn != nil {
@@ -546,16 +558,30 @@ func (m *Model) renderMainContent() string {
 func (m *Model) renderSidebar(width, height int) string {
 	panelHeight := (height - 6) / 3
 
-	// Character Stats panel (empty placeholder)
-	statsPanel := sidebarStyle.
+	// Tells panel with scrollable viewport
+	var tellsHeader string
+	var tellsContent string
+	if len(m.tells) > 0 {
+		tellsHeader = lipgloss.NewStyle().Bold(true).Render("Tells")
+		tellsContent = strings.Join(m.tells, "\n")
+	} else {
+		tellsHeader = lipgloss.NewStyle().Bold(true).Render("Tells")
+		tellsContent = emptyPanelStyle.Render("(no tells yet)")
+	}
+	
+	// Update viewport content
+	m.tellsViewport.SetContent(tellsContent)
+	
+	// Render tells panel with header and scrollable content
+	tellsPanel := sidebarStyle.
 		Width(width - 2).
 		Height(panelHeight).
 		Render(
 			lipgloss.JoinVertical(
 				lipgloss.Left,
-				lipgloss.NewStyle().Bold(true).Render("Character Stats"),
+				tellsHeader,
 				"",
-				emptyPanelStyle.Render("(not implemented)"),
+				m.tellsViewport.View(),
 			),
 		)
 
@@ -609,7 +635,7 @@ func (m *Model) renderSidebar(width, height int) string {
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		statsPanel,
+		tellsPanel,
 		inventoryPanel,
 		mapPanel,
 	)
@@ -683,6 +709,38 @@ func (m *Model) detectAndUpdateInventory() {
 	// Update inventory and timestamp
 	m.inventory = invInfo.Items
 	m.inventoryTime = time.Now()
+}
+
+// tellRegex matches tell messages in format: <player> tells you '<content>'
+var tellRegex = regexp.MustCompile(`^(.+?) tells you '(.*)'$`)
+
+// detectAndParseTell tries to detect and parse a tell message from a line
+func (m *Model) detectAndParseTell(line string) {
+	// Strip ANSI codes for pattern matching
+	cleanLine := stripANSI(line)
+	
+	matches := tellRegex.FindStringSubmatch(cleanLine)
+	if matches == nil || len(matches) != 3 {
+		return // Not a tell message
+	}
+	
+	player := matches[1]
+	content := matches[2]
+	
+	// Format as "Player: content" for the tells panel
+	tellEntry := fmt.Sprintf("%s: %s", player, content)
+	
+	// Add to tells list (keep last 50 tells)
+	m.tells = append(m.tells, tellEntry)
+	if len(m.tells) > 50 {
+		m.tells = m.tells[len(m.tells)-50:]
+	}
+}
+
+// stripANSI removes ANSI escape codes from a string
+func stripANSI(s string) string {
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return ansiRegex.ReplaceAllString(s, "")
 }
 
 // handleClientCommand processes client-side commands starting with /
