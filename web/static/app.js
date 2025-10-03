@@ -149,8 +149,11 @@ function connectToServer() {
     const urlParams = new URLSearchParams(window.location.search);
     const sessionId = urlParams.get('id') || '';
     
-    // Connect to local WebSocket server with session ID
-    const wsUrl = `ws://${window.location.hostname}:${window.location.port || 8080}/ws?id=${sessionId}`;
+    // Use wss:// for HTTPS pages, ws:// for HTTP pages
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    
+    // Use the current host (includes port if non-standard) for reverse proxy compatibility
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws?id=${sessionId}`;
     
     ws = new WebSocket(wsUrl);
 
