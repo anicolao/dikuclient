@@ -78,6 +78,7 @@ func LoadFromPath(mapPath string) (*Map, error) {
 	m.mapPath = mapPath
 
 	// Migrate: populate RoomNumbering if it's empty (for existing map files)
+	migrated := false
 	if len(m.RoomNumbering) == 0 && len(m.Rooms) > 0 {
 		// Add all existing rooms to numbering in a deterministic order
 		roomIDs := make([]string, 0, len(m.Rooms))
@@ -87,6 +88,15 @@ func LoadFromPath(mapPath string) (*Map, error) {
 		// Sort by room ID for consistency
 		sort.Strings(roomIDs)
 		m.RoomNumbering = roomIDs
+		migrated = true
+	}
+
+	// Save the map if we migrated to persist the room numbering
+	if migrated {
+		if err := m.Save(); err != nil {
+			// Log error but don't fail - migration still worked in memory
+			fmt.Fprintf(os.Stderr, "Warning: failed to save migrated map: %v\n", err)
+		}
 	}
 
 	return &m, nil

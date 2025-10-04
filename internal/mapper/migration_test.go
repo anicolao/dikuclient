@@ -65,4 +65,17 @@ t.Error("Room3 not found in RoomNumbering")
 }
 
 t.Logf("RoomNumbering after migration: %v", loadedMap.RoomNumbering)
+
+// Verify the migration was saved to disk
+// Load the map again to ensure RoomNumbering persists
+loadedMap2, err := LoadFromPath(mapPath)
+if err != nil {
+t.Fatalf("Failed to reload map: %v", err)
+}
+
+if len(loadedMap2.RoomNumbering) != 3 {
+t.Errorf("After reload, expected RoomNumbering to have 3 entries, got %d", len(loadedMap2.RoomNumbering))
+}
+
+t.Logf("RoomNumbering after reload: %v", loadedMap2.RoomNumbering)
 }
