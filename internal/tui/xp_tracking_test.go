@@ -67,7 +67,7 @@ func TestDetectKillCommand(t *testing.T) {
 	}
 }
 
-// TestDetectXPEvents verifies that death cries and XP gains are correctly detected
+// TestDetectXPEvents verifies that death messages and XP gains are correctly detected
 func TestDetectXPEvents(t *testing.T) {
 	m := NewModel("test", 4000, nil, nil)
 	
@@ -75,16 +75,16 @@ func TestDetectXPEvents(t *testing.T) {
 	m.pendingKill = "goblin"
 	m.killTime = time.Now().Add(-5 * time.Second) // 5 seconds ago
 	
-	// Simulate a death cry
-	m.detectXPEvents("The goblin cries a sad death cry")
+	// Simulate a death message
+	m.detectXPEvents("The goblin is dead! R.I.P.")
 	
 	// pendingKill should still be set, waiting for XP
 	if m.pendingKill == "" {
-		t.Errorf("Expected pendingKill to still be set after death cry")
+		t.Errorf("Expected pendingKill to still be set after death message")
 	}
 	
 	// Simulate XP gain
-	m.detectXPEvents("You gain 100XP")
+	m.detectXPEvents("You receive 100 experience.")
 	
 	// Now pendingKill should be cleared
 	if m.pendingKill != "" {
@@ -117,14 +117,14 @@ func TestXPTrackingMultipleCreatures(t *testing.T) {
 	// First creature
 	m.pendingKill = "orc"
 	m.killTime = time.Now().Add(-10 * time.Second)
-	m.detectXPEvents("The orc cries a sad death cry")
-	m.detectXPEvents("You gain 50XP")
+	m.detectXPEvents("The orc is dead! R.I.P.")
+	m.detectXPEvents("You receive 50 experience.")
 	
 	// Second creature
 	m.pendingKill = "goblin"
 	m.killTime = time.Now().Add(-5 * time.Second)
-	m.detectXPEvents("The goblin cries a sad death cry")
-	m.detectXPEvents("You gain 100XP")
+	m.detectXPEvents("The goblin is dead! R.I.P.")
+	m.detectXPEvents("You receive 100 experience.")
 	
 	// Check that both are tracked
 	if len(m.xpTracking) != 2 {
@@ -184,7 +184,44 @@ func TestXPPanelRendering(t *testing.T) {
 	}
 }
 
-// TestDeathCryWithANSICodes verifies that death cries with ANSI codes are detected
+// TestSlimyEarthwormExample verifies the exact example from the user
+func TestSlimyEarthwormExample(t *testing.T) {
+	m := NewModel("test", 4000, nil, nil)
+	
+	// Simulate killing a slimy earthworm
+	m.detectKillCommand("kill slimy earthworm")
+	
+	// Set time in the past
+	m.killTime = time.Now().Add(-3 * time.Second)
+	
+	// Simulate the exact death message from the user's example
+	m.detectXPEvents("The slimy earthworm is dead! R.I.P.")
+	
+	// pendingKill should now be "slimy earthworm" (without "The")
+	if m.pendingKill != "slimy earthworm" {
+		t.Errorf("Expected pendingKill to be 'slimy earthworm', got '%s'", m.pendingKill)
+	}
+	
+	// Simulate XP gain from the user's example
+	m.detectXPEvents("You receive 102 experience.")
+	
+	// Now pendingKill should be cleared
+	if m.pendingKill != "" {
+		t.Errorf("Expected pendingKill to be cleared after XP gain, got '%s'", m.pendingKill)
+	}
+	
+	// Check that XP stat was recorded
+	stat, exists := m.xpTracking["slimy earthworm"]
+	if !exists {
+		t.Errorf("Expected XP stat for 'slimy earthworm', but it doesn't exist")
+	}
+	
+	if stat.XP != 102 {
+		t.Errorf("Expected XP to be 102, got %d", stat.XP)
+	}
+}
+
+// TestDeathCryWithANSICodes verifies that death messages with ANSI codes are detected
 func TestDeathCryWithANSICodes(t *testing.T) {
 	m := NewModel("test", 4000, nil, nil)
 	
@@ -192,16 +229,16 @@ func TestDeathCryWithANSICodes(t *testing.T) {
 	m.pendingKill = "rat"
 	m.killTime = time.Now().Add(-3 * time.Second)
 	
-	// Simulate a death cry with ANSI codes
-	m.detectXPEvents("\x1b[31mThe rat cries a sad death cry\x1b[0m")
+	// Simulate a death message with ANSI codes
+	m.detectXPEvents("\x1b[31mThe rat is dead! R.I.P.\x1b[0m")
 	
 	// pendingKill should still be set, waiting for XP
 	if m.pendingKill == "" {
-		t.Errorf("Expected pendingKill to still be set after death cry with ANSI codes")
+		t.Errorf("Expected pendingKill to still be set after death message with ANSI codes")
 	}
 	
 	// Simulate XP gain with ANSI codes
-	m.detectXPEvents("\x1b[32mYou gain 25XP\x1b[0m")
+	m.detectXPEvents("\x1b[32mYou receive 25 experience.\x1b[0m")
 	
 	// Now pendingKill should be cleared
 	if m.pendingKill != "" {
@@ -239,9 +276,9 @@ func TestXPTrackingFullWorkflow(t *testing.T) {
 		// Simulate time passing
 		m.killTime = time.Now().Add(-c.delay)
 		
-		// Simulate death cry and XP gain
-		m.detectXPEvents("The " + c.name + " cries a sad death cry")
-		m.detectXPEvents(fmt.Sprintf("You gain %dXP", c.xp))
+		// Simulate death message and XP gain
+		m.detectXPEvents("The " + c.name + " is dead! R.I.P.")
+		m.detectXPEvents(fmt.Sprintf("You receive %d experience.", c.xp))
 	}
 	
 	// Verify all creatures are tracked

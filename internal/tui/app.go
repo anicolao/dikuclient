@@ -871,11 +871,11 @@ func stripANSI(s string) string {
 // killRegex matches kill commands in format: kill <target>
 var killRegex = regexp.MustCompile(`^kill\s+(.+)$`)
 
-// deathCryRegex matches death cry messages in format: <target>.*death cry
-var deathCryRegex = regexp.MustCompile(`^(.+?)\s+.*death cry`)
+// deathMessageRegex matches death messages in format: The <target> is dead!
+var deathMessageRegex = regexp.MustCompile(`^(The|A|An)\s+(.+?)\s+is dead!`)
 
-// xpGainRegex matches XP gain messages in format: You gain [0-9]+XP
-var xpGainRegex = regexp.MustCompile(`You gain (\d+)XP`)
+// xpGainRegex matches XP gain messages in format: You receive [0-9]+ experience.
+var xpGainRegex = regexp.MustCompile(`^You receive (\d+) experience\.`)
 
 // detectKillCommand detects when the player issues a kill command
 func (m *Model) detectKillCommand(command string) {
@@ -887,15 +887,16 @@ func (m *Model) detectKillCommand(command string) {
 	}
 }
 
-// detectXPEvents detects death cries and XP gains to calculate XP/s
+// detectXPEvents detects death messages and XP gains to calculate XP/s
 func (m *Model) detectXPEvents(line string) {
 	cleanLine := stripANSI(line)
 	
-	// Check for death cry
+	// Check for death message
 	if m.pendingKill != "" {
-		matches := deathCryRegex.FindStringSubmatch(cleanLine)
-		if matches != nil && len(matches) == 2 {
-			creatureName := strings.ToLower(strings.TrimSpace(matches[1]))
+		matches := deathMessageRegex.FindStringSubmatch(cleanLine)
+		if matches != nil && len(matches) == 3 {
+			// matches[1] is the article (The/A/An), matches[2] is the creature name
+			creatureName := strings.ToLower(strings.TrimSpace(matches[2]))
 			// Check if this matches our pending kill
 			if strings.Contains(creatureName, m.pendingKill) {
 				// Store the death time, but don't finalize yet - wait for XP gain
