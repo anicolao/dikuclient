@@ -22,9 +22,11 @@ func NewServer(port int) *Server {
 
 // NewServerWithLogging creates a new web server with logging option
 func NewServerWithLogging(port int, enableLogs bool) *Server {
+	handler := NewWebSocketHandlerWithLogging(enableLogs)
+	handler.SetPort(port)
 	return &Server{
 		port:    port,
-		handler: NewWebSocketHandlerWithLogging(enableLogs),
+		handler: handler,
 	}
 }
 

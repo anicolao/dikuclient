@@ -32,6 +32,7 @@ type WebSocketHandler struct {
 	enableLogs    bool   // Whether to enable logging for spawned TUI instances
 	currentSessID string // Current session ID to use for new connections
 	sessionIDMu   sync.RWMutex
+	port          int    // Server port for generating share URLs
 }
 
 // Session represents a WebSocket session with a PTY running the TUI
@@ -86,6 +87,11 @@ func (h *WebSocketHandler) GetSessionID() string {
 	h.sessionIDMu.RLock()
 	defer h.sessionIDMu.RUnlock()
 	return h.currentSessID
+}
+
+// SetPort sets the server port for generating share URLs
+func (h *WebSocketHandler) SetPort(port int) {
+	h.port = port
 }
 
 // HandleWebSocket handles WebSocket connections
@@ -225,9 +231,14 @@ func (h *WebSocketHandler) autoStartTUIWithSize(session *Session, initialSize *R
 	// Set working directory to session directory
 	cmd.Dir = absSessionDir
 
-	// Set environment variable to use session-specific config directory
+	// Set environment variables for session sharing and config
 	configDir := filepath.Join(absSessionDir, ".config", "dikuclient")
-	cmd.Env = append(os.Environ(), fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir))
+	serverURL := fmt.Sprintf("http://localhost:%d", h.port)
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir),
+		fmt.Sprintf("DIKUCLIENT_WEB_SESSION_ID=%s", session.sessionID),
+		fmt.Sprintf("DIKUCLIENT_WEB_SERVER_URL=%s", serverURL),
+	)
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
@@ -307,9 +318,14 @@ func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 	// Set working directory to session directory
 	cmd.Dir = absSessionDir
 
-	// Set environment variable to use session-specific config directory
+	// Set environment variables for session sharing and config
 	configDir := filepath.Join(absSessionDir, ".config", "dikuclient")
-	cmd.Env = append(os.Environ(), fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir))
+	serverURL := fmt.Sprintf("http://localhost:%d", h.port)
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir),
+		fmt.Sprintf("DIKUCLIENT_WEB_SESSION_ID=%s", session.sessionID),
+		fmt.Sprintf("DIKUCLIENT_WEB_SERVER_URL=%s", serverURL),
+	)
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
