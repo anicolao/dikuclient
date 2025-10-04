@@ -91,6 +91,50 @@ var (
 			Italic(true)
 )
 
+// Helper function to create a box with a title in the border
+func boxWithTitle(title, content string, width, height int) string {
+	// Create the content area
+	contentStyle := lipgloss.NewStyle().
+		Width(width - 4).  // Account for border and padding
+		Height(height - 2) // Account for top and bottom borders
+	
+	styledContent := contentStyle.Render(content)
+	
+	// Create the border style
+	borderStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62")).
+		Width(width - 2).
+		Height(height - 2).
+		Padding(0, 1)
+	
+	box := borderStyle.Render(styledContent)
+	
+	// Manually insert title into the top border
+	lines := strings.Split(box, "\n")
+	if len(lines) > 0 && title != "" {
+		topLine := lines[0]
+		// Calculate position for title (after the left corner)
+		titleStr := " " + title + " "
+		if len(topLine) > len(titleStr)+2 {
+			// Build new top line with title
+			runes := []rune(topLine)
+			titleRunes := []rune(titleStr)
+			
+			// Replace characters in the middle of the top border with title
+			startPos := 2 // After left corner
+			for i, r := range titleRunes {
+				if startPos+i < len(runes)-1 {
+					runes[startPos+i] = r
+				}
+			}
+			lines[0] = string(runes)
+		}
+	}
+	
+	return strings.Join(lines, "\n")
+}
+
 type mudMsg string
 type errMsg error
 type echoStateMsg bool // true if echo suppressed (password mode)
@@ -605,12 +649,27 @@ func (m *Model) renderMainContent() string {
 	mainWidth := m.width - sidebarWidth - 6
 	contentHeight := m.height - headerHeight - 2
 
-	// Game output viewport (already has dark background style applied)
-	// Wrap in border
-	gameOutput := mainStyle.
-		Width(mainWidth).
-		Height(contentHeight).
-		Render(m.viewport.View())
+	// Determine title for main window (current room and exits)
+	mainTitle := "Game Output"
+	if m.worldMap != nil {
+		currentRoom := m.worldMap.GetCurrentRoom()
+		if currentRoom != nil {
+			// Build exits string
+			exitList := make([]string, 0, len(currentRoom.Exits))
+			for dir := range currentRoom.Exits {
+				exitList = append(exitList, dir)
+			}
+			sort.Strings(exitList)
+			exitsStr := strings.Join(exitList, ", ")
+			if exitsStr == "" {
+				exitsStr = "none"
+			}
+			mainTitle = currentRoom.Title + " [" + exitsStr + "]"
+		}
+	}
+
+	// Game output viewport with title in border
+	gameOutput := boxWithTitle(mainTitle, m.viewport.View(), mainWidth, contentHeight)
 
 	// Sidebar with empty panels
 	sidebar := m.renderSidebar(sidebarWidth, contentHeight)
@@ -625,38 +684,24 @@ func (m *Model) renderMainContent() string {
 func (m *Model) renderSidebar(width, height int) string {
 	panelHeight := (height - 8) / 4
 
-	// Tells panel with scrollable viewport
-	var tellsHeader string
+	// Tells panel
+	var tellsTitle string
 	var tellsContent string
 	if len(m.tells) > 0 {
-		tellsHeader = lipgloss.NewStyle().Bold(true).Render("Tells")
+		tellsTitle = "Tells"
 		tellsContent = strings.Join(m.tells, "\n")
 	} else {
-		tellsHeader = lipgloss.NewStyle().Bold(true).Render("Tells")
+		tellsTitle = "Tells"
 		tellsContent = emptyPanelStyle.Render("(no tells yet)")
 	}
-
-	// Update viewport content
 	m.tellsViewport.SetContent(tellsContent)
+	tellsPanel := boxWithTitle(tellsTitle, m.tellsViewport.View(), width, panelHeight)
 
-	// Render tells panel with header and scrollable content
-	tellsPanel := sidebarStyle.
-		Width(width - 2).
-		Height(panelHeight).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				tellsHeader,
-				"",
-				m.tellsViewport.View(),
-			),
-		)
-
-	// XP/s panel with scrollable viewport - shows persistent averaged stats
-	var xpHeader string
+	// XP/s panel - shows persistent averaged stats
+	var xpTitle string
 	var xpContent string
 	if m.xpStatsManager != nil && len(m.xpStatsManager.GetAllStats()) > 0 {
-		xpHeader = lipgloss.NewStyle().Bold(true).Render("XP/s (avg)")
+		xpTitle = "XP/s (avg)"
 		
 		// Convert map to slice and sort by XP/s (best to worst)
 		allStats := m.xpStatsManager.GetAllStats()
@@ -676,100 +721,129 @@ func (m *Model) renderSidebar(width, height int) string {
 		}
 		xpContent = strings.Join(lines, "\n")
 	} else {
-		xpHeader = lipgloss.NewStyle().Bold(true).Render("XP/s (avg)")
+		xpTitle = "XP/s (avg)"
 		xpContent = emptyPanelStyle.Render("(no kills yet)")
 	}
-
-	// Update viewport content
 	m.xpViewport.SetContent(xpContent)
+	xpPanel := boxWithTitle(xpTitle, m.xpViewport.View(), width, panelHeight)
 
-	// Render XP panel with header and scrollable content
-	xpPanel := sidebarStyle.
-		Width(width - 2).
-		Height(panelHeight).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				xpHeader,
-				"",
-				m.xpViewport.View(),
-			),
-		)
-
-	// Inventory panel with scrollable viewport
-	var inventoryHeader string
+	// Inventory panel
+	var inventoryTitle string
 	var inventoryContent string
 	if len(m.inventory) > 0 {
-		// Build header with timestamp
+		// Include timestamp in title
 		timeStr := m.inventoryTime.Format("15:04:05")
-		inventoryHeader = lipgloss.JoinVertical(
-			lipgloss.Left,
-			lipgloss.NewStyle().Bold(true).Render("Inventory"),
-			lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("("+timeStr+")"),
-		)
-
-		// Add all items without truncation - viewport will handle scrolling
+		inventoryTitle = "Inventory (" + timeStr + ")"
 		inventoryContent = strings.Join(m.inventory, "\n")
 	} else {
-		inventoryHeader = lipgloss.NewStyle().Bold(true).Render("Inventory")
+		inventoryTitle = "Inventory"
 		inventoryContent = emptyPanelStyle.Render("(not populated)")
 	}
-
-	// Update viewport content
 	m.inventoryViewport.SetContent(inventoryContent)
-
-	// Render inventory panel with header and scrollable content
-	inventoryPanel := sidebarStyle.
-		Width(width - 2).
-		Height(panelHeight).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				inventoryHeader,
-				"",
-				m.inventoryViewport.View(),
-			),
-		)
+	inventoryPanel := boxWithTitle(inventoryTitle, m.inventoryViewport.View(), width, panelHeight)
 
 	// Map panel
-	var mapHeader string
+	var mapTitle string
 	var mapContent string
 	
 	if m.worldMap == nil {
-		mapHeader = lipgloss.NewStyle().Bold(true).Render("Map")
+		mapTitle = "Map"
 		mapContent = emptyPanelStyle.Render("(not implemented)")
 	} else {
 		currentRoom := m.worldMap.GetCurrentRoom()
 		if currentRoom == nil {
-			mapHeader = lipgloss.NewStyle().Bold(true).Render("Map")
+			mapTitle = "Map"
 			mapContent = emptyPanelStyle.Render("(exploring...)")
 		} else {
-			mapHeader = lipgloss.NewStyle().Bold(true).Render(currentRoom.Title)
-			// Calculate available height for map content (subtract header and spacing)
+			mapTitle = currentRoom.Title
+			// Calculate available height for map content
 			mapHeight := panelHeight - 2
 			mapContent = m.worldMap.FormatMapPanelWithLegend(width-4, mapHeight, m.mapLegend)
 		}
 	}
-	
-	mapPanel := sidebarStyle.
-		Width(width - 2).
-		Height(panelHeight).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				mapHeader,
-				"",
-				mapContent,
-			),
-		)
+	mapPanel := boxWithTitle(mapTitle, mapContent, width, panelHeight)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		tellsPanel,
-		xpPanel,
-		inventoryPanel,
-		mapPanel,
-	)
+	// Merge borders by converting border corners to T-junctions
+	// This shares borders between panels while keeping all titles visible
+	tellsPanelLines := strings.Split(tellsPanel, "\n")
+	xpPanelLines := strings.Split(xpPanel, "\n")
+	inventoryPanelLines := strings.Split(inventoryPanel, "\n")
+	mapPanelLines := strings.Split(mapPanel, "\n")
+	
+	var result []string
+	
+	// Add tells panel, but replace bottom border corners with T-junctions
+	if len(tellsPanelLines) > 1 {
+		result = append(result, tellsPanelLines[:len(tellsPanelLines)-1]...)
+		lastLine := tellsPanelLines[len(tellsPanelLines)-1]
+		runes := []rune(lastLine)
+		if len(runes) > 2 {
+			runes[0] = '├'
+			runes[len(runes)-1] = '┤'
+			result = append(result, string(runes))
+		}
+	}
+	
+	// Add XP panel: convert top border corners to T-junctions (connecting to shared border above)
+	// and convert bottom border corners to T-junctions (for next panel)
+	if len(xpPanelLines) > 1 {
+		// Process first line (title line in top border) - change corners to T-junctions
+		firstLine := xpPanelLines[0]
+		runes := []rune(firstLine)
+		if len(runes) > 2 {
+			runes[0] = '├'
+			runes[len(runes)-1] = '┤'
+			result = append(result, string(runes))
+		}
+		// Add middle content lines
+		if len(xpPanelLines) > 2 {
+			result = append(result, xpPanelLines[1:len(xpPanelLines)-1]...)
+		}
+		// Process last line (bottom border) - change corners to T-junctions
+		lastLine := xpPanelLines[len(xpPanelLines)-1]
+		runes = []rune(lastLine)
+		if len(runes) > 2 {
+			runes[0] = '├'
+			runes[len(runes)-1] = '┤'
+			result = append(result, string(runes))
+		}
+	}
+	
+	// Add inventory panel (same as XP panel)
+	if len(inventoryPanelLines) > 1 {
+		firstLine := inventoryPanelLines[0]
+		runes := []rune(firstLine)
+		if len(runes) > 2 {
+			runes[0] = '├'
+			runes[len(runes)-1] = '┤'
+			result = append(result, string(runes))
+		}
+		if len(inventoryPanelLines) > 2 {
+			result = append(result, inventoryPanelLines[1:len(inventoryPanelLines)-1]...)
+		}
+		lastLine := inventoryPanelLines[len(inventoryPanelLines)-1]
+		runes = []rune(lastLine)
+		if len(runes) > 2 {
+			runes[0] = '├'
+			runes[len(runes)-1] = '┤'
+			result = append(result, string(runes))
+		}
+	}
+	
+	// Add map panel: convert top border corners to T-junctions, keep bottom border as-is
+	if len(mapPanelLines) > 1 {
+		firstLine := mapPanelLines[0]
+		runes := []rune(firstLine)
+		if len(runes) > 2 {
+			runes[0] = '├'
+			runes[len(runes)-1] = '┤'
+			result = append(result, string(runes))
+		}
+		// Add rest of panel including bottom border with normal corners
+		result = append(result, mapPanelLines[1:]...)
+	}
+	
+	return strings.Join(result, "\n")
 }
 
 func max(a, b int) int {

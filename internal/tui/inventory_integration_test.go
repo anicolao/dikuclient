@@ -92,8 +92,10 @@ func TestInventoryRenderingWithItems(t *testing.T) {
 		sidebarWidth:  30,
 	}
 
-	// Initialize inventory viewport
+	// Initialize all viewports
 	m.inventoryViewport = viewport.New(m.sidebarWidth-4, 10)
+	m.tellsViewport = viewport.New(m.sidebarWidth-4, 10)
+	m.xpViewport = viewport.New(m.sidebarWidth-4, 10)
 
 	// Render the sidebar
 	result := m.renderSidebar(m.sidebarWidth, m.height-10)
@@ -126,8 +128,10 @@ func TestInventoryRenderingWithoutItems(t *testing.T) {
 		sidebarWidth: 30,
 	}
 
-	// Initialize inventory viewport
+	// Initialize all viewports
 	m.inventoryViewport = viewport.New(m.sidebarWidth-4, 10)
+	m.tellsViewport = viewport.New(m.sidebarWidth-4, 10)
+	m.xpViewport = viewport.New(m.sidebarWidth-4, 10)
 
 	// Render the sidebar
 	result := m.renderSidebar(m.sidebarWidth, m.height-10)
