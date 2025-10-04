@@ -640,13 +640,13 @@ func (m *Model) renderMainContent() string {
 		}
 	}
 
-	// Game output viewport with custom border
+	// Game output viewport with custom border (no right border to weld with sidebar)
 	mainBorderStyle := lipgloss.NewStyle().
 		BorderStyle(customBorder).
 		BorderForeground(lipgloss.Color("62")).
 		BorderTop(true).
 		BorderLeft(true).
-		BorderRight(true).
+		BorderRight(false).
 		BorderBottom(true)
 
 	gameOutput := mainBorderStyle.
@@ -665,8 +665,8 @@ func (m *Model) renderMainContent() string {
 }
 
 // Helper function to create a custom border with title embedded in top border
-// useJunctionCorners: if true, use ├ and ┤ for top corners (for middle panels in stack)
-func createBorderWithTitle(title string, panelWidth int, useJunctionCorners bool) lipgloss.Border {
+// position: "top" for top panel (Tells), "middle" for middle panels, "bottom" for bottom panel (Map)
+func createBorderWithTitle(title string, panelWidth int, position string) lipgloss.Border {
 	border := lipgloss.RoundedBorder()
 	if title != "" {
 		titleWithSpaces := "── " + title + " "
@@ -679,10 +679,20 @@ func createBorderWithTitle(title string, panelWidth int, useJunctionCorners bool
 		}
 	}
 	
-	// Use T-junction corners for middle panels to join with adjacent panels
-	if useJunctionCorners {
+	// Set appropriate corners based on position in stack
+	switch position {
+	case "top":
+		// Top panel: use ┬ for top-right to weld with main panel
+		border.TopRight = "┬"
+	case "middle":
+		// Middle panels: use ├ and ┤ for vertical welding
 		border.TopLeft = "├"
 		border.TopRight = "┤"
+	case "bottom":
+		// Bottom panel: use ├ for top corners and ┴ for bottom-left to weld with main panel
+		border.TopLeft = "├"
+		border.TopRight = "┤"
+		border.BottomLeft = "┴"
 	}
 	
 	return border
@@ -700,7 +710,7 @@ func (m *Model) renderSidebar(width, height int) string {
 	}
 	m.tellsViewport.SetContent(tellsContent)
 
-	tellsBorder := createBorderWithTitle("Tells", width, false) // Top panel uses default rounded corners
+	tellsBorder := createBorderWithTitle("Tells", width, "top") // Top panel uses ┬ for top-right corner
 	tellsStyle := lipgloss.NewStyle().
 		BorderStyle(tellsBorder).
 		BorderForeground(lipgloss.Color("62")).
@@ -740,7 +750,7 @@ func (m *Model) renderSidebar(width, height int) string {
 	}
 	m.xpViewport.SetContent(xpContent)
 
-	xpBorder := createBorderWithTitle("XP/s (avg)", width, true) // Middle panel uses T-junction corners
+	xpBorder := createBorderWithTitle("XP/s (avg)", width, "middle") // Middle panel uses T-junction corners
 	xpStyle := lipgloss.NewStyle().
 		BorderStyle(xpBorder).
 		BorderForeground(lipgloss.Color("62")).
@@ -767,7 +777,7 @@ func (m *Model) renderSidebar(width, height int) string {
 	}
 	m.inventoryViewport.SetContent(inventoryContent)
 
-	inventoryBorder := createBorderWithTitle(inventoryTitle, width, true) // Middle panel uses T-junction corners
+	inventoryBorder := createBorderWithTitle(inventoryTitle, width, "middle") // Middle panel uses T-junction corners
 	inventoryStyle := lipgloss.NewStyle().
 		BorderStyle(inventoryBorder).
 		BorderForeground(lipgloss.Color("62")).
@@ -800,7 +810,7 @@ func (m *Model) renderSidebar(width, height int) string {
 		}
 	}
 
-	mapBorder := createBorderWithTitle(mapTitle, width, true) // Middle panel uses T-junction corners
+	mapBorder := createBorderWithTitle(mapTitle, width, "bottom") // Bottom panel uses ┴ for bottom-left corner
 	mapStyle := lipgloss.NewStyle().
 		BorderStyle(mapBorder).
 		BorderForeground(lipgloss.Color("62")).
