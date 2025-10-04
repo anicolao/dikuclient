@@ -239,6 +239,32 @@ Current room: Inner Sanctum
 Exits: south
 ```
 
+#### `/share`
+
+**Web Mode Only**: Generates a shareable URL that allows others to connect to the same session.
+
+**Usage:**
+```
+/share
+```
+
+**Example:**
+```
+> /share
+=== Share This Session ===
+http://localhost:8080/?id=78ea2edc-fe2e-4f4c-9d2b-c48cc3a96a92
+
+Anyone who opens this URL will see and control the same session
+```
+
+When running the client in web mode (with `--web` flag), the `/share` command displays a URL that can be shared with others. Multiple browsers can connect to the same session ID and will all see and control the same underlying TUI client. This is useful for:
+- Collaborative exploration and gameplay
+- Getting help from experienced players
+- Teaching and demonstrating features
+- Sharing interesting moments with friends
+
+**Note**: This command only works when the client is running in web mode. In terminal mode, it will display an error message.
+
 #### `/help`
 
 Shows a list of available client commands.
