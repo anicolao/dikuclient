@@ -14,6 +14,7 @@ type Map struct {
 	CurrentRoomID  string           `json:"current_room_id"`  // ID of current room
 	PreviousRoomID string           `json:"previous_room_id"` // ID of previous room (for linking)
 	LastDirection  string           `json:"last_direction"`   // Last movement direction
+	RoomNumbering  []string         `json:"room_numbering"`   // Ordered list of room IDs for durable numbering
 	mapPath        string           // Path to the map file (not serialized)
 }
 
@@ -116,6 +117,9 @@ func (m *Map) AddOrUpdateRoom(room *Room) {
 	} else {
 		// New room - add it to the map
 		m.Rooms[room.ID] = room
+		
+		// Add to room numbering if not already present
+		m.addToRoomNumbering(room.ID)
 	}
 
 	// Get the room from the map (whether new or existing)
@@ -399,4 +403,37 @@ func getReverseDirection(direction string) string {
 		return reverse
 	}
 	return ""
+}
+
+// addToRoomNumbering adds a room ID to the numbering list if not already present
+func (m *Map) addToRoomNumbering(roomID string) {
+	// Check if already in the list
+	for _, id := range m.RoomNumbering {
+		if id == roomID {
+			return
+		}
+	}
+	// Add to the end
+	m.RoomNumbering = append(m.RoomNumbering, roomID)
+}
+
+// GetRoomNumber returns the durable room number for a given room ID
+// Returns 0 if the room is not in the numbering
+func (m *Map) GetRoomNumber(roomID string) int {
+	for i, id := range m.RoomNumbering {
+		if id == roomID {
+			return i + 1 // 1-indexed
+		}
+	}
+	return 0
+}
+
+// GetRoomByNumber returns the room for a given durable room number
+// Returns nil if the number is out of range
+func (m *Map) GetRoomByNumber(number int) *Room {
+	if number < 1 || number > len(m.RoomNumbering) {
+		return nil
+	}
+	roomID := m.RoomNumbering[number-1]
+	return m.Rooms[roomID]
 }

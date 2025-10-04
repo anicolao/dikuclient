@@ -136,7 +136,7 @@ Auto-walk cancelled.
 
 #### `/rooms [filter]`
 
-Lists all explored rooms. Optionally filter by search terms to find specific rooms. The room numbers shown can be used with `/go <number>`, `/point <number>`, or `/wayfind <number>`.
+Lists all explored rooms with **durable room numbers**. Each room has a permanent number that never changes, based on the order it was first discovered. These numbers can be used with `/go <number>`, `/point <number>`, or `/wayfind <number>`.
 
 **Usage:**
 ```
@@ -156,15 +156,15 @@ Lists all explored rooms. Optionally filter by search terms to find specific roo
 
 > /rooms temple
 === Rooms matching 'temple' (3) ===
-  1. Inner Sanctum [south]
-  2. Temple Entrance [north, east]
-  3. Temple Square [north, south, east]
+  7. Inner Sanctum [south]
+  12. Temple Entrance [north, east]
+  18. Temple Square [north, south, east]
 
-> /go 2
+> /go 12
 Auto-walking to 'Temple Entrance' (2 steps). Type /go to cancel.
 ```
 
-This is useful for checking which rooms match your search terms before using `/point`, `/wayfind`, or `/go`. You can then select a specific room by number.
+**Important**: Room numbers are durable - once a room has a number, it keeps that number forever. This makes it easy to remember and reference frequently-visited locations. The rooms are ordered by discovery order (the order they were first added to your map).
 
 #### `/nearby`
 
@@ -197,7 +197,7 @@ You can navigate to any numbered room using `/go <number>`. The legend clears au
 
 #### `/legend`
 
-Lists all rooms currently visible on the map display, sorted alphabetically by room title.
+Lists all rooms currently visible on the map display using **durable room numbers**. Unlike `/nearby` which uses temporary distance-based numbers, `/legend` shows the permanent room numbers that never change.
 
 **Usage:**
 ```
@@ -208,18 +208,23 @@ Lists all rooms currently visible on the map display, sorted alphabetically by r
 ```
 > /legend
 === Rooms on Map (15 visible) ===
-  1. Armory [north, south]
-  2. Barracks [west, east]
-  3. City Gates [south, east]
-  4. Dark Alley [north, south]
-  5. East Market [west, north]
-  6. Fountain Plaza [north, south, east]
+  1. Dark Alley [north, south]
+  2. Market Square [north, south, east, west]
+  5. Armory [north, south]
+  8. Barracks [west, east]
+  12. City Gates [south, east]
+  23. East Market [west, north]
+  34. Fountain Plaza [north, south, east]
   ...
 ```
 
-Like `/nearby`, when you run `/legend`, the rooms are numbered and these numbers appear on the visual map display, replacing the usual room symbols. The list is filtered to show only rooms currently visible on the map, making it easy to quickly navigate to any visible location.
+When you run `/legend`, the **durable room numbers** appear on the visual map display, replacing the usual room symbols. These are the same permanent numbers used by `/rooms`. The list is filtered to show only rooms currently visible on the map.
 
 You can navigate to any numbered room using `/go <number>`. The legend clears automatically when you move or execute another command.
+
+**Durable Numbers vs. Nearby Numbers:**
+- `/legend` and `/rooms`: Use permanent numbers (1, 2, 5, 8, 12, 23, 34...)
+- `/nearby`: Uses temporary distance-based numbers (1, 2, 3, 4, 5...)
 
 #### `/map`
 

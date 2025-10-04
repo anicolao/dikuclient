@@ -1118,16 +1118,18 @@ func (m *Model) handleRoomsCommand(args []string) {
 
 	m.output = append(m.output, headerText)
 
-	// Sort rooms by title for consistent display
+	// Sort rooms by durable room number for consistent display
 	sort.Slice(roomsToDisplay, func(i, j int) bool {
-		return roomsToDisplay[i].Title < roomsToDisplay[j].Title
+		numI := m.worldMap.GetRoomNumber(roomsToDisplay[i].ID)
+		numJ := m.worldMap.GetRoomNumber(roomsToDisplay[j].ID)
+		return numI < numJ
 	})
 
 	// Store results for later disambiguation
 	m.lastRoomSearch = roomsToDisplay
 
-	// Display rooms
-	for i, room := range roomsToDisplay {
+	// Display rooms with durable numbers
+	for _, room := range roomsToDisplay {
 		exitList := make([]string, 0, len(room.Exits))
 		for dir := range room.Exits {
 			exitList = append(exitList, dir)
@@ -1139,7 +1141,9 @@ func (m *Model) handleRoomsCommand(args []string) {
 			exitsStr = "none"
 		}
 
-		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", i+1, room.Title, exitsStr))
+		// Use durable room number
+		roomNum := m.worldMap.GetRoomNumber(room.ID)
+		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", roomNum, room.Title, exitsStr))
 	}
 }
 
@@ -1217,7 +1221,7 @@ func (m *Model) handleNearbyCommand() {
 	}
 }
 
-// handleLegendCommand lists all rooms currently on the map
+// handleLegendCommand lists all rooms currently on the map using durable room numbers
 func (m *Model) handleLegendCommand() {
 	allRooms := m.worldMap.GetAllRooms()
 	
@@ -1234,34 +1238,41 @@ func (m *Model) handleLegendCommand() {
 		visibleSet[id] = true
 	}
 
-	// Filter to only visible rooms
-	roomsList := make([]*mapper.Room, 0)
-	for _, room := range allRooms {
-		if visibleSet[room.ID] {
-			roomsList = append(roomsList, room)
+	// Build list of visible rooms with their durable numbers
+	type roomWithNumber struct {
+		room   *mapper.Room
+		number int
+	}
+	var visibleRooms []roomWithNumber
+	
+	// Iterate through room numbering to maintain order
+	for _, roomID := range m.worldMap.RoomNumbering {
+		if visibleSet[roomID] {
+			if room := m.worldMap.Rooms[roomID]; room != nil {
+				number := m.worldMap.GetRoomNumber(roomID)
+				visibleRooms = append(visibleRooms, roomWithNumber{room: room, number: number})
+			}
 		}
 	}
 
-	if len(roomsList) == 0 {
+	if len(visibleRooms) == 0 {
 		m.output = append(m.output, "\x1b[93mNo rooms are currently visible on the map.\x1b[0m")
 		return
 	}
-	
-	// Sort rooms by title for consistent display
-	sort.Slice(roomsList, func(i, j int) bool {
-		return roomsList[i].Title < roomsList[j].Title
-	})
 
-	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== Rooms on Map (%d visible) ===\x1b[0m", len(roomsList)))
+	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== Rooms on Map (%d visible) ===\x1b[0m", len(visibleRooms)))
 	
-	// Build room legend mapping for map display and store rooms for /go
+	// Build room legend mapping for map display using durable numbers
 	m.mapLegend = make(map[string]int)
-	m.mapLegendRooms = make([]*mapper.Room, 0, len(roomsList))
+	m.mapLegendRooms = make([]*mapper.Room, 0)
 	
-	for i, room := range roomsList {
+	// Track mapping from display position to room for /go command
+	displayPosToRoom := make(map[int]*mapper.Room)
+	
+	for i, rn := range visibleRooms {
 		// Get exits for display
-		exitList := make([]string, 0, len(room.Exits))
-		for dir := range room.Exits {
+		exitList := make([]string, 0, len(rn.room.Exits))
+		for dir := range rn.room.Exits {
 			exitList = append(exitList, dir)
 		}
 		sort.Strings(exitList)
@@ -1271,11 +1282,21 @@ func (m *Model) handleLegendCommand() {
 			exitsStr = "none"
 		}
 		
-		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", i+1, room.Title, exitsStr))
+		// Display with durable room number
+		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", rn.number, rn.room.Title, exitsStr))
 		
-		// Add to legend mapping and store room
-		m.mapLegend[room.ID] = i + 1
-		m.mapLegendRooms = append(m.mapLegendRooms, room)
+		// Use durable number for legend mapping
+		m.mapLegend[rn.room.ID] = rn.number
+		
+		// Map display position (1-indexed) to room for /go command
+		displayPosToRoom[i+1] = rn.room
+	}
+	
+	// Store rooms in display order for /go to use
+	for i := 1; i <= len(displayPosToRoom); i++ {
+		if room, ok := displayPosToRoom[i]; ok {
+			m.mapLegendRooms = append(m.mapLegendRooms, room)
+		}
 	}
 }
 
@@ -1303,9 +1324,9 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 		var index int
 		fmt.Sscanf(args[0], "%d", &index)
 
-		// If only a number is provided, check legend first, then lastRoomSearch
+		// If only a number is provided, try different sources
 		if len(args) == 1 {
-			// Try mapLegendRooms first (from /nearby or /legend)
+			// Try mapLegendRooms first (from /nearby - temporary numbers)
 			if len(m.mapLegendRooms) > 0 {
 				if index < 1 || index > len(m.mapLegendRooms) {
 					m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Must be between 1 and %d.\x1b[0m", len(m.mapLegendRooms)))
@@ -1313,15 +1334,29 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 				}
 				rooms = []*mapper.Room{m.mapLegendRooms[index-1]}
 			} else if len(m.lastRoomSearch) > 0 {
-				// Fall back to lastRoomSearch
-				if index < 1 || index > len(m.lastRoomSearch) {
-					m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Must be between 1 and %d.\x1b[0m", len(m.lastRoomSearch)))
+				// Check if this is a durable number from /rooms or /legend
+				// Try to find the room by its durable number in lastRoomSearch
+				found := false
+				for _, room := range m.lastRoomSearch {
+					if m.worldMap.GetRoomNumber(room.ID) == index {
+						rooms = []*mapper.Room{room}
+						found = true
+						break
+					}
+				}
+				if !found {
+					m.output = append(m.output, fmt.Sprintf("\x1b[91mRoom number %d not found in previous search results.\x1b[0m", index))
 					return nil
 				}
-				rooms = []*mapper.Room{m.lastRoomSearch[index-1]}
 			} else {
-				m.output = append(m.output, "\x1b[91mNo previous room search to select from. Use /rooms, /nearby, or /legend to see room listings.\x1b[0m")
-				return nil
+				// Try durable room number lookup as last resort
+				room := m.worldMap.GetRoomByNumber(index)
+				if room != nil {
+					rooms = []*mapper.Room{room}
+				} else {
+					m.output = append(m.output, "\x1b[91mNo previous room search to select from. Use /rooms, /nearby, or /legend to see room listings.\x1b[0m")
+					return nil
+				}
 			}
 		} else {
 			// Number followed by search terms - search first, then select by index
