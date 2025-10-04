@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -210,5 +211,75 @@ func TestDeathCryWithANSICodes(t *testing.T) {
 	// Check that XP stat was recorded
 	if len(m.xpTracking) != 1 {
 		t.Errorf("Expected 1 XP tracking entry, got %d", len(m.xpTracking))
+	}
+}
+
+// TestXPTrackingFullWorkflow verifies the complete workflow from kill to XP display
+func TestXPTrackingFullWorkflow(t *testing.T) {
+	m := NewModel("test", 4000, nil, nil)
+	m.width = 120
+	m.height = 40
+	
+	// Simulate killing multiple creatures
+	creatures := []struct {
+		name  string
+		xp    int
+		delay time.Duration
+	}{
+		{"goblin", 100, 5 * time.Second},
+		{"orc", 50, 10 * time.Second},
+		{"dragon", 500, 20 * time.Second},
+		{"rat", 25, 2 * time.Second},
+	}
+	
+	for _, c := range creatures {
+		// Simulate kill command
+		m.detectKillCommand("kill " + c.name)
+		
+		// Simulate time passing
+		m.killTime = time.Now().Add(-c.delay)
+		
+		// Simulate death cry and XP gain
+		m.detectXPEvents("The " + c.name + " cries a sad death cry")
+		m.detectXPEvents(fmt.Sprintf("You gain %dXP", c.xp))
+	}
+	
+	// Verify all creatures are tracked
+	if len(m.xpTracking) != len(creatures) {
+		t.Errorf("Expected %d XP tracking entries, got %d", len(creatures), len(m.xpTracking))
+	}
+	
+	// Verify dragon has highest XP/s (500 XP in 20 seconds = 25 XP/s)
+	dragonStat := m.xpTracking["dragon"]
+	if dragonStat == nil {
+		t.Fatalf("Expected dragon to be in XP tracking")
+	}
+	
+	// Check that dragon has higher XP/s than all others
+	for name, stat := range m.xpTracking {
+		if name != "dragon" && stat.XPPerSecond > dragonStat.XPPerSecond {
+			t.Errorf("Expected dragon to have highest XP/s, but %s has %f vs dragon's %f",
+				name, stat.XPPerSecond, dragonStat.XPPerSecond)
+		}
+	}
+	
+	// Verify orc has lowest XP/s (50 XP in 10 seconds = 5 XP/s)
+	orcStat := m.xpTracking["orc"]
+	if orcStat == nil {
+		t.Fatalf("Expected orc to be in XP tracking")
+	}
+	
+	// Check that orc has lower XP/s than all others
+	for name, stat := range m.xpTracking {
+		if name != "orc" && stat.XPPerSecond < orcStat.XPPerSecond {
+			t.Errorf("Expected orc to have lowest XP/s, but %s has %f vs orc's %f",
+				name, stat.XPPerSecond, orcStat.XPPerSecond)
+		}
+	}
+	
+	// Render the sidebar to ensure it doesn't crash
+	sidebar := m.renderSidebar(60, 30)
+	if sidebar == "" {
+		t.Errorf("Expected sidebar to be rendered")
 	}
 }
