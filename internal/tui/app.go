@@ -11,6 +11,7 @@ import (
 	"github.com/anicolao/dikuclient/internal/client"
 	"github.com/anicolao/dikuclient/internal/mapper"
 	"github.com/anicolao/dikuclient/internal/triggers"
+	"github.com/anicolao/dikuclient/internal/xpstats"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -55,6 +56,19 @@ type Model struct {
 	autoWalkTarget    string            // Target room title for auto-walk (for recovery)
 	mapLegend         map[string]int    // Room ID to number mapping for map legend display
 	mapLegendRooms    []*mapper.Room    // Rooms in the current legend (for /go command)
+	xpTracking            map[string]*XPStat  // XP/s tracking per creature (current session)
+	pendingKill           string              // Last kill command target
+	killTime              time.Time           // Time when kill command was sent
+	xpViewport            viewport.Model      // Viewport for scrollable XP stats
+	xpStatsManager        *xpstats.Manager    // Persistent XP stats manager
+}
+
+// XPStat represents XP per second statistics for a creature
+type XPStat struct {
+	CreatureName string
+	XP           int
+	Seconds      float64
+	XPPerSecond  float64
 }
 
 var (
@@ -106,8 +120,16 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		triggerManager = triggers.NewManager()
 	}
 
+	// Load or create XP stats manager
+	xpStatsManager, err := xpstats.Load()
+	if err != nil {
+		// If we can't load XP stats, create a new manager
+		xpStatsManager = xpstats.NewManager()
+	}
+
 	inventoryVp := viewport.New(0, 0)
 	tellsVp := viewport.New(0, 0)
+	xpVp := viewport.New(0, 0)
 
 	return Model{
 		viewport:          vp,
@@ -129,6 +151,9 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		triggerManager:    triggerManager,
 		inventoryViewport: inventoryVp,
 		tellsViewport:     tellsVp,
+		xpTracking:        make(map[string]*XPStat),
+		xpViewport:        xpVp,
+		xpStatsManager:    xpStatsManager,
 	}
 }
 
@@ -276,14 +301,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Height = m.height - headerHeight - 2
 		// Don't apply viewport style - let ANSI codes pass through
 
-		// Update inventory viewport size
-		panelHeight := (m.height - headerHeight - 2 - 6) / 3
+		// Update viewport sizes for 4 panels
+		panelHeight := (m.height - headerHeight - 2 - 8) / 4
 		m.inventoryViewport.Width = sidebarWidth - 4 // Account for borders and padding
 		m.inventoryViewport.Height = panelHeight - 4 // Account for header, timestamp, and borders
 
 		// Update tells viewport size
 		m.tellsViewport.Width = sidebarWidth - 4 // Account for borders and padding
 		m.tellsViewport.Height = panelHeight - 4 // Account for header and borders
+
+		// Update XP viewport size
+		m.xpViewport.Width = sidebarWidth - 4 // Account for borders and padding
+		m.xpViewport.Height = panelHeight - 4 // Account for header and borders
 
 		m.updateViewport()
 		return m, nil
@@ -319,6 +348,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Check if this line is a tell message
 			m.detectAndParseTell(line)
+
+			// Check for combat prompt to track XP/s
+			m.detectCombatPrompt(line)
+
+			// Check for XP tracking events (death message and XP gain)
+			m.detectXPEvents(line)
 
 			// Check for recall command (which causes teleportation)
 			// Strip ANSI codes and check if line contains 'recall'
@@ -588,7 +623,7 @@ func (m *Model) renderMainContent() string {
 }
 
 func (m *Model) renderSidebar(width, height int) string {
-	panelHeight := (height - 6) / 3
+	panelHeight := (height - 8) / 4
 
 	// Tells panel with scrollable viewport
 	var tellsHeader string
@@ -614,6 +649,50 @@ func (m *Model) renderSidebar(width, height int) string {
 				tellsHeader,
 				"",
 				m.tellsViewport.View(),
+			),
+		)
+
+	// XP/s panel with scrollable viewport - shows persistent averaged stats
+	var xpHeader string
+	var xpContent string
+	if m.xpStatsManager != nil && len(m.xpStatsManager.GetAllStats()) > 0 {
+		xpHeader = lipgloss.NewStyle().Bold(true).Render("XP/s (avg)")
+		
+		// Convert map to slice and sort by XP/s (best to worst)
+		allStats := m.xpStatsManager.GetAllStats()
+		stats := make([]*xpstats.XPStat, 0, len(allStats))
+		for _, stat := range allStats {
+			stats = append(stats, stat)
+		}
+		sort.Slice(stats, func(i, j int) bool {
+			return stats[i].XPPerSecond > stats[j].XPPerSecond
+		})
+		
+		// Format each entry with sample count
+		lines := make([]string, 0, len(stats))
+		for _, stat := range stats {
+			line := fmt.Sprintf("%s: %.1f (%d)", stat.CreatureName, stat.XPPerSecond, stat.SampleCount)
+			lines = append(lines, line)
+		}
+		xpContent = strings.Join(lines, "\n")
+	} else {
+		xpHeader = lipgloss.NewStyle().Bold(true).Render("XP/s (avg)")
+		xpContent = emptyPanelStyle.Render("(no kills yet)")
+	}
+
+	// Update viewport content
+	m.xpViewport.SetContent(xpContent)
+
+	// Render XP panel with header and scrollable content
+	xpPanel := sidebarStyle.
+		Width(width - 2).
+		Height(panelHeight).
+		Render(
+			lipgloss.JoinVertical(
+				lipgloss.Left,
+				xpHeader,
+				"",
+				m.xpViewport.View(),
 			),
 		)
 
@@ -687,6 +766,7 @@ func (m *Model) renderSidebar(width, height int) string {
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		tellsPanel,
+		xpPanel,
 		inventoryPanel,
 		mapPanel,
 	)
@@ -802,6 +882,88 @@ func (m *Model) detectAndParseTell(line string) {
 func stripANSI(s string) string {
 	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	return ansiRegex.ReplaceAllString(s, "")
+}
+
+// combatPromptRegex matches combat prompts in format: [Hero:Status] [Target:Status]
+// Example: 101H 132V 54710X 49.60% 570C [Osric:V.Bad] [a goblin scout:Good] T:24 Exits:NS>
+var combatPromptRegex = regexp.MustCompile(`\[([^:]+):[^\]]+\]\s*\[([^:]+):[^\]]+\]`)
+
+// deathMessageRegex matches death messages in format: The <target> is dead!
+var deathMessageRegex = regexp.MustCompile(`^(The|A|An)\s+(.+?)\s+is dead!`)
+
+// xpGainRegex matches XP gain messages in format: You receive [0-9]+ experience.
+var xpGainRegex = regexp.MustCompile(`^You receive (\d+) experience\.`)
+
+// detectCombatPrompt detects combat status in the prompt
+func (m *Model) detectCombatPrompt(line string) {
+	cleanLine := stripANSI(line)
+	matches := combatPromptRegex.FindStringSubmatch(cleanLine)
+	if matches != nil && len(matches) == 3 {
+		// matches[1] is the hero name, matches[2] is the target name
+		target := strings.ToLower(strings.TrimSpace(matches[2]))
+		
+		// Only start tracking if we don't have a pending kill or if this is a new target
+		if m.pendingKill == "" || m.pendingKill != target {
+			m.pendingKill = target
+			m.killTime = time.Now()
+		}
+	}
+}
+
+// detectXPEvents detects death messages and XP gains to calculate XP/s
+func (m *Model) detectXPEvents(line string) {
+	cleanLine := stripANSI(line)
+	
+	// Check for death message
+	if m.pendingKill != "" {
+		matches := deathMessageRegex.FindStringSubmatch(cleanLine)
+		if matches != nil && len(matches) == 3 {
+			// matches[1] is the article (The/A/An), matches[2] is the creature name
+			creatureName := strings.ToLower(strings.TrimSpace(matches[2]))
+			// Check if this matches our pending kill
+			if strings.Contains(creatureName, m.pendingKill) {
+				// Store the death time, but don't finalize yet - wait for XP gain
+				m.pendingKill = creatureName
+			}
+		}
+	}
+	
+	// Check for XP gain
+	if m.pendingKill != "" {
+		matches := xpGainRegex.FindStringSubmatch(cleanLine)
+		if matches != nil && len(matches) == 2 {
+			xp := 0
+			fmt.Sscanf(matches[1], "%d", &xp)
+			
+			// Calculate time elapsed
+			deathTime := time.Now()
+			seconds := deathTime.Sub(m.killTime).Seconds()
+			
+			// Calculate XP/s
+			xpPerSecond := 0.0
+			if seconds > 0 {
+				xpPerSecond = float64(xp) / seconds
+			}
+			
+			// Store in current session tracking
+			m.xpTracking[m.pendingKill] = &XPStat{
+				CreatureName: m.pendingKill,
+				XP:           xp,
+				Seconds:      seconds,
+				XPPerSecond:  xpPerSecond,
+			}
+			
+			// Update persistent stats with EMA
+			if m.xpStatsManager != nil {
+				m.xpStatsManager.UpdateStat(m.pendingKill, xpPerSecond)
+				// Save to disk (ignore errors to not disrupt gameplay)
+				_ = m.xpStatsManager.Save()
+			}
+			
+			// Clear pending kill
+			m.pendingKill = ""
+		}
+	}
 }
 
 // handleClientCommand processes client-side commands starting with /
