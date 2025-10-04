@@ -297,6 +297,84 @@ func (m *Map) GetAllRooms() map[string]*Room {
 	return m.Rooms
 }
 
+// NearbyRoom represents a room with its distance from the current location
+type NearbyRoom struct {
+	Room     *Room
+	Distance int
+}
+
+// FindNearbyRooms finds all rooms within maxDistance steps of the current room
+// Returns rooms sorted by distance (closest first)
+func (m *Map) FindNearbyRooms(maxDistance int) []NearbyRoom {
+	if m.CurrentRoomID == "" {
+		return nil
+	}
+
+	// BFS to find all reachable rooms within maxDistance
+	type queueItem struct {
+		roomID   string
+		distance int
+	}
+
+	visited := make(map[string]int) // roomID -> distance
+	queue := []queueItem{{roomID: m.CurrentRoomID, distance: 0}}
+	visited[m.CurrentRoomID] = 0
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		// Skip if we've reached max distance
+		if current.distance >= maxDistance {
+			continue
+		}
+
+		room := m.Rooms[current.roomID]
+		if room == nil {
+			continue
+		}
+
+		// Check all exits
+		for _, destID := range room.Exits {
+			if destID == "" {
+				continue // Unknown destination
+			}
+
+			// Only visit if we haven't seen it or found a shorter path
+			if prevDist, seen := visited[destID]; !seen || current.distance+1 < prevDist {
+				visited[destID] = current.distance + 1
+				queue = append(queue, queueItem{roomID: destID, distance: current.distance + 1})
+			}
+		}
+	}
+
+	// Convert to NearbyRoom slice and sort by distance
+	var nearby []NearbyRoom
+	for roomID, distance := range visited {
+		if roomID == m.CurrentRoomID {
+			continue // Don't include current room
+		}
+		if room := m.Rooms[roomID]; room != nil {
+			nearby = append(nearby, NearbyRoom{
+				Room:     room,
+				Distance: distance,
+			})
+		}
+	}
+
+	// Sort by distance, then by title for consistency
+	for i := 0; i < len(nearby); i++ {
+		for j := i + 1; j < len(nearby); j++ {
+			if nearby[i].Distance > nearby[j].Distance ||
+				(nearby[i].Distance == nearby[j].Distance && nearby[i].Room.Title > nearby[j].Room.Title) {
+				nearby[i], nearby[j] = nearby[j], nearby[i]
+			}
+		}
+	}
+
+	return nearby
+}
+
 // getReverseDirection returns the opposite direction
 func getReverseDirection(direction string) string {
 	reverseMap := map[string]string{

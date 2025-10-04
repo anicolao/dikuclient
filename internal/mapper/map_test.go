@@ -163,3 +163,154 @@ func TestLoadNonExistentMap(t *testing.T) {
 		t.Errorf("New map should have 0 rooms, got %d", len(m.Rooms))
 	}
 }
+
+func TestFindNearbyRooms(t *testing.T) {
+	m := NewMap()
+
+	// Create a linear path of rooms: Room1 -> Room2 -> Room3 -> Room4 -> Room5 -> Room6
+	room1 := NewRoom("Room 1", "First room.", []string{"north"})
+	room2 := NewRoom("Room 2", "Second room.", []string{"south", "north"})
+	room3 := NewRoom("Room 3", "Third room.", []string{"south", "north"})
+	room4 := NewRoom("Room 4", "Fourth room.", []string{"south", "north"})
+	room5 := NewRoom("Room 5", "Fifth room.", []string{"south", "north"})
+	room6 := NewRoom("Room 6", "Sixth room.", []string{"south"})
+
+	m.AddOrUpdateRoom(room1)
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(room2)
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(room3)
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(room4)
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(room5)
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(room6)
+
+	// Now current room is Room6, go back to Room3
+	m.SetLastDirection("south")
+	m.AddOrUpdateRoom(room5)
+	m.SetLastDirection("south")
+	m.AddOrUpdateRoom(room4)
+	m.SetLastDirection("south")
+	m.AddOrUpdateRoom(room3)
+
+	// Test from Room3 - should find Room1, Room2, Room4, Room5 within 5 steps
+	// Room6 is also within 3 steps
+	nearby := m.FindNearbyRooms(5)
+
+	if len(nearby) == 0 {
+		t.Fatal("Expected to find nearby rooms, got none")
+	}
+
+	// Check that rooms are sorted by distance
+	for i := 1; i < len(nearby); i++ {
+		if nearby[i-1].Distance > nearby[i].Distance {
+			t.Errorf("Rooms not sorted by distance: room %d has distance %d, room %d has distance %d",
+				i-1, nearby[i-1].Distance, i, nearby[i].Distance)
+		}
+	}
+
+	// Room2 and Room4 should be at distance 1 (adjacent to Room3)
+	adjacentRooms := 0
+	for _, nr := range nearby {
+		if nr.Distance == 1 {
+			adjacentRooms++
+			if nr.Room.Title != "Room 2" && nr.Room.Title != "Room 4" {
+				t.Errorf("Unexpected adjacent room: %s", nr.Room.Title)
+			}
+		}
+	}
+	if adjacentRooms != 2 {
+		t.Errorf("Expected 2 adjacent rooms (distance 1), got %d", adjacentRooms)
+	}
+
+	// Current room (Room3) should not be in the list
+	for _, nr := range nearby {
+		if nr.Room.ID == room3.ID {
+			t.Error("Current room should not be in nearby rooms list")
+		}
+	}
+}
+
+func TestFindNearbyRoomsNoCurrentRoom(t *testing.T) {
+	m := NewMap()
+
+	// Add a room but don't set it as current
+	room1 := NewRoom("Room 1", "First room.", []string{"north"})
+	m.Rooms[room1.ID] = room1
+
+	nearby := m.FindNearbyRooms(5)
+
+	if nearby != nil {
+		t.Errorf("Expected nil when no current room, got %d rooms", len(nearby))
+	}
+}
+
+func TestFindNearbyRoomsMaxDistance(t *testing.T) {
+	m := NewMap()
+
+	// Create a branching structure
+	//       Room1
+	//       /   \
+	//   Room2   Room3
+	//     |       |
+	//   Room4   Room5
+	//     |
+	//   Room6
+	
+	room1 := NewRoom("Room 1", "First room.", []string{"north", "east"})
+	room2 := NewRoom("Room 2", "Second room.", []string{"south", "north"})
+	room3 := NewRoom("Room 3", "Third room.", []string{"west", "north"})
+	room4 := NewRoom("Room 4", "Fourth room.", []string{"south", "north"})
+	room5 := NewRoom("Room 5", "Fifth room.", []string{"south"})
+	room6 := NewRoom("Room 6", "Sixth room.", []string{"south"})
+
+	m.AddOrUpdateRoom(room1)
+	
+	// Build north branch
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(room2)
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(room4)
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(room6)
+	
+	// Go back to room1
+	m.SetLastDirection("south")
+	m.AddOrUpdateRoom(room4)
+	m.SetLastDirection("south")
+	m.AddOrUpdateRoom(room2)
+	m.SetLastDirection("south")
+	m.AddOrUpdateRoom(room1)
+	
+	// Build east branch
+	m.SetLastDirection("east")
+	m.AddOrUpdateRoom(room3)
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(room5)
+	
+	// Go back to room1
+	m.SetLastDirection("south")
+	m.AddOrUpdateRoom(room3)
+	m.SetLastDirection("west")
+	m.AddOrUpdateRoom(room1)
+
+	// Test with maxDistance = 2 from Room1
+	nearby := m.FindNearbyRooms(2)
+
+	// Should find: Room2 (1 step), Room3 (1 step), Room4 (2 steps), Room5 (2 steps)
+	// Should NOT find: Room6 (3 steps)
+	if len(nearby) != 4 {
+		t.Errorf("Expected 4 rooms within 2 steps, got %d", len(nearby))
+	}
+
+	for _, nr := range nearby {
+		if nr.Room.Title == "Room 6" {
+			t.Error("Room 6 should not be within 2 steps")
+		}
+		if nr.Distance > 2 {
+			t.Errorf("Room %s has distance %d, expected <= 2", nr.Room.Title, nr.Distance)
+		}
+	}
+}

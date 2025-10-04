@@ -831,6 +831,9 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 	case "rooms":
 		m.handleRoomsCommand(args)
 		return nil
+	case "nearby":
+		m.handleNearbyCommand()
+		return nil
 	case "go":
 		return m.handleGoCommand(args)
 	case "trigger":
@@ -1056,6 +1059,7 @@ func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "  \x1b[96m/go <room>\x1b[0m              - Auto-walk to a room (one step per second)")
 	m.output = append(m.output, "  \x1b[96m/map\x1b[0m                    - Show map information")
 	m.output = append(m.output, "  \x1b[96m/rooms [filter]\x1b[0m         - List all known rooms (optionally filtered)")
+	m.output = append(m.output, "  \x1b[96m/nearby\x1b[0m                 - List all rooms within 5 steps")
 	m.output = append(m.output, "  \x1b[96m/trigger \"pat\" \"act\"\x1b[0m - Add a trigger (pattern can use <var>)")
 	m.output = append(m.output, "  \x1b[96m/triggers list\x1b[0m          - List all triggers")
 	m.output = append(m.output, "  \x1b[96m/triggers remove <n>\x1b[0m    - Remove trigger by number")
@@ -1121,6 +1125,51 @@ func (m *Model) handleRoomsCommand(args []string) {
 		}
 
 		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", i+1, room.Title, exitsStr))
+	}
+}
+
+// handleNearbyCommand lists all rooms within 5 steps of current location
+func (m *Model) handleNearbyCommand() {
+	currentRoom := m.worldMap.GetCurrentRoom()
+	if currentRoom == nil {
+		m.output = append(m.output, "\x1b[91mNo current room. You need to be in a mapped location.\x1b[0m")
+		return
+	}
+
+	nearby := m.worldMap.FindNearbyRooms(5)
+	
+	if len(nearby) == 0 {
+		m.output = append(m.output, "\x1b[93mNo nearby rooms found within 5 steps.\x1b[0m")
+		return
+	}
+
+	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== Nearby Rooms (%d within 5 steps) ===\x1b[0m", len(nearby)))
+	
+	currentDistance := -1
+	for i, nr := range nearby {
+		// Show distance header when it changes
+		if nr.Distance != currentDistance {
+			currentDistance = nr.Distance
+			stepLabel := "step"
+			if currentDistance > 1 {
+				stepLabel = "steps"
+			}
+			m.output = append(m.output, fmt.Sprintf("\x1b[93m%d %s away:\x1b[0m", currentDistance, stepLabel))
+		}
+		
+		// Get exits for display
+		exitList := make([]string, 0, len(nr.Room.Exits))
+		for dir := range nr.Room.Exits {
+			exitList = append(exitList, dir)
+		}
+		sort.Strings(exitList)
+		
+		exitsStr := strings.Join(exitList, ", ")
+		if exitsStr == "" {
+			exitsStr = "none"
+		}
+		
+		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", i+1, nr.Room.Title, exitsStr))
 	}
 }
 
