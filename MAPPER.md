@@ -166,6 +166,34 @@ Auto-walking to 'Temple Entrance' (2 steps). Type /go to cancel.
 
 This is useful for checking which rooms match your search terms before using `/point`, `/wayfind`, or `/go`. You can then select a specific room by number.
 
+#### `/nearby`
+
+Lists all rooms within 5 steps of your current location, organized by distance. This helps you understand what's around you and plan your exploration.
+
+**Usage:**
+```
+/nearby
+```
+
+**Example:**
+```
+> /nearby
+=== Nearby Rooms (12 within 5 steps) ===
+1 step away:
+  1. Market Square [north, south, east, west]
+  2. Temple Entrance [north, east]
+  3. Dark Alley [south]
+2 steps away:
+  4. Town Square [north, south, east]
+  5. Guild Hall [west, east]
+3 steps away:
+  6. Fountain Plaza [north, south]
+  7. City Gates [south, west]
+  ...
+```
+
+The rooms are displayed in order by distance (closest first), making it easy to see what's immediately around you versus what's further away. This is particularly useful when deciding where to explore next or when looking for a specific type of location nearby.
+
 #### `/map`
 
 Shows information about the current map state.
