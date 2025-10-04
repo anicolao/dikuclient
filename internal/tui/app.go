@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 )
 
 // Model represents the application state
@@ -746,13 +747,35 @@ func (m *Model) renderSidebar(width, height int) string {
 			return stats[i].XPPerSecond > stats[j].XPPerSecond
 		})
 
-		// Format each entry with sample count
-		lines := make([]string, 0, len(stats))
+		// Create a lipgloss table for XP stats
+		t := table.New().
+			Border(lipgloss.NormalBorder()).
+			BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("240"))).
+			BorderTop(true).
+			BorderBottom(true).
+			BorderLeft(true).
+			BorderRight(true).
+			BorderHeader(true).
+			BorderColumn(true).
+			BorderRow(false).
+			Headers("Creature", "XP/s", "Samples").
+			StyleFunc(func(row, col int) lipgloss.Style {
+				if row == table.HeaderRow {
+					return lipgloss.NewStyle().Bold(true).Padding(0, 1).Align(lipgloss.Center)
+				}
+				// Left align creature names, right align numbers
+				if col == 0 {
+					return lipgloss.NewStyle().Padding(0, 1).Align(lipgloss.Left)
+				}
+				return lipgloss.NewStyle().Padding(0, 1).Align(lipgloss.Right)
+			})
+
+		// Add data rows
 		for _, stat := range stats {
-			line := fmt.Sprintf("%s: %.1f (%d)", stat.CreatureName, stat.XPPerSecond, stat.SampleCount)
-			lines = append(lines, line)
+			t.Row(stat.CreatureName, fmt.Sprintf("%.1f", stat.XPPerSecond), fmt.Sprintf("%d", stat.SampleCount))
 		}
-		xpContent = strings.Join(lines, "\n")
+
+		xpContent = t.String()
 	} else {
 		xpContent = emptyPanelStyle.Render("(no kills yet)")
 	}
