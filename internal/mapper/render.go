@@ -143,7 +143,6 @@ func renderGrid(grid map[Coordinate]*Room, width, height int) string {
 	// Define styles for different room types
 	currentRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("226")) // Yellow/gold
 	visitedRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255")) // White
-	verticalExitStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255")) // White for vertical exits
 
 	// Calculate the grid bounds
 	minX, maxX := 0, 0
@@ -165,17 +164,12 @@ func renderGrid(grid map[Coordinate]*Room, width, height int) string {
 
 	// Calculate how many characters we can fit
 	// Each room is 1 character, with 1 space between rooms
-	// So we need 2 characters per room horizontally
-	// We need 2 rows per room row (one for rooms, one for vertical exits)
 	charsPerRoom := 2 // room + space
 	maxRoomsPerLine := width / charsPerRoom
-	
-	// We need 2 lines per row (room line + vertical exit line)
-	maxRoomRows := height / 2
 
 	// Calculate viewport bounds to center on (0,0)
 	viewHalfWidth := maxRoomsPerLine / 2
-	viewHalfHeight := maxRoomRows / 2
+	viewHalfHeight := height / 2
 
 	viewMinX := -viewHalfWidth
 	viewMaxX := viewHalfWidth
@@ -185,32 +179,7 @@ func renderGrid(grid map[Coordinate]*Room, width, height int) string {
 	// Build the display line by line
 	var lines []string
 	for y := viewMinY; y <= viewMaxY; y++ {
-		// First line: room symbols
-		var roomLine strings.Builder
-		for x := viewMinX; x <= viewMaxX; x++ {
-			coord := Coordinate{X: x, Y: y}
-			room := grid[coord]
-
-			if room != nil {
-				// Check if this is the current room (at 0,0)
-				if x == 0 && y == 0 {
-					roomLine.WriteString(currentRoomStyle.Render("▣")) // Current room - filled square
-				} else {
-					roomLine.WriteString(visitedRoomStyle.Render("▢")) // Visited room - hollow square
-				}
-			} else {
-				roomLine.WriteString(" ") // Empty space
-			}
-
-			// Add space between rooms (except last column)
-			if x < viewMaxX {
-				roomLine.WriteString(" ")
-			}
-		}
-		lines = append(lines, roomLine.String())
-		
-		// Second line: vertical exit indicators (between this row and next)
-		var verticalLine strings.Builder
+		var line strings.Builder
 		for x := viewMinX; x <= viewMaxX; x++ {
 			coord := Coordinate{X: x, Y: y}
 			room := grid[coord]
@@ -227,29 +196,43 @@ func renderGrid(grid map[Coordinate]*Room, width, height int) string {
 						hasDown = true
 					}
 				}
-				
+
+				// Determine the symbol based on vertical exits
+				// If room has vertical exits, they replace the room symbol
 				var symbol string
+				isCurrentRoom := (x == 0 && y == 0)
+				
 				if hasUp && hasDown {
-					symbol = verticalExitStyle.Render("⇅") // Both up and down
+					symbol = "⇅" // Both up and down
 				} else if hasUp {
-					symbol = verticalExitStyle.Render("⇱") // Up only
+					symbol = "⇱" // Up only
 				} else if hasDown {
-					symbol = verticalExitStyle.Render("⇲") // Down only
+					symbol = "⇲" // Down only
 				} else {
-					symbol = " " // No vertical exit
+					// No vertical exits - use regular room symbols
+					if isCurrentRoom {
+						symbol = "▣" // Current room - filled square
+					} else {
+						symbol = "▢" // Visited room - hollow square
+					}
 				}
 				
-				verticalLine.WriteString(symbol)
+				// Apply color - current room is always yellow, others are white
+				if isCurrentRoom {
+					line.WriteString(currentRoomStyle.Render(symbol))
+				} else {
+					line.WriteString(visitedRoomStyle.Render(symbol))
+				}
 			} else {
-				verticalLine.WriteString(" ") // Empty space
+				line.WriteString(" ") // Empty space
 			}
 
-			// Add space between columns (except last column)
+			// Add space between rooms (except last column)
 			if x < viewMaxX {
-				verticalLine.WriteString(" ")
+				line.WriteString(" ")
 			}
 		}
-		lines = append(lines, verticalLine.String())
+		lines = append(lines, line.String())
 	}
 
 	return strings.Join(lines, "\n")

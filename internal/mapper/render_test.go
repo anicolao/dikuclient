@@ -168,14 +168,9 @@ func TestFormatMapPanel(t *testing.T) {
 	t.Logf("Formatted panel:\n%s", panel)
 	t.Logf("Panel length: %d", len(panel))
 
-	// Should contain current room symbol
-	if !strings.Contains(panel, "▣") {
-		t.Error("Expected current room symbol ▣ in panel")
-	}
-
-	// Should contain vertical exit symbol
+	// Current room has both up and down exits, so it should show ⇅ instead of ▣
 	if !strings.Contains(panel, "⇅") {
-		t.Error("Expected vertical exit symbol ⇅ in panel")
+		t.Error("Expected vertical exit symbol ⇅ in panel for current room with both exits")
 	}
 }
 
