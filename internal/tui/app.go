@@ -51,6 +51,8 @@ type Model struct {
 	inventoryViewport viewport.Model    // Viewport for scrollable inventory
 	tells             []string          // Recent tells received
 	tellsViewport     viewport.Model    // Viewport for scrollable tells
+	skipNextRoomDetection bool          // Skip next room detection (e.g., after recall teleport)
+	autoWalkTarget    string            // Target room title for auto-walk (for recovery)
 }
 
 var (
@@ -298,6 +300,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mudLogFile.Sync()
 		}
 
+		var autoWalkCmd tea.Cmd
+
 		// Split into lines and add them individually to preserve formatting
 		lines := strings.Split(msgStr, "\n")
 		for i, line := range lines {
@@ -310,6 +314,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Check if this line is a tell message
 			m.detectAndParseTell(line)
+
+			// Check for recall command (which causes teleportation)
+			// Strip ANSI codes and check if line contains 'recall'
+			cleanLine := stripANSI(line)
+			if strings.Contains(strings.ToLower(cleanLine), "recall") {
+				// Set flag to skip next room detection to avoid creating bad links
+				m.skipNextRoomDetection = true
+				if m.mapDebug {
+					m.output = append(m.output, "\x1b[90m[Mapper: Detected 'recall' - will skip next room detection]\x1b[0m")
+				}
+			}
+
+			// Check for "Alas, you cannot go that way..." during auto-walk
+			if m.autoWalking && (strings.Contains(cleanLine, "Alas, you cannot go that way") || 
+				strings.Contains(cleanLine, "cannot go that way")) {
+				// Cancel current auto-walk and trigger recovery
+				autoWalkCmd = m.handleAutoWalkFailure()
+			}
 
 			// Check if this line matches any triggers
 			if m.triggerManager != nil && m.conn != nil {
@@ -368,6 +390,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.updateViewport()
+		
+		// If we have an auto-walk command (from recovery), execute it along with listening
+		if autoWalkCmd != nil {
+			return m, tea.Batch(m.listenForMessages, autoWalkCmd)
+		}
 		return m, m.listenForMessages
 
 	case echoStateMsg:
@@ -652,6 +679,16 @@ func max(a, b int) int {
 func (m *Model) detectAndUpdateRoom() {
 	// Only detect rooms when we have a pending movement (user just moved)
 	if m.pendingMovement == "" {
+		return
+	}
+
+	// Skip room detection if flag is set (e.g., after recall teleport)
+	if m.skipNextRoomDetection {
+		m.skipNextRoomDetection = false
+		m.pendingMovement = "" // Clear pending movement
+		if m.mapDebug {
+			m.output = append(m.output, "\x1b[90m[Mapper: Skipped room detection due to recall]\x1b[0m")
+		}
 		return
 	}
 
@@ -1166,12 +1203,78 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 	m.autoWalking = true
 	m.autoWalkPath = path
 	m.autoWalkIndex = 0
+	m.autoWalkTarget = targetRoom.Title // Store target for recovery
 	m.output = append(m.output, fmt.Sprintf("\x1b[92mAuto-walking to '%s' (%d steps). Type /go to cancel.\x1b[0m", targetRoom.Title, len(path)))
 
 	// Return a command that starts the first tick after 1 second
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return autoWalkTickMsg{}
 	})
+}
+
+// handleAutoWalkFailure handles a failed movement during auto-walk
+func (m *Model) handleAutoWalkFailure() tea.Cmd {
+	if !m.autoWalking {
+		return nil
+	}
+
+	// Get the last direction we tried to go
+	lastDirection := ""
+	if m.autoWalkIndex > 0 && m.autoWalkIndex <= len(m.autoWalkPath) {
+		lastDirection = m.autoWalkPath[m.autoWalkIndex-1]
+	}
+
+	m.output = append(m.output, "\x1b[91m[Auto-walk: Movement failed - cannot go that way]\x1b[0m")
+
+	// Remove the exit from the current room first, before replanning
+	if lastDirection != "" && m.worldMap.GetCurrentRoom() != nil {
+		currentRoom := m.worldMap.GetCurrentRoom()
+		m.output = append(m.output, fmt.Sprintf("\x1b[93m[Auto-walk: Removing invalid exit '%s' from current room]\x1b[0m", lastDirection))
+		currentRoom.RemoveExit(lastDirection)
+		m.worldMap.Save()
+	}
+
+	// Stop current auto-walk
+	targetTitle := m.autoWalkTarget
+	m.autoWalking = false
+	m.autoWalkPath = nil
+	m.autoWalkIndex = 0
+	m.autoWalkTarget = ""
+
+	// Try to replan the route to the same destination
+	if targetTitle != "" {
+		m.output = append(m.output, fmt.Sprintf("\x1b[93m[Auto-walk: Re-planning route to '%s']\x1b[0m", targetTitle))
+		
+		// Find the target room again
+		rooms := m.worldMap.FindRooms(targetTitle)
+		if len(rooms) == 0 {
+			m.output = append(m.output, fmt.Sprintf("\x1b[91m[Auto-walk: Cannot find target room '%s']\x1b[0m", targetTitle))
+			return nil
+		}
+
+		// Find a new path
+		targetRoom := rooms[0]
+		path := m.worldMap.FindPath(targetRoom.ID)
+
+		if path == nil || len(path) == 0 {
+			m.output = append(m.output, fmt.Sprintf("\x1b[91m[Auto-walk: No valid path found to '%s']\x1b[0m", targetTitle))
+			return nil
+		}
+
+		// Restart auto-walking with the new path
+		m.autoWalking = true
+		m.autoWalkPath = path
+		m.autoWalkIndex = 0
+		m.autoWalkTarget = targetTitle
+		m.output = append(m.output, fmt.Sprintf("\x1b[92m[Auto-walk: Restarting with new route (%d steps)]\x1b[0m", len(path)))
+		
+		// Start the first tick after 1 second
+		return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return autoWalkTickMsg{}
+		})
+	}
+	
+	return nil
 }
 
 // handleTriggerCommand adds a new trigger
