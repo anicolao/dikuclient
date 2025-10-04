@@ -77,7 +77,9 @@ Shows the complete path from your current location to the destination.
 ```
 > /wayfind temple square
 Path to 'Temple Square' (3 steps):
-  south -> west -> south
+  1. south -> Market Square
+  2. west -> Main Street
+  3. south -> Temple Square
 
 > /wayfind temple
 Found 3 rooms matching 'temple':

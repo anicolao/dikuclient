@@ -401,4 +401,10 @@ if !foundStepFormat {
 t.Error("Expected step format: '1. direction -> Room Name'")
 t.Logf("Output: %v", m.output)
 }
+
+// Log the output to show the new format
+t.Log("Wayfind output format:")
+for _, line := range m.output {
+t.Log("  " + line)
+}
 }
