@@ -19,50 +19,50 @@ import (
 
 // Model represents the application state
 type Model struct {
-	conn              *client.Connection
-	viewport          viewport.Model
-	output            []string
-	currentInput      string
-	cursorPos         int
-	width             int
-	height            int
-	connected         bool
-	host              string
-	port              int
-	sidebarWidth      int
-	err               error
-	mudLogFile        *os.File
-	tuiLogFile        *os.File
-	telnetDebugLog    *os.File // Debug log for telnet/UTF-8 processing
-	echoSuppressed    bool     // Server has disabled echo (e.g., for passwords)
-	username          string
-	password          string
-	autoLoginState    int               // 0=idle, 1=sent username, 2=sent password
-	worldMap          *mapper.Map       // World map for navigation
-	recentOutput      []string          // Buffer for recent output to detect rooms
-	pendingMovement   string            // Last movement command sent
-	mapDebug          bool              // Enable mapper debug output
-	autoWalking       bool              // Currently auto-walking with /go
-	autoWalkPath      []string          // Path to auto-walk
-	autoWalkIndex     int               // Current step in auto-walk
-	lastRoomSearch    []*mapper.Room    // Last room search results for disambiguation
-	triggerManager    *triggers.Manager // Trigger manager
-	inventory         []string          // Current inventory items
-	inventoryTime     time.Time         // Time when inventory was last updated
-	inventoryViewport viewport.Model    // Viewport for scrollable inventory
-	tells             []string          // Recent tells received
-	tellsViewport     viewport.Model    // Viewport for scrollable tells
-	skipNextRoomDetection bool          // Skip next room detection (e.g., after recall teleport)
-	autoWalkTarget    string            // Target room title for auto-walk (for recovery)
-	mapLegend         map[string]int    // Room ID to number mapping for map legend display
-	mapLegendRooms    []*mapper.Room    // Rooms in the current legend (for /go command)
-	xpTracking            map[string]*XPStat  // XP/s tracking per creature (current session)
-	pendingKill           string              // Last kill command target
-	killTime              time.Time           // Time when kill command was sent
-	xpViewport            viewport.Model      // Viewport for scrollable XP stats
-	xpStatsManager        *xpstats.Manager    // Persistent XP stats manager
-	webSessionID          string              // Web session ID for sharing (empty if not in web mode)
-	webServerURL          string              // Web server URL for sharing (empty if not in web mode)
+	conn                  *client.Connection
+	viewport              viewport.Model
+	output                []string
+	currentInput          string
+	cursorPos             int
+	width                 int
+	height                int
+	connected             bool
+	host                  string
+	port                  int
+	sidebarWidth          int
+	err                   error
+	mudLogFile            *os.File
+	tuiLogFile            *os.File
+	telnetDebugLog        *os.File // Debug log for telnet/UTF-8 processing
+	echoSuppressed        bool     // Server has disabled echo (e.g., for passwords)
+	username              string
+	password              string
+	autoLoginState        int                // 0=idle, 1=sent username, 2=sent password
+	worldMap              *mapper.Map        // World map for navigation
+	recentOutput          []string           // Buffer for recent output to detect rooms
+	pendingMovement       string             // Last movement command sent
+	mapDebug              bool               // Enable mapper debug output
+	autoWalking           bool               // Currently auto-walking with /go
+	autoWalkPath          []string           // Path to auto-walk
+	autoWalkIndex         int                // Current step in auto-walk
+	lastRoomSearch        []*mapper.Room     // Last room search results for disambiguation
+	triggerManager        *triggers.Manager  // Trigger manager
+	inventory             []string           // Current inventory items
+	inventoryTime         time.Time          // Time when inventory was last updated
+	inventoryViewport     viewport.Model     // Viewport for scrollable inventory
+	tells                 []string           // Recent tells received
+	tellsViewport         viewport.Model     // Viewport for scrollable tells
+	skipNextRoomDetection bool               // Skip next room detection (e.g., after recall teleport)
+	autoWalkTarget        string             // Target room title for auto-walk (for recovery)
+	mapLegend             map[string]int     // Room ID to number mapping for map legend display
+	mapLegendRooms        []*mapper.Room     // Rooms in the current legend (for /go command)
+	xpTracking            map[string]*XPStat // XP/s tracking per creature (current session)
+	pendingKill           string             // Last kill command target
+	killTime              time.Time          // Time when kill command was sent
+	xpViewport            viewport.Model     // Viewport for scrollable XP stats
+	xpStatsManager        *xpstats.Manager   // Persistent XP stats manager
+	webSessionID          string             // Web session ID for sharing (empty if not in web mode)
+	webServerURL          string             // Web server URL for sharing (empty if not in web mode)
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -375,7 +375,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Check for "Alas, you cannot go that way..." during auto-walk
-			if m.autoWalking && (strings.Contains(cleanLine, "Alas, you cannot go that way") || 
+			if m.autoWalking && (strings.Contains(cleanLine, "Alas, you cannot go that way") ||
 				strings.Contains(cleanLine, "cannot go that way")) {
 				// Cancel current auto-walk and trigger recovery
 				autoWalkCmd = m.handleAutoWalkFailure()
@@ -438,7 +438,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.updateViewport()
-		
+
 		// If we have an auto-walk command (from recovery), execute it along with listening
 		if autoWalkCmd != nil {
 			return m, tea.Batch(m.listenForMessages, autoWalkCmd)
@@ -610,17 +610,59 @@ func (m *Model) renderStatusBar() string {
 func (m *Model) renderMainContent() string {
 	headerHeight := 3
 	sidebarWidth := m.sidebarWidth
-	mainWidth := m.width - sidebarWidth - 6
-	contentHeight := m.height - headerHeight - 2
+	mainWidth := m.width - sidebarWidth - 4
+	contentHeight := m.height - headerHeight
 
-	// Game output viewport (already has dark background style applied)
-	// Wrap in border
-	gameOutput := mainStyle.
+	// Build title for main window with current room and exits
+	mainTitle := ""
+	if m.worldMap != nil {
+		currentRoom := m.worldMap.GetCurrentRoom()
+		if currentRoom != nil {
+			exitList := make([]string, 0, len(currentRoom.Exits))
+			for dir := range currentRoom.Exits {
+				exitList = append(exitList, dir)
+			}
+			sort.Strings(exitList)
+			exitsStr := strings.Join(exitList, ", ")
+			if exitsStr == "" {
+				exitsStr = "none"
+			}
+			mainTitle = currentRoom.Title + " [" + exitsStr + "]"
+		}
+	}
+
+	// Create custom border with title embedded in top border
+	customBorder := lipgloss.RoundedBorder()
+	if mainTitle != "" {
+		// Build a custom top border line with the title embedded
+		// Format: "─ Title ─────────────..."
+		titleWithSpaces := "── " + mainTitle + " ──"
+		availableWidth := mainWidth
+		if len(titleWithSpaces) < availableWidth {
+			// Fill remaining space with border characters
+			remainingChars := availableWidth - len(titleWithSpaces)
+			customBorder.Top = titleWithSpaces + strings.Repeat("─", remainingChars+10)
+		} else {
+			// Title is too long, truncate it
+			customBorder.Top = titleWithSpaces[:availableWidth]
+		}
+	}
+
+	// Game output viewport with custom border (no right border to weld with sidebar)
+	mainBorderStyle := lipgloss.NewStyle().
+		BorderStyle(customBorder).
+		BorderForeground(lipgloss.Color("62")).
+		BorderTop(true).
+		BorderLeft(true).
+		BorderRight(false).
+		BorderBottom(true)
+
+	gameOutput := mainBorderStyle.
 		Width(mainWidth).
 		Height(contentHeight).
 		Render(m.viewport.View())
 
-	// Sidebar with empty panels
+	// Sidebar with panels
 	sidebar := m.renderSidebar(sidebarWidth, contentHeight)
 
 	return lipgloss.JoinHorizontal(
@@ -630,42 +672,70 @@ func (m *Model) renderMainContent() string {
 	)
 }
 
-func (m *Model) renderSidebar(width, height int) string {
-	panelHeight := (height - 8) / 4
-
-	// Tells panel with scrollable viewport
-	var tellsHeader string
-	var tellsContent string
-	if len(m.tells) > 0 {
-		tellsHeader = lipgloss.NewStyle().Bold(true).Render("Tells")
-		tellsContent = strings.Join(m.tells, "\n")
-	} else {
-		tellsHeader = lipgloss.NewStyle().Bold(true).Render("Tells")
-		tellsContent = emptyPanelStyle.Render("(no tells yet)")
+// Helper function to create a custom border with title embedded in top border
+// position: "top" for top panel (Tells), "middle" for middle panels, "bottom" for bottom panel (Map)
+func createBorderWithTitle(title string, panelWidth int, position string) lipgloss.Border {
+	border := lipgloss.RoundedBorder()
+	if title != "" {
+		titleWithSpaces := "── " + title + " "
+		availableWidth := panelWidth
+		if len(titleWithSpaces) < availableWidth {
+			remainingChars := availableWidth - len(titleWithSpaces)
+			border.Top = titleWithSpaces + strings.Repeat("─", remainingChars)
+		} else {
+			border.Top = titleWithSpaces[:availableWidth]
+		}
 	}
 
-	// Update viewport content
+	// Set appropriate corners based on position in stack
+	switch position {
+	case "top":
+		// Top panel: use ┬ for top-left to weld with main panel
+		border.TopLeft = "┬"
+	case "middle":
+		// Middle panels: use ├ and ┤ for vertical welding
+		border.TopLeft = "├"
+		border.TopRight = "┤"
+	case "bottom":
+		// Bottom panel: use ├ for top corners and ┴ for bottom-left to weld with main panel
+		border.TopLeft = "├"
+		border.TopRight = "┤"
+		border.BottomLeft = "┴"
+	}
+
+	return border
+}
+
+func (m *Model) renderSidebar(width, height int) string {
+	panelHeight := height / 4
+
+	// Tells panel with scrollable viewport
+	var tellsContent string
+	if len(m.tells) > 0 {
+		tellsContent = strings.Join(m.tells, "\n")
+	} else {
+		tellsContent = emptyPanelStyle.Render("(no tells yet)")
+	}
 	m.tellsViewport.SetContent(tellsContent)
 
-	// Render tells panel with header and scrollable content
-	tellsPanel := sidebarStyle.
+	tellsBorder := createBorderWithTitle("Tells", width, "top") // Top panel uses ┬ for top-right corner
+	tellsStyle := lipgloss.NewStyle().
+		BorderStyle(tellsBorder).
+		BorderForeground(lipgloss.Color("62")).
+		BorderTop(true).
+		BorderLeft(true).
+		BorderRight(true).
+		BorderBottom(false).
+		Padding(1)
+
+	tellsPanel := tellsStyle.
 		Width(width - 2).
 		Height(panelHeight).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				tellsHeader,
-				"",
-				m.tellsViewport.View(),
-			),
-		)
+		Render(m.tellsViewport.View())
 
 	// XP/s panel with scrollable viewport - shows persistent averaged stats
-	var xpHeader string
 	var xpContent string
 	if m.xpStatsManager != nil && len(m.xpStatsManager.GetAllStats()) > 0 {
-		xpHeader = lipgloss.NewStyle().Bold(true).Render("XP/s (avg)")
-		
 		// Convert map to slice and sort by XP/s (best to worst)
 		allStats := m.xpStatsManager.GetAllStats()
 		stats := make([]*xpstats.XPStat, 0, len(allStats))
@@ -675,7 +745,7 @@ func (m *Model) renderSidebar(width, height int) string {
 		sort.Slice(stats, func(i, j int) bool {
 			return stats[i].XPPerSecond > stats[j].XPPerSecond
 		})
-		
+
 		// Format each entry with sample count
 		lines := make([]string, 0, len(stats))
 		for _, stat := range stats {
@@ -684,92 +754,84 @@ func (m *Model) renderSidebar(width, height int) string {
 		}
 		xpContent = strings.Join(lines, "\n")
 	} else {
-		xpHeader = lipgloss.NewStyle().Bold(true).Render("XP/s (avg)")
 		xpContent = emptyPanelStyle.Render("(no kills yet)")
 	}
-
-	// Update viewport content
 	m.xpViewport.SetContent(xpContent)
 
-	// Render XP panel with header and scrollable content
-	xpPanel := sidebarStyle.
+	xpBorder := createBorderWithTitle("XP/s (avg)", width, "middle") // Middle panel uses T-junction corners
+	xpStyle := lipgloss.NewStyle().
+		BorderStyle(xpBorder).
+		BorderForeground(lipgloss.Color("62")).
+		BorderTop(true).
+		BorderLeft(true).
+		BorderRight(true).
+		BorderBottom(false).
+		Padding(1)
+
+	xpPanel := xpStyle.
 		Width(width - 2).
 		Height(panelHeight).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				xpHeader,
-				"",
-				m.xpViewport.View(),
-			),
-		)
+		Render(m.xpViewport.View())
 
 	// Inventory panel with scrollable viewport
-	var inventoryHeader string
 	var inventoryContent string
+	inventoryTitle := "Inventory"
 	if len(m.inventory) > 0 {
-		// Build header with timestamp
 		timeStr := m.inventoryTime.Format("15:04:05")
-		inventoryHeader = lipgloss.JoinVertical(
-			lipgloss.Left,
-			lipgloss.NewStyle().Bold(true).Render("Inventory"),
-			lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("("+timeStr+")"),
-		)
-
-		// Add all items without truncation - viewport will handle scrolling
+		inventoryTitle = "Inventory (" + timeStr + ")"
 		inventoryContent = strings.Join(m.inventory, "\n")
 	} else {
-		inventoryHeader = lipgloss.NewStyle().Bold(true).Render("Inventory")
 		inventoryContent = emptyPanelStyle.Render("(not populated)")
 	}
-
-	// Update viewport content
 	m.inventoryViewport.SetContent(inventoryContent)
 
-	// Render inventory panel with header and scrollable content
-	inventoryPanel := sidebarStyle.
+	inventoryBorder := createBorderWithTitle(inventoryTitle, width, "middle") // Middle panel uses T-junction corners
+	inventoryStyle := lipgloss.NewStyle().
+		BorderStyle(inventoryBorder).
+		BorderForeground(lipgloss.Color("62")).
+		BorderTop(true).
+		BorderLeft(true).
+		BorderRight(true).
+		BorderBottom(false).
+		Padding(1)
+
+	inventoryPanel := inventoryStyle.
 		Width(width - 2).
 		Height(panelHeight).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				inventoryHeader,
-				"",
-				m.inventoryViewport.View(),
-			),
-		)
+		Render(m.inventoryViewport.View())
 
 	// Map panel
-	var mapHeader string
 	var mapContent string
-	
+	mapTitle := "Map"
+
 	if m.worldMap == nil {
-		mapHeader = lipgloss.NewStyle().Bold(true).Render("Map")
 		mapContent = emptyPanelStyle.Render("(not implemented)")
 	} else {
 		currentRoom := m.worldMap.GetCurrentRoom()
 		if currentRoom == nil {
-			mapHeader = lipgloss.NewStyle().Bold(true).Render("Map")
 			mapContent = emptyPanelStyle.Render("(exploring...)")
 		} else {
-			mapHeader = lipgloss.NewStyle().Bold(true).Render(currentRoom.Title)
-			// Calculate available height for map content (subtract header and spacing)
+			mapTitle = currentRoom.Title
+			// Calculate available height for map content
 			mapHeight := panelHeight - 2
 			mapContent = m.worldMap.FormatMapPanelWithLegend(width-4, mapHeight, m.mapLegend)
 		}
 	}
-	
-	mapPanel := sidebarStyle.
+
+	mapBorder := createBorderWithTitle(mapTitle, width, "bottom") // Bottom panel uses ┴ for bottom-left corner
+	mapStyle := lipgloss.NewStyle().
+		BorderStyle(mapBorder).
+		BorderForeground(lipgloss.Color("62")).
+		BorderTop(true).
+		BorderLeft(true).
+		BorderRight(true).
+		BorderBottom(true).
+		Padding(1)
+
+	mapPanel := mapStyle.
 		Width(width - 2).
 		Height(panelHeight).
-		Render(
-			lipgloss.JoinVertical(
-				lipgloss.Left,
-				mapHeader,
-				"",
-				mapContent,
-			),
-		)
+		Render(mapContent)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -909,7 +971,7 @@ func (m *Model) detectCombatPrompt(line string) {
 	if matches != nil && len(matches) == 3 {
 		// matches[1] is the hero name, matches[2] is the target name
 		target := strings.ToLower(strings.TrimSpace(matches[2]))
-		
+
 		// Only start tracking if we don't have a pending kill or if this is a new target
 		if m.pendingKill == "" || m.pendingKill != target {
 			m.pendingKill = target
@@ -921,7 +983,7 @@ func (m *Model) detectCombatPrompt(line string) {
 // detectXPEvents detects death messages and XP gains to calculate XP/s
 func (m *Model) detectXPEvents(line string) {
 	cleanLine := stripANSI(line)
-	
+
 	// Check for death message
 	if m.pendingKill != "" {
 		matches := deathMessageRegex.FindStringSubmatch(cleanLine)
@@ -935,24 +997,24 @@ func (m *Model) detectXPEvents(line string) {
 			}
 		}
 	}
-	
+
 	// Check for XP gain
 	if m.pendingKill != "" {
 		matches := xpGainRegex.FindStringSubmatch(cleanLine)
 		if matches != nil && len(matches) == 2 {
 			xp := 0
 			fmt.Sscanf(matches[1], "%d", &xp)
-			
+
 			// Calculate time elapsed
 			deathTime := time.Now()
 			seconds := deathTime.Sub(m.killTime).Seconds()
-			
+
 			// Calculate XP/s
 			xpPerSecond := 0.0
 			if seconds > 0 {
 				xpPerSecond = float64(xp) / seconds
 			}
-			
+
 			// Store in current session tracking
 			m.xpTracking[m.pendingKill] = &XPStat{
 				CreatureName: m.pendingKill,
@@ -960,14 +1022,14 @@ func (m *Model) detectXPEvents(line string) {
 				Seconds:      seconds,
 				XPPerSecond:  xpPerSecond,
 			}
-			
+
 			// Update persistent stats with EMA
 			if m.xpStatsManager != nil {
 				m.xpStatsManager.UpdateStat(m.pendingKill, xpPerSecond)
 				// Save to disk (ignore errors to not disrupt gameplay)
 				_ = m.xpStatsManager.Save()
 			}
-			
+
 			// Clear pending kill
 			m.pendingKill = ""
 		}
@@ -1345,7 +1407,7 @@ func (m *Model) handleNearbyCommand() {
 	}
 
 	nearby := m.worldMap.FindNearbyRooms(5)
-	
+
 	if len(nearby) == 0 {
 		m.output = append(m.output, "\x1b[93mNo nearby rooms found within 5 steps.\x1b[0m")
 		return
@@ -1373,11 +1435,11 @@ func (m *Model) handleNearbyCommand() {
 	}
 
 	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== Nearby Rooms (%d visible on map) ===\x1b[0m", len(filteredNearby)))
-	
+
 	// Build room legend mapping for map display and store rooms for /go
 	m.mapLegend = make(map[string]int)
 	m.mapLegendRooms = make([]*mapper.Room, 0, len(filteredNearby))
-	
+
 	currentDistance := -1
 	for i, nr := range filteredNearby {
 		// Show distance header when it changes
@@ -1389,21 +1451,21 @@ func (m *Model) handleNearbyCommand() {
 			}
 			m.output = append(m.output, fmt.Sprintf("\x1b[93m%d %s away:\x1b[0m", currentDistance, stepLabel))
 		}
-		
+
 		// Get exits for display
 		exitList := make([]string, 0, len(nr.Room.Exits))
 		for dir := range nr.Room.Exits {
 			exitList = append(exitList, dir)
 		}
 		sort.Strings(exitList)
-		
+
 		exitsStr := strings.Join(exitList, ", ")
 		if exitsStr == "" {
 			exitsStr = "none"
 		}
-		
+
 		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", i+1, nr.Room.Title, exitsStr))
-		
+
 		// Add to legend mapping and store room
 		m.mapLegend[nr.Room.ID] = i + 1
 		m.mapLegendRooms = append(m.mapLegendRooms, nr.Room)
@@ -1413,7 +1475,7 @@ func (m *Model) handleNearbyCommand() {
 // handleLegendCommand lists all rooms currently on the map using durable room numbers
 func (m *Model) handleLegendCommand() {
 	allRooms := m.worldMap.GetAllRooms()
-	
+
 	if len(allRooms) == 0 {
 		m.output = append(m.output, "\x1b[93mNo rooms have been explored yet.\x1b[0m")
 		return
@@ -1433,7 +1495,7 @@ func (m *Model) handleLegendCommand() {
 		number int
 	}
 	var visibleRooms []roomWithNumber
-	
+
 	// Iterate through room numbering to maintain order
 	for _, roomID := range m.worldMap.RoomNumbering {
 		if visibleSet[roomID] {
@@ -1450,14 +1512,14 @@ func (m *Model) handleLegendCommand() {
 	}
 
 	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== Rooms on Map (%d visible) ===\x1b[0m", len(visibleRooms)))
-	
+
 	// Build room legend mapping for map display using durable numbers
 	m.mapLegend = make(map[string]int)
 	m.mapLegendRooms = make([]*mapper.Room, 0)
-	
+
 	// Track mapping from display position to room for /go command
 	displayPosToRoom := make(map[int]*mapper.Room)
-	
+
 	for i, rn := range visibleRooms {
 		// Get exits for display
 		exitList := make([]string, 0, len(rn.room.Exits))
@@ -1465,22 +1527,22 @@ func (m *Model) handleLegendCommand() {
 			exitList = append(exitList, dir)
 		}
 		sort.Strings(exitList)
-		
+
 		exitsStr := strings.Join(exitList, ", ")
 		if exitsStr == "" {
 			exitsStr = "none"
 		}
-		
+
 		// Display with durable room number
 		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", rn.number, rn.room.Title, exitsStr))
-		
+
 		// Use durable number for legend mapping
 		m.mapLegend[rn.room.ID] = rn.number
-		
+
 		// Map display position (1-indexed) to room for /go command
 		displayPosToRoom[i+1] = rn.room
 	}
-	
+
 	// Store rooms in display order for /go to use
 	for i := 1; i <= len(displayPosToRoom); i++ {
 		if room, ok := displayPosToRoom[i]; ok {
@@ -1651,7 +1713,7 @@ func (m *Model) handleAutoWalkFailure() tea.Cmd {
 	// Try to replan the route to the same destination
 	if targetTitle != "" {
 		m.output = append(m.output, fmt.Sprintf("\x1b[93m[Auto-walk: Re-planning route to '%s']\x1b[0m", targetTitle))
-		
+
 		// Find the target room again
 		rooms := m.worldMap.FindRooms(targetTitle)
 		if len(rooms) == 0 {
@@ -1674,13 +1736,13 @@ func (m *Model) handleAutoWalkFailure() tea.Cmd {
 		m.autoWalkIndex = 0
 		m.autoWalkTarget = targetTitle
 		m.output = append(m.output, fmt.Sprintf("\x1b[92m[Auto-walk: Restarting with new route (%d steps)]\x1b[0m", len(path)))
-		
+
 		// Start the first tick after 1 second
 		return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 			return autoWalkTickMsg{}
 		})
 	}
-	
+
 	return nil
 }
 
