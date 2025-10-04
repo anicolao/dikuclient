@@ -207,9 +207,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.pendingMovement = movement
 				}
 
-				// Check if this is a kill command
-				m.detectKillCommand(command)
-
 				// Send command to MUD server
 				m.conn.Send(command)
 
@@ -337,7 +334,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Check if this line is a tell message
 			m.detectAndParseTell(line)
 
-			// Check for XP tracking events (death cry and XP gain)
+			// Check for combat prompt to track XP/s
+			m.detectCombatPrompt(line)
+
+			// Check for XP tracking events (death message and XP gain)
 			m.detectXPEvents(line)
 
 			// Check for recall command (which causes teleportation)
@@ -868,8 +868,9 @@ func stripANSI(s string) string {
 	return ansiRegex.ReplaceAllString(s, "")
 }
 
-// killRegex matches kill commands in format: kill <target>
-var killRegex = regexp.MustCompile(`^kill\s+(.+)$`)
+// combatPromptRegex matches combat prompts in format: [Hero:Status] [Target:Status]
+// Example: 101H 132V 54710X 49.60% 570C [Osric:V.Bad] [a goblin scout:Good] T:24 Exits:NS>
+var combatPromptRegex = regexp.MustCompile(`\[([^:]+):[^\]]+\]\s*\[([^:]+):[^\]]+\]`)
 
 // deathMessageRegex matches death messages in format: The <target> is dead!
 var deathMessageRegex = regexp.MustCompile(`^(The|A|An)\s+(.+?)\s+is dead!`)
@@ -877,13 +878,19 @@ var deathMessageRegex = regexp.MustCompile(`^(The|A|An)\s+(.+?)\s+is dead!`)
 // xpGainRegex matches XP gain messages in format: You receive [0-9]+ experience.
 var xpGainRegex = regexp.MustCompile(`^You receive (\d+) experience\.`)
 
-// detectKillCommand detects when the player issues a kill command
-func (m *Model) detectKillCommand(command string) {
-	cleanCommand := strings.ToLower(strings.TrimSpace(command))
-	matches := killRegex.FindStringSubmatch(cleanCommand)
-	if matches != nil && len(matches) == 2 {
-		m.pendingKill = matches[1]
-		m.killTime = time.Now()
+// detectCombatPrompt detects combat status in the prompt
+func (m *Model) detectCombatPrompt(line string) {
+	cleanLine := stripANSI(line)
+	matches := combatPromptRegex.FindStringSubmatch(cleanLine)
+	if matches != nil && len(matches) == 3 {
+		// matches[1] is the hero name, matches[2] is the target name
+		target := strings.ToLower(strings.TrimSpace(matches[2]))
+		
+		// Only start tracking if we don't have a pending kill or if this is a new target
+		if m.pendingKill == "" || m.pendingKill != target {
+			m.pendingKill = target
+			m.killTime = time.Now()
+		}
 	}
 }
 

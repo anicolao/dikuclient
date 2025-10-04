@@ -6,52 +6,58 @@ import (
 	"time"
 )
 
-// TestDetectKillCommand verifies that kill commands are correctly detected
-func TestDetectKillCommand(t *testing.T) {
+// TestDetectCombatPrompt verifies that combat prompts are correctly detected
+func TestDetectCombatPrompt(t *testing.T) {
 	tests := []struct {
-		name        string
-		command     string
-		expectKill  bool
+		name           string
+		prompt         string
+		expectCombat   bool
 		expectedTarget string
 	}{
 		{
-			name:        "basic kill command",
-			command:     "kill orc",
-			expectKill:  true,
-			expectedTarget: "orc",
+			name:           "basic combat prompt",
+			prompt:         "101H 132V 54710X 49.60% 570C [Osric:V.Bad] [a goblin scout:Good] T:24 Exits:NS>",
+			expectCombat:   true,
+			expectedTarget: "a goblin scout",
 		},
 		{
-			name:        "kill with multi-word target",
-			command:     "kill giant spider",
-			expectKill:  true,
+			name:           "combat with different hero name",
+			prompt:         "50H 100V 1000X 10% 100C [Hero:Excellent] [orc warrior:Fair] T:10 Exits:NESW>",
+			expectCombat:   true,
+			expectedTarget: "orc warrior",
+		},
+		{
+			name:           "combat with multi-word target",
+			prompt:         "75H 80V 2000X 20% 150C [Player:Good] [giant spider:Bad] T:15 Exits:N>",
+			expectCombat:   true,
 			expectedTarget: "giant spider",
 		},
 		{
-			name:        "kill with uppercase",
-			command:     "KILL goblin",
-			expectKill:  true,
-			expectedTarget: "goblin",
-		},
-		{
-			name:        "not a kill command",
-			command:     "look",
-			expectKill:  false,
+			name:           "not a combat prompt",
+			prompt:         "101H 132V 54710X 49.60% 570C Exits:NS>",
+			expectCombat:   false,
 			expectedTarget: "",
 		},
 		{
-			name:        "kill with leading spaces",
-			command:     "  kill rat  ",
-			expectKill:  true,
-			expectedTarget: "rat",
+			name:           "combat prompt with ANSI codes",
+			prompt:         "\x1b[32m101H 132V 54710X 49.60% 570C [Osric:V.Bad] [a rat:Poor] T:5 Exits:E>\x1b[0m",
+			expectCombat:   true,
+			expectedTarget: "a rat",
+		},
+		{
+			name:           "mobile attacks player",
+			prompt:         "80H 120V 5000X 25% 200C [Hero:Good] [aggressive wolf:Excellent] T:1 Exits:EW>",
+			expectCombat:   true,
+			expectedTarget: "aggressive wolf",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := NewModel("test", 4000, nil, nil)
-			m.detectKillCommand(tt.command)
+			m.detectCombatPrompt(tt.prompt)
 
-			if tt.expectKill {
+			if tt.expectCombat {
 				if m.pendingKill != tt.expectedTarget {
 					t.Errorf("Expected pendingKill to be '%s', got '%s'", tt.expectedTarget, m.pendingKill)
 				}
@@ -188,8 +194,8 @@ func TestXPPanelRendering(t *testing.T) {
 func TestSlimyEarthwormExample(t *testing.T) {
 	m := NewModel("test", 4000, nil, nil)
 	
-	// Simulate killing a slimy earthworm
-	m.detectKillCommand("kill slimy earthworm")
+	// Simulate combat prompt with slimy earthworm
+	m.detectCombatPrompt("101H 132V 54710X 49.60% 570C [Osric:Good] [slimy earthworm:Excellent] T:24 Exits:NS>")
 	
 	// Set time in the past
 	m.killTime = time.Now().Add(-3 * time.Second)
@@ -270,8 +276,8 @@ func TestXPTrackingFullWorkflow(t *testing.T) {
 	}
 	
 	for _, c := range creatures {
-		// Simulate kill command
-		m.detectKillCommand("kill " + c.name)
+		// Simulate combat prompt
+		m.detectCombatPrompt(fmt.Sprintf("101H 132V 54710X 49.60%% 570C [Hero:Good] [%s:Excellent] T:24 Exits:NS>", c.name))
 		
 		// Simulate time passing
 		m.killTime = time.Now().Add(-c.delay)
