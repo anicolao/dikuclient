@@ -54,6 +54,7 @@ type Model struct {
 	skipNextRoomDetection bool          // Skip next room detection (e.g., after recall teleport)
 	autoWalkTarget    string            // Target room title for auto-walk (for recovery)
 	mapLegend         map[string]int    // Room ID to number mapping for map legend display
+	mapLegendRooms    []*mapper.Room    // Rooms in the current legend (for /go command)
 }
 
 var (
@@ -191,6 +192,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Check if this is a movement command
 				if movement := mapper.DetectMovement(command); movement != "" {
 					m.pendingMovement = movement
+					// Clear map legend on movement
+					m.mapLegend = nil
+					m.mapLegendRooms = nil
 				}
 
 				// Send command to MUD server
@@ -822,6 +826,7 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 	// Clear map legend unless we're executing nearby or legend commands
 	if cmd != "nearby" && cmd != "legend" {
 		m.mapLegend = nil
+		m.mapLegendRooms = nil
 	}
 
 	switch cmd {
@@ -1153,13 +1158,35 @@ func (m *Model) handleNearbyCommand() {
 		return
 	}
 
-	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== Nearby Rooms (%d within 5 steps) ===\x1b[0m", len(nearby)))
+	// Get visible room IDs on the map display
+	// Use typical sidebar dimensions for determining visibility
+	visibleRoomIDs := m.worldMap.GetVisibleRoomIDs(30, 15)
+	visibleSet := make(map[string]bool)
+	for _, id := range visibleRoomIDs {
+		visibleSet[id] = true
+	}
+
+	// Filter nearby rooms to only those visible on the map
+	var filteredNearby []mapper.NearbyRoom
+	for _, nr := range nearby {
+		if visibleSet[nr.Room.ID] {
+			filteredNearby = append(filteredNearby, nr)
+		}
+	}
+
+	if len(filteredNearby) == 0 {
+		m.output = append(m.output, "\x1b[93mNo nearby rooms are currently visible on the map.\x1b[0m")
+		return
+	}
+
+	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== Nearby Rooms (%d visible on map) ===\x1b[0m", len(filteredNearby)))
 	
-	// Build room legend mapping for map display
+	// Build room legend mapping for map display and store rooms for /go
 	m.mapLegend = make(map[string]int)
+	m.mapLegendRooms = make([]*mapper.Room, 0, len(filteredNearby))
 	
 	currentDistance := -1
-	for i, nr := range nearby {
+	for i, nr := range filteredNearby {
 		// Show distance header when it changes
 		if nr.Distance != currentDistance {
 			currentDistance = nr.Distance
@@ -1184,8 +1211,9 @@ func (m *Model) handleNearbyCommand() {
 		
 		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", i+1, nr.Room.Title, exitsStr))
 		
-		// Add to legend mapping
+		// Add to legend mapping and store room
 		m.mapLegend[nr.Room.ID] = i + 1
+		m.mapLegendRooms = append(m.mapLegendRooms, nr.Room)
 	}
 }
 
@@ -1198,10 +1226,25 @@ func (m *Model) handleLegendCommand() {
 		return
 	}
 
-	// Convert map to slice for sorting
-	roomsList := make([]*mapper.Room, 0, len(allRooms))
+	// Get visible room IDs on the map display
+	// Use typical sidebar dimensions for determining visibility
+	visibleRoomIDs := m.worldMap.GetVisibleRoomIDs(30, 15)
+	visibleSet := make(map[string]bool)
+	for _, id := range visibleRoomIDs {
+		visibleSet[id] = true
+	}
+
+	// Filter to only visible rooms
+	roomsList := make([]*mapper.Room, 0)
 	for _, room := range allRooms {
-		roomsList = append(roomsList, room)
+		if visibleSet[room.ID] {
+			roomsList = append(roomsList, room)
+		}
+	}
+
+	if len(roomsList) == 0 {
+		m.output = append(m.output, "\x1b[93mNo rooms are currently visible on the map.\x1b[0m")
+		return
 	}
 	
 	// Sort rooms by title for consistent display
@@ -1209,10 +1252,11 @@ func (m *Model) handleLegendCommand() {
 		return roomsList[i].Title < roomsList[j].Title
 	})
 
-	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== All Mapped Rooms (%d) ===\x1b[0m", len(roomsList)))
+	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== Rooms on Map (%d visible) ===\x1b[0m", len(roomsList)))
 	
-	// Build room legend mapping for map display
+	// Build room legend mapping for map display and store rooms for /go
 	m.mapLegend = make(map[string]int)
+	m.mapLegendRooms = make([]*mapper.Room, 0, len(roomsList))
 	
 	for i, room := range roomsList {
 		// Get exits for display
@@ -1229,8 +1273,9 @@ func (m *Model) handleLegendCommand() {
 		
 		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", i+1, room.Title, exitsStr))
 		
-		// Add to legend mapping
+		// Add to legend mapping and store room
 		m.mapLegend[room.ID] = i + 1
+		m.mapLegendRooms = append(m.mapLegendRooms, room)
 	}
 }
 
@@ -1258,17 +1303,26 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 		var index int
 		fmt.Sscanf(args[0], "%d", &index)
 
-		// If only a number is provided, use lastRoomSearch
+		// If only a number is provided, check legend first, then lastRoomSearch
 		if len(args) == 1 {
-			if len(m.lastRoomSearch) == 0 {
-				m.output = append(m.output, "\x1b[91mNo previous room search to select from. Use /rooms to see all rooms.\x1b[0m")
+			// Try mapLegendRooms first (from /nearby or /legend)
+			if len(m.mapLegendRooms) > 0 {
+				if index < 1 || index > len(m.mapLegendRooms) {
+					m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Must be between 1 and %d.\x1b[0m", len(m.mapLegendRooms)))
+					return nil
+				}
+				rooms = []*mapper.Room{m.mapLegendRooms[index-1]}
+			} else if len(m.lastRoomSearch) > 0 {
+				// Fall back to lastRoomSearch
+				if index < 1 || index > len(m.lastRoomSearch) {
+					m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Must be between 1 and %d.\x1b[0m", len(m.lastRoomSearch)))
+					return nil
+				}
+				rooms = []*mapper.Room{m.lastRoomSearch[index-1]}
+			} else {
+				m.output = append(m.output, "\x1b[91mNo previous room search to select from. Use /rooms, /nearby, or /legend to see room listings.\x1b[0m")
 				return nil
 			}
-			if index < 1 || index > len(m.lastRoomSearch) {
-				m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Must be between 1 and %d.\x1b[0m", len(m.lastRoomSearch)))
-				return nil
-			}
-			rooms = []*mapper.Room{m.lastRoomSearch[index-1]}
 		} else {
 			// Number followed by search terms - search first, then select by index
 			query = strings.Join(args[1:], " ")

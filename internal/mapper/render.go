@@ -176,6 +176,32 @@ func (m *Map) buildRoomGrid(currentRoom *Room, width, height int) map[Coordinate
 	return grid
 }
 
+// GetVisibleRoomIDs returns the IDs of rooms that are visible on the current map display
+func (m *Map) GetVisibleRoomIDs(width, height int) []string {
+	currentRoom := m.GetCurrentRoom()
+	if currentRoom == nil {
+		return nil
+	}
+
+	// Build the room grid to see what's visible
+	grid := m.buildRoomGrid(currentRoom, width, height)
+
+	// Extract room IDs from the grid
+	roomIDs := make([]string, 0)
+	seen := make(map[string]bool)
+	
+	for _, marker := range grid {
+		if marker != nil && !marker.IsUnknown && marker.Room != nil {
+			if !seen[marker.Room.ID] {
+				seen[marker.Room.ID] = true
+				roomIDs = append(roomIDs, marker.Room.ID)
+			}
+		}
+	}
+
+	return roomIDs
+}
+
 // renderGrid converts the room grid to a visual string representation
 // If legend is provided, rooms in the legend will be shown with their number instead of symbol
 func renderGrid(grid map[Coordinate]*RoomMarker, width, height int, legend map[string]int) string {

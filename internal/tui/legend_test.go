@@ -59,7 +59,7 @@ func TestLegendCommand(t *testing.T) {
 		cleanLine = strings.ReplaceAll(cleanLine, "\x1b[96m", "")
 		cleanLine = strings.ReplaceAll(cleanLine, "\x1b[90m", "")
 
-		if strings.Contains(cleanLine, "All Mapped Rooms") {
+		if strings.Contains(cleanLine, "Rooms on Map") {
 			hasLegendHeader = true
 		}
 		if strings.Contains(cleanLine, "Center") {
@@ -77,7 +77,7 @@ func TestLegendCommand(t *testing.T) {
 	}
 
 	if !hasLegendHeader {
-		t.Error("Expected to find 'All Mapped Rooms' header in output")
+		t.Error("Expected to find 'Rooms on Map' header in output")
 	}
 	if !foundCenter {
 		t.Error("Expected to find Center in legend")

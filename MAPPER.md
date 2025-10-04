@@ -168,7 +168,7 @@ This is useful for checking which rooms match your search terms before using `/p
 
 #### `/nearby`
 
-Lists all rooms within 5 steps of your current location, organized by distance. This helps you understand what's around you and plan your exploration.
+Lists all rooms within 5 steps of your current location that are visible on the map display, organized by distance. This helps you understand what's around you and plan your exploration.
 
 **Usage:**
 ```
@@ -178,7 +178,7 @@ Lists all rooms within 5 steps of your current location, organized by distance. 
 **Example:**
 ```
 > /nearby
-=== Nearby Rooms (12 within 5 steps) ===
+=== Nearby Rooms (8 visible on map) ===
 1 step away:
   1. Market Square [north, south, east, west]
   2. Temple Entrance [north, east]
@@ -188,17 +188,16 @@ Lists all rooms within 5 steps of your current location, organized by distance. 
   5. Guild Hall [west, east]
 3 steps away:
   6. Fountain Plaza [north, south]
-  7. City Gates [south, west]
   ...
 ```
 
-The rooms are displayed in order by distance (closest first), making it easy to see what's immediately around you versus what's further away. This is particularly useful when deciding where to explore next or when looking for a specific type of location nearby.
+The rooms are displayed in order by distance (closest first), filtered to only show rooms currently visible on the map display. Rooms close to your location will have single-digit numbers for easy reference. The rooms are numbered and these numbers temporarily appear on the visual map display (in the sidebar), replacing the usual room symbols. This makes it easy to correlate the list with the visual map.
 
-When you run `/nearby`, the rooms are numbered and these numbers temporarily appear on the visual map display (in the sidebar), replacing the usual room symbols. This makes it easy to correlate the list with the visual map.
+You can navigate to any numbered room using `/go <number>`. The legend clears automatically when you move or execute another command.
 
 #### `/legend`
 
-Lists all rooms currently on the map, sorted alphabetically by room title.
+Lists all rooms currently visible on the map display, sorted alphabetically by room title.
 
 **Usage:**
 ```
@@ -208,7 +207,7 @@ Lists all rooms currently on the map, sorted alphabetically by room title.
 **Example:**
 ```
 > /legend
-=== All Mapped Rooms (42) ===
+=== Rooms on Map (15 visible) ===
   1. Armory [north, south]
   2. Barracks [west, east]
   3. City Gates [south, east]
@@ -218,7 +217,9 @@ Lists all rooms currently on the map, sorted alphabetically by room title.
   ...
 ```
 
-Like `/nearby`, when you run `/legend`, the rooms are numbered and these numbers appear on the visual map display, replacing the usual room symbols. This provides a complete overview of all explored areas and their locations on the map.
+Like `/nearby`, when you run `/legend`, the rooms are numbered and these numbers appear on the visual map display, replacing the usual room symbols. The list is filtered to show only rooms currently visible on the map, making it easy to quickly navigate to any visible location.
+
+You can navigate to any numbered room using `/go <number>`. The legend clears automatically when you move or execute another command.
 
 #### `/map`
 
