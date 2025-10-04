@@ -74,20 +74,14 @@ inventoryContent = emptyPanelStyle.Render("(not populated)")
 
 #### Map Panel
 ```go
-// From internal/tui/app.go lines 597-608
-mapPanel := sidebarStyle.
-    Width(width - 2).
-    Height(panelHeight).
-    Render(
-        lipgloss.JoinVertical(
-            lipgloss.Left,
-            lipgloss.NewStyle().Bold(true).Render("Map"),
-            "",
-            emptyPanelStyle.Render("(not implemented)"),
-        ),
-    )
+// From internal/tui/app.go - Map panel now implemented
+// Shows a visual representation of the explored areas
+// - Current room shown as ▣ (filled square) in yellow
+// - Visited rooms shown as ▢ (hollow square) in white
+// - Vertical exits shown with ⇱ (up), ⇲ (down), or ⇅ (both)
+// - Current room name displayed in panel header
 ```
-**Status**: Empty placeholder showing "(not implemented)"
+**Status**: ✅ **IMPLEMENTED** - Shows visual map of explored areas according to MAPS_DESIGN.md
 
 ### 3. Simple Telnet Replacement ✅
 
@@ -211,8 +205,11 @@ ok  	github.com/anicolao/dikuclient/internal/tui
 │  │   > look                │  │  (not populated)             │  │
 │  │   You are standing...   │  │                              │  │
 │  │                         │  ├──────────────────────────────┤  │
-│  │                         │  │  Map                         │  │
-│  │                         │  │  (not implemented)           │  │
+│  │                         │  │  Temple Square               │  │
+│  │                         │  │                              │  │
+│  │                         │  │        ▢                     │  │
+│  │                         │  │      ▢ ▣ ▢                   │  │
+│  │                         │  │        ▢                     │  │
 │  │                         │  │                              │  │
 │  └─────────────────────────┘  └──────────────────────────────┘  │
 │                                                                  │

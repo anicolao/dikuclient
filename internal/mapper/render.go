@@ -3,6 +3,8 @@ package mapper
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Coordinate represents a position in the 2D grid
@@ -97,6 +99,10 @@ func (m *Map) buildRoomGrid(currentRoom *Room, width, height int) map[Coordinate
 
 // renderGrid converts the room grid to a visual string representation
 func renderGrid(grid map[Coordinate]*Room, width, height int) string {
+	// Define styles for different room types
+	currentRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("226")) // Yellow/gold
+	visitedRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255")) // White
+
 	// Calculate the grid bounds
 	minX, maxX := 0, 0
 	minY, maxY := 0, 0
@@ -141,9 +147,9 @@ func renderGrid(grid map[Coordinate]*Room, width, height int) string {
 			if room != nil {
 				// Check if this is the current room (at 0,0)
 				if x == 0 && y == 0 {
-					line.WriteString("▣") // Current room - filled square
+					line.WriteString(currentRoomStyle.Render("▣")) // Current room - filled square
 				} else {
-					line.WriteString("▢") // Visited room - hollow square
+					line.WriteString(visitedRoomStyle.Render("▢")) // Visited room - hollow square
 				}
 			} else {
 				line.WriteString(" ") // Empty space
