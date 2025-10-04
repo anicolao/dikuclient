@@ -1,11 +1,43 @@
 package mapper
 
 import (
-	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
+
+// sortDirections sorts directions in a consistent order for deterministic rendering
+func sortDirections(dirs []string) {
+	// Define priority order for common directions
+	priority := map[string]int{
+		"north": 0, "n": 0,
+		"south": 1, "s": 1,
+		"east": 2, "e": 2,
+		"west": 3, "w": 3,
+		"up": 4, "u": 4,
+		"down": 5, "d": 5,
+	}
+
+	sort.Slice(dirs, func(i, j int) bool {
+		pi, oki := priority[dirs[i]]
+		pj, okj := priority[dirs[j]]
+
+		// If both have priority, sort by priority
+		if oki && okj {
+			return pi < pj
+		}
+		// If only one has priority, it comes first
+		if oki {
+			return true
+		}
+		if okj {
+			return false
+		}
+		// Otherwise sort alphabetically
+		return dirs[i] < dirs[j]
+	})
+}
 
 // Coordinate represents a position in the 2D grid
 type Coordinate struct {
@@ -57,8 +89,17 @@ func (m *Map) buildRoomGrid(currentRoom *Room, width, height int) map[Coordinate
 			continue
 		}
 
-		// Process each exit
-		for direction, destID := range room.Exits {
+		// Process each exit in a deterministic order
+		// Sort directions to ensure consistent rendering
+		var directions []string
+		for direction := range room.Exits {
+			directions = append(directions, direction)
+		}
+		// Sort in a specific order: north, south, east, west, up, down, then alphabetically
+		sortDirections(directions)
+
+		for _, direction := range directions {
+			destID := room.Exits[direction]
 			if destID == "" || visited[destID] {
 				continue
 			}
@@ -102,6 +143,7 @@ func renderGrid(grid map[Coordinate]*Room, width, height int) string {
 	// Define styles for different room types
 	currentRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("226")) // Yellow/gold
 	visitedRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255")) // White
+	verticalExitStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255")) // White for vertical exits
 
 	// Calculate the grid bounds
 	minX, maxX := 0, 0
@@ -124,12 +166,16 @@ func renderGrid(grid map[Coordinate]*Room, width, height int) string {
 	// Calculate how many characters we can fit
 	// Each room is 1 character, with 1 space between rooms
 	// So we need 2 characters per room horizontally
+	// We need 2 rows per room row (one for rooms, one for vertical exits)
 	charsPerRoom := 2 // room + space
 	maxRoomsPerLine := width / charsPerRoom
+	
+	// We need 2 lines per row (room line + vertical exit line)
+	maxRoomRows := height / 2
 
 	// Calculate viewport bounds to center on (0,0)
 	viewHalfWidth := maxRoomsPerLine / 2
-	viewHalfHeight := height / 2
+	viewHalfHeight := maxRoomRows / 2
 
 	viewMinX := -viewHalfWidth
 	viewMaxX := viewHalfWidth
@@ -139,7 +185,8 @@ func renderGrid(grid map[Coordinate]*Room, width, height int) string {
 	// Build the display line by line
 	var lines []string
 	for y := viewMinY; y <= viewMaxY; y++ {
-		var line strings.Builder
+		// First line: room symbols
+		var roomLine strings.Builder
 		for x := viewMinX; x <= viewMaxX; x++ {
 			coord := Coordinate{X: x, Y: y}
 			room := grid[coord]
@@ -147,20 +194,62 @@ func renderGrid(grid map[Coordinate]*Room, width, height int) string {
 			if room != nil {
 				// Check if this is the current room (at 0,0)
 				if x == 0 && y == 0 {
-					line.WriteString(currentRoomStyle.Render("▣")) // Current room - filled square
+					roomLine.WriteString(currentRoomStyle.Render("▣")) // Current room - filled square
 				} else {
-					line.WriteString(visitedRoomStyle.Render("▢")) // Visited room - hollow square
+					roomLine.WriteString(visitedRoomStyle.Render("▢")) // Visited room - hollow square
 				}
 			} else {
-				line.WriteString(" ") // Empty space
+				roomLine.WriteString(" ") // Empty space
 			}
 
 			// Add space between rooms (except last column)
 			if x < viewMaxX {
-				line.WriteString(" ")
+				roomLine.WriteString(" ")
 			}
 		}
-		lines = append(lines, line.String())
+		lines = append(lines, roomLine.String())
+		
+		// Second line: vertical exit indicators (between this row and next)
+		var verticalLine strings.Builder
+		for x := viewMinX; x <= viewMaxX; x++ {
+			coord := Coordinate{X: x, Y: y}
+			room := grid[coord]
+
+			if room != nil {
+				// Check for vertical exits
+				hasUp := false
+				hasDown := false
+				for direction := range room.Exits {
+					switch direction {
+					case "up", "u":
+						hasUp = true
+					case "down", "d":
+						hasDown = true
+					}
+				}
+				
+				var symbol string
+				if hasUp && hasDown {
+					symbol = verticalExitStyle.Render("⇅") // Both up and down
+				} else if hasUp {
+					symbol = verticalExitStyle.Render("⇱") // Up only
+				} else if hasDown {
+					symbol = verticalExitStyle.Render("⇲") // Down only
+				} else {
+					symbol = " " // No vertical exit
+				}
+				
+				verticalLine.WriteString(symbol)
+			} else {
+				verticalLine.WriteString(" ") // Empty space
+			}
+
+			// Add space between columns (except last column)
+			if x < viewMaxX {
+				verticalLine.WriteString(" ")
+			}
+		}
+		lines = append(lines, verticalLine.String())
 	}
 
 	return strings.Join(lines, "\n")
@@ -201,32 +290,9 @@ func RenderVerticalExits(hasUp, hasDown bool) string {
 	return ""
 }
 
-// FormatMapPanel formats the complete map panel with header and vertical exits indicator
+// FormatMapPanel formats the complete map panel
 func (m *Map) FormatMapPanel(width, height int) string {
-	mapContent, roomTitle := m.RenderMap(width, height-3) // Reserve space for header and vertical exits
-
-	if roomTitle == "" {
-		roomTitle = "Map"
-	}
-
-	// Get vertical exits
-	hasUp, hasDown := m.GetVerticalExits()
-	verticalSymbol := RenderVerticalExits(hasUp, hasDown)
-
-	// Build the panel content
-	var lines []string
-	
-	// Add the map content
-	lines = append(lines, strings.Split(mapContent, "\n")...)
-
-	// Add vertical exits indicator if present (centered below the map)
-	if verticalSymbol != "" {
-		// Add an empty line first
-		lines = append(lines, "")
-		// Center the vertical symbol
-		padding := strings.Repeat(" ", width/2)
-		lines = append(lines, fmt.Sprintf("%s%s", padding, verticalSymbol))
-	}
-
-	return strings.Join(lines, "\n")
+	// Render the map using the full available height
+	mapContent, _ := m.RenderMap(width, height)
+	return mapContent
 }
