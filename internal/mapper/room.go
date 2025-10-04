@@ -108,3 +108,8 @@ func (r *Room) MatchesSearch(queryTerms []string) bool {
 func (r *Room) UpdateExit(direction, destinationID string) {
 	r.Exits[direction] = destinationID
 }
+
+// RemoveExit removes an exit from the room
+func (r *Room) RemoveExit(direction string) {
+	delete(r.Exits, direction)
+}
