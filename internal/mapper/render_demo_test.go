@@ -224,7 +224,7 @@ func TestRenderMapWithVerticalExitsDemo(t *testing.T) {
 	t.Logf("Map:\n%s\n", content3)
 }
 
-// TestAdjacentNotConnectedDemo demonstrates the problem with adjacent but unconnected rooms
+// TestAdjacentNotConnectedDemo demonstrates the solution to adjacent but unconnected rooms
 func TestAdjacentNotConnectedDemo(t *testing.T) {
 	m := NewMap()
 
@@ -233,7 +233,7 @@ func TestAdjacentNotConnectedDemo(t *testing.T) {
 	//     N
 	//   W C
 	//     S
-	// The issue: West room (W) appears next to North room (N) but they're not connected
+	// The solution: Connection lines show that West and North are NOT connected
 	
 	center := NewRoom("Center", "Center room", []string{"north", "south", "west"})
 	north := NewRoom("North", "North room", []string{"south"})
@@ -257,5 +257,59 @@ func TestAdjacentNotConnectedDemo(t *testing.T) {
 
 	// Render
 	content := m.FormatMapPanel(30, 10)
-	t.Logf("Current layout (W and N are adjacent but not connected):\n%s\n", content)
+	t.Logf("T-shaped layout showing connection lines:\n%s\n", content)
+	t.Log("Notice: West and North are adjacent but have no connection line between them")
+	t.Log("This clearly shows they are not connected")
+}
+
+// TestConnectionLinesDemo demonstrates various connection patterns
+func TestConnectionLinesDemo(t *testing.T) {
+	t.Log("=== Connection Lines Demonstration ===\n")
+
+	// Demo 1: Fully connected grid
+	t.Log("Demo 1: Fully Connected 3x3 Grid")
+	t.Log("----------------------------------")
+	m1 := NewMap()
+	grid := make([][]*Room, 3)
+	for y := 0; y < 3; y++ {
+		grid[y] = make([]*Room, 3)
+		for x := 0; x < 3; x++ {
+			grid[y][x] = NewRoom(fmt.Sprintf("R%d%d", y, x), "A room", []string{})
+		}
+	}
+	// Connect all adjacent rooms
+	for y := 0; y < 3; y++ {
+		for x := 0; x < 3; x++ {
+			if x > 0 {
+				grid[y][x].UpdateExit("west", grid[y][x-1].ID)
+				grid[y][x-1].UpdateExit("east", grid[y][x].ID)
+			}
+			if y > 0 {
+				grid[y][x].UpdateExit("north", grid[y-1][x].ID)
+				grid[y-1][x].UpdateExit("south", grid[y][x].ID)
+			}
+			m1.AddOrUpdateRoom(grid[y][x])
+		}
+	}
+	m1.CurrentRoomID = grid[1][1].ID
+	content1 := m1.FormatMapPanel(30, 15)
+	t.Logf("Fully connected grid:\n%s\n", content1)
+
+	// Demo 2: Sparse connections
+	t.Log("Demo 2: Sparse Connections")
+	t.Log("--------------------------")
+	m2 := NewMap()
+	r1 := NewRoom("R1", "Room 1", []string{"east"})
+	r2 := NewRoom("R2", "Room 2", []string{"west"})
+	
+	r1.UpdateExit("east", r2.ID)
+	r2.UpdateExit("west", r1.ID)
+	// Add an unexplored exit north
+	r2.Exits["north"] = "" // Unexplored exit
+	
+	m2.AddOrUpdateRoom(r1)
+	m2.AddOrUpdateRoom(r2)
+	m2.CurrentRoomID = r2.ID
+	content2 := m2.FormatMapPanel(30, 10)
+	t.Logf("Sparse connections (R1-R2 connected, unexplored north):\n%s\n", content2)
 }
