@@ -61,17 +61,25 @@ func (m *Map) RenderMap(width, height int) (string, string) {
 	return rendered, currentRoom.Title
 }
 
+// RoomMarker represents a room or unexplored area in the grid
+type RoomMarker struct {
+	Room       *Room
+	IsUnknown  bool // True if this is an unexplored exit
+}
+
 // buildRoomGrid creates a 2D grid of rooms centered on the current room
-func (m *Map) buildRoomGrid(currentRoom *Room, width, height int) map[Coordinate]*Room {
-	grid := make(map[Coordinate]*Room)
+func (m *Map) buildRoomGrid(currentRoom *Room, width, height int) map[Coordinate]*RoomMarker {
+	grid := make(map[Coordinate]*RoomMarker)
 
 	// Place current room at center (0, 0)
 	center := Coordinate{0, 0}
-	grid[center] = currentRoom
+	grid[center] = &RoomMarker{Room: currentRoom, IsUnknown: false}
 
 	// BFS to place connected rooms relative to current room
 	visited := make(map[string]bool)
 	visited[currentRoom.ID] = true
+	exploredCoords := make(map[Coordinate]bool)
+	exploredCoords[center] = true
 
 	type queueItem struct {
 		roomID string
@@ -100,12 +108,7 @@ func (m *Map) buildRoomGrid(currentRoom *Room, width, height int) map[Coordinate
 
 		for _, direction := range directions {
 			destID := room.Exits[direction]
-			if destID == "" || visited[destID] {
-				continue
-			}
-
-			destRoom := m.Rooms[destID]
-			if destRoom == nil {
+			if destID == "" {
 				continue
 			}
 
@@ -128,10 +131,24 @@ func (m *Map) buildRoomGrid(currentRoom *Room, width, height int) map[Coordinate
 				continue
 			}
 
-			// Add to grid
-			grid[newCoord] = destRoom
-			visited[destID] = true
-			queue = append(queue, queueItem{roomID: destID, coord: newCoord})
+			// Skip if we've already processed this coordinate
+			if exploredCoords[newCoord] {
+				continue
+			}
+			exploredCoords[newCoord] = true
+
+			destRoom := m.Rooms[destID]
+			if destRoom == nil {
+				// This is an unexplored exit - mark it as unknown
+				grid[newCoord] = &RoomMarker{Room: nil, IsUnknown: true}
+			} else {
+				// This is an explored room
+				grid[newCoord] = &RoomMarker{Room: destRoom, IsUnknown: false}
+				if !visited[destID] {
+					visited[destID] = true
+					queue = append(queue, queueItem{roomID: destID, coord: newCoord})
+				}
+			}
 		}
 	}
 
@@ -139,10 +156,11 @@ func (m *Map) buildRoomGrid(currentRoom *Room, width, height int) map[Coordinate
 }
 
 // renderGrid converts the room grid to a visual string representation
-func renderGrid(grid map[Coordinate]*Room, width, height int) string {
+func renderGrid(grid map[Coordinate]*RoomMarker, width, height int) string {
 	// Define styles for different room types
 	currentRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("226")) // Yellow/gold
 	visitedRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255")) // White
+	unexploredRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")) // Dark gray
 
 	// Calculate the grid bounds
 	minX, maxX := 0, 0
@@ -182,46 +200,52 @@ func renderGrid(grid map[Coordinate]*Room, width, height int) string {
 		var line strings.Builder
 		for x := viewMinX; x <= viewMaxX; x++ {
 			coord := Coordinate{X: x, Y: y}
-			room := grid[coord]
+			marker := grid[coord]
 
-			if room != nil {
-				// Check for vertical exits
-				hasUp := false
-				hasDown := false
-				for direction := range room.Exits {
-					switch direction {
-					case "up", "u":
-						hasUp = true
-					case "down", "d":
-						hasDown = true
-					}
-				}
-
-				// Determine the symbol based on vertical exits
-				// If room has vertical exits, they replace the room symbol
-				var symbol string
-				isCurrentRoom := (x == 0 && y == 0)
-				
-				if hasUp && hasDown {
-					symbol = "⇅" // Both up and down
-				} else if hasUp {
-					symbol = "⇱" // Up only
-				} else if hasDown {
-					symbol = "⇲" // Down only
+			if marker != nil {
+				if marker.IsUnknown {
+					// Unexplored room - always show as gray ▦
+					line.WriteString(unexploredRoomStyle.Render("▦"))
 				} else {
-					// No vertical exits - use regular room symbols
-					if isCurrentRoom {
-						symbol = "▣" // Current room - filled square
+					room := marker.Room
+					// Check for vertical exits
+					hasUp := false
+					hasDown := false
+					for direction := range room.Exits {
+						switch direction {
+						case "up", "u":
+							hasUp = true
+						case "down", "d":
+							hasDown = true
+						}
+					}
+
+					// Determine the symbol based on vertical exits
+					// If room has vertical exits, they replace the room symbol
+					var symbol string
+					isCurrentRoom := (x == 0 && y == 0)
+					
+					if hasUp && hasDown {
+						symbol = "⇅" // Both up and down
+					} else if hasUp {
+						symbol = "⇱" // Up only
+					} else if hasDown {
+						symbol = "⇲" // Down only
 					} else {
-						symbol = "▢" // Visited room - hollow square
+						// No vertical exits - use regular room symbols
+						if isCurrentRoom {
+							symbol = "▣" // Current room - filled square
+						} else {
+							symbol = "▢" // Visited room - hollow square
+						}
 					}
-				}
-				
-				// Apply color - current room is always yellow, others are white
-				if isCurrentRoom {
-					line.WriteString(currentRoomStyle.Render(symbol))
-				} else {
-					line.WriteString(visitedRoomStyle.Render(symbol))
+					
+					// Apply color - current room is always yellow, others are white
+					if isCurrentRoom {
+						line.WriteString(currentRoomStyle.Render(symbol))
+					} else {
+						line.WriteString(visitedRoomStyle.Render(symbol))
+					}
 				}
 			} else {
 				line.WriteString(" ") // Empty space

@@ -174,6 +174,55 @@ func TestFormatMapPanel(t *testing.T) {
 	}
 }
 
+// TestRenderMapWithUnexplored tests rendering with unexplored exits
+func TestRenderMapWithUnexplored(t *testing.T) {
+	m := NewMap()
+
+	// Create a center room with some explored and some unexplored exits
+	center := NewRoom("Town Square", "The bustling town square.", []string{"north", "south", "east", "west"})
+	north := NewRoom("North Gate", "The northern gate.", []string{"south"})
+	
+	// Link center to north (explored)
+	center.UpdateExit("north", north.ID)
+	north.UpdateExit("south", center.ID)
+	
+	// Create unexplored exits (IDs but no actual rooms in the map yet)
+	center.UpdateExit("south", "unexplored-south-id")
+	center.UpdateExit("east", "unexplored-east-id")
+	center.UpdateExit("west", "unexplored-west-id")
+	
+	// Add only center and north rooms to the map
+	m.AddOrUpdateRoom(center)
+	m.AddOrUpdateRoom(north)
+	m.CurrentRoomID = center.ID
+	
+	// Render the map
+	rendered, title := m.RenderMap(40, 15)
+	
+	t.Logf("Map with unexplored exits:\n%s", rendered)
+	t.Logf("Current room title: %s", title)
+	
+	// Verify current room title
+	if title != "Town Square" {
+		t.Errorf("Expected title 'Town Square', got '%s'", title)
+	}
+	
+	// Verify unexplored room symbol appears
+	if !strings.Contains(rendered, "▦") {
+		t.Error("Expected unexplored room symbol ▦ to appear in rendered map")
+	}
+	
+	// Verify the current room symbol appears
+	if !strings.Contains(rendered, "▣") {
+		t.Error("Expected current room symbol ▣ to appear in rendered map")
+	}
+	
+	// Verify visited room symbol appears (north gate)
+	if !strings.Contains(rendered, "▢") {
+		t.Error("Expected visited room symbol ▢ to appear in rendered map")
+	}
+}
+
 // TestRenderMapLinear tests rendering of a linear path
 func TestRenderMapLinear(t *testing.T) {
 	m := NewMap()
