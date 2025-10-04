@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -14,6 +15,7 @@ type Map struct {
 	CurrentRoomID  string           `json:"current_room_id"`  // ID of current room
 	PreviousRoomID string           `json:"previous_room_id"` // ID of previous room (for linking)
 	LastDirection  string           `json:"last_direction"`   // Last movement direction
+	RoomNumbering  []string         `json:"room_numbering"`   // Ordered list of room IDs for durable numbering
 	mapPath        string           // Path to the map file (not serialized)
 }
 
@@ -75,6 +77,28 @@ func LoadFromPath(mapPath string) (*Map, error) {
 	}
 	m.mapPath = mapPath
 
+	// Migrate: populate RoomNumbering if it's empty (for existing map files)
+	migrated := false
+	if len(m.RoomNumbering) == 0 && len(m.Rooms) > 0 {
+		// Add all existing rooms to numbering in a deterministic order
+		roomIDs := make([]string, 0, len(m.Rooms))
+		for id := range m.Rooms {
+			roomIDs = append(roomIDs, id)
+		}
+		// Sort by room ID for consistency
+		sort.Strings(roomIDs)
+		m.RoomNumbering = roomIDs
+		migrated = true
+	}
+
+	// Save the map if we migrated to persist the room numbering
+	if migrated {
+		if err := m.Save(); err != nil {
+			// Log error but don't fail - migration still worked in memory
+			fmt.Fprintf(os.Stderr, "Warning: failed to save migrated map: %v\n", err)
+		}
+	}
+
 	return &m, nil
 }
 
@@ -116,6 +140,9 @@ func (m *Map) AddOrUpdateRoom(room *Room) {
 	} else {
 		// New room - add it to the map
 		m.Rooms[room.ID] = room
+		
+		// Add to room numbering if not already present
+		m.addToRoomNumbering(room.ID)
 	}
 
 	// Get the room from the map (whether new or existing)
@@ -297,6 +324,84 @@ func (m *Map) GetAllRooms() map[string]*Room {
 	return m.Rooms
 }
 
+// NearbyRoom represents a room with its distance from the current location
+type NearbyRoom struct {
+	Room     *Room
+	Distance int
+}
+
+// FindNearbyRooms finds all rooms within maxDistance steps of the current room
+// Returns rooms sorted by distance (closest first)
+func (m *Map) FindNearbyRooms(maxDistance int) []NearbyRoom {
+	if m.CurrentRoomID == "" {
+		return nil
+	}
+
+	// BFS to find all reachable rooms within maxDistance
+	type queueItem struct {
+		roomID   string
+		distance int
+	}
+
+	visited := make(map[string]int) // roomID -> distance
+	queue := []queueItem{{roomID: m.CurrentRoomID, distance: 0}}
+	visited[m.CurrentRoomID] = 0
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		// Skip if we've reached max distance
+		if current.distance >= maxDistance {
+			continue
+		}
+
+		room := m.Rooms[current.roomID]
+		if room == nil {
+			continue
+		}
+
+		// Check all exits
+		for _, destID := range room.Exits {
+			if destID == "" {
+				continue // Unknown destination
+			}
+
+			// Only visit if we haven't seen it or found a shorter path
+			if prevDist, seen := visited[destID]; !seen || current.distance+1 < prevDist {
+				visited[destID] = current.distance + 1
+				queue = append(queue, queueItem{roomID: destID, distance: current.distance + 1})
+			}
+		}
+	}
+
+	// Convert to NearbyRoom slice and sort by distance
+	var nearby []NearbyRoom
+	for roomID, distance := range visited {
+		if roomID == m.CurrentRoomID {
+			continue // Don't include current room
+		}
+		if room := m.Rooms[roomID]; room != nil {
+			nearby = append(nearby, NearbyRoom{
+				Room:     room,
+				Distance: distance,
+			})
+		}
+	}
+
+	// Sort by distance, then by title for consistency
+	for i := 0; i < len(nearby); i++ {
+		for j := i + 1; j < len(nearby); j++ {
+			if nearby[i].Distance > nearby[j].Distance ||
+				(nearby[i].Distance == nearby[j].Distance && nearby[i].Room.Title > nearby[j].Room.Title) {
+				nearby[i], nearby[j] = nearby[j], nearby[i]
+			}
+		}
+	}
+
+	return nearby
+}
+
 // getReverseDirection returns the opposite direction
 func getReverseDirection(direction string) string {
 	reverseMap := map[string]string{
@@ -321,4 +426,37 @@ func getReverseDirection(direction string) string {
 		return reverse
 	}
 	return ""
+}
+
+// addToRoomNumbering adds a room ID to the numbering list if not already present
+func (m *Map) addToRoomNumbering(roomID string) {
+	// Check if already in the list
+	for _, id := range m.RoomNumbering {
+		if id == roomID {
+			return
+		}
+	}
+	// Add to the end
+	m.RoomNumbering = append(m.RoomNumbering, roomID)
+}
+
+// GetRoomNumber returns the durable room number for a given room ID
+// Returns 0 if the room is not in the numbering
+func (m *Map) GetRoomNumber(roomID string) int {
+	for i, id := range m.RoomNumbering {
+		if id == roomID {
+			return i + 1 // 1-indexed
+		}
+	}
+	return 0
+}
+
+// GetRoomByNumber returns the room for a given durable room number
+// Returns nil if the number is out of range
+func (m *Map) GetRoomByNumber(number int) *Room {
+	if number < 1 || number > len(m.RoomNumbering) {
+		return nil
+	}
+	roomID := m.RoomNumbering[number-1]
+	return m.Rooms[roomID]
 }
