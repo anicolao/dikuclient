@@ -91,7 +91,7 @@ The default and most common display mode showing the immediate area around the p
 
 #### Visual Representation
 
-Rooms are displayed using Unicode box-drawing characters in a pseudo-graphical layout. The current room is always displayed in the center of the view.
+Rooms are displayed using compact Unicode block characters in a pseudo-graphical layout. The current room is always displayed in the center of the view.
 
 **Basic Example:**
 ```
@@ -99,15 +99,10 @@ Rooms are displayed using Unicode box-drawing characters in a pseudo-graphical l
 │ Temple Square              │
 │ (42 rooms explored)        │
 │                            │
-│      ┌───┐                 │
-│      │ ? │                 │
-│      └─┬─┘                 │
-│  ┌───┐ │ ┌───┐            │
-│  │ ? ├─┼─┤ ? │            │
-│  └───┘ │ └───┘            │
-│      ┌─┴─┐                 │
-│      │ @ │                 │
-│      └───┘                 │
+│        ▢                   │
+│        ▢                   │
+│      ▢ ▣ ▢                 │
+│        ▢                   │
 │                            │
 └────────────────────────────┘
 ```
@@ -118,45 +113,113 @@ Rooms are displayed using Unicode box-drawing characters in a pseudo-graphical l
 │ Temple Square              │
 │ (15 rooms explored)        │
 │                            │
-│  ┌───┐     ┌───┐           │
-│  │ ? │     │ ? │           │
-│  └─┬─┘     └─┬─┘           │
-│  ┌─┴─┐ ┌───┐ │             │
-│  │ ? ├─┤ ? ├─┘             │
-│  └─┬─┘ └─┬─┘               │
-│  ┌─┴─┐ ┌─┴─┐ ┌───┐         │
-│  │ ? ├─┤ @ ├─┤ ? │         │
-│  └───┘ └─┬─┘ └───┘         │
-│        ┌─┴─┐               │
-│        │ ? │↓              │
-│        └───┘               │
+│    ▢ ▢         ▢           │
+│      ▢   ▢     ▢           │
+│  ▢ ▢   ▢ ▢ ▢     ▢         │
+│    ▢     ▢       ▢         │
+│  ▢ ▢ ▢ ▢ ▣ ▢ ▢ ▢ ▢         │
+│  ▢       ▢                 │
+│  ▢ ▢     ▢ ▢               │
+│  ▢       ▢     ▢           │
+│  ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢         │
+│                            │
 └────────────────────────────┘
 ```
 
+**Example with Up/Down Exits:**
+```
+┌────────────────────────────┐
+│ Temple Square              │
+│ (18 rooms explored)        │
+│                            │
+│      ▢ ▢ ▢                 │
+│        ↑                   │
+│      ▢ ▣ ▢                 │
+│        ↓                   │
+│        ▢                   │
+│                            │
+└────────────────────────────┘
+```
+
+**Example with Room Having Both Up and Down:**
+```
+┌────────────────────────────┐
+│ Temple Square              │
+│                            │
+│      ▢ ▢ ▢                 │
+│        ↕                   │
+│      ▢ ▣ ▢                 │
+│        ▢                   │
+│                            │
+└────────────────────────────┘
+```
+
+**Example with Unexplored Areas:**
+```
+┌────────────────────────────┐
+│ Market District            │
+│                            │
+│      ▢ ▦ ▢                 │
+│        ▢                   │
+│      ▦ ▣ ▢                 │
+│        ▢                   │
+│      ▢ ▢ ▦                 │
+│                            │
+└────────────────────────────┘
+```
+
+**Comprehensive Example (Realistic MUD Area):**
+```
+┌────────────────────────────┐
+│ Temple Square              │
+│ (42 rooms explored)        │
+│                            │
+│    ▢ ▢         ▢           │
+│      ▢   ▢     ▢           │
+│  ▢ ▢   ▢ ▢ ▢     ▦         │
+│    ▢     ▢       ▦         │
+│  ▢ ▢ ▦ ▢ ▣ ▢ ▢ ▢ ▢         │
+│  ▢       ▢                 │
+│  ▢ ▢     ↕ ▢               │
+│  ▢       ▢     ▢           │
+│  ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▦         │
+│                            │
+└────────────────────────────┘
+```
+This example shows:
+- Current room (▣) in center with bright color
+- Multiple explored rooms (▢) around it
+- Some unexplored areas (▦) shown in gray
+- A room with up/down exits (↕) south of current room
+- Asymmetric layout representing actual MUD geography
+
 **Legend:**
-- `┌─┬─┐ │ ├─┼─┤ └─┴─┘` = Unicode box-drawing characters forming room boundaries
-- `@` in center = Current room (player's location), shown in bright color
-- `?` = Explored rooms (visited before)
-- `!` = Unexplored exit indicator (room exists but not visited yet)
-- `↑` = Exit up available
-- `↓` = Exit down available
+- `▣` = Current room (player's location), shown in bright color
+- `▢` = Explored rooms (visited before)
+- `▦` = Unexplored/unknown rooms (grayed out, not yet visited)
+- `↑` = Exit up only
+- `↓` = Exit down only
+- `↕` = Both up and down exits available
 
 #### Room Representation Details
 
-**Current Room (@):**
+**Current Room (▣):**
 - Always displayed in the center of the view
 - Highlighted with distinct styling (bright cyan or yellow color)
+- Represented by filled square block character
 - Room name displayed in panel header
 - The map view always keeps the current room centered
 
-**Visited Rooms (?):**
+**Visited Rooms (▢):**
 - Shows rooms the player has previously entered
+- Represented by hollow square block character
 - Standard styling (normal brightness)
 - May use different symbols to indicate special rooms (see Special Room Markers below)
 
-**Unexplored Exits (!):**
-- Small indicator showing there is an unexplored exit in a direction
-- Room details unknown until visited
+**Unexplored Rooms (▦):**
+- Indicates there is a room in that direction but not yet visited
+- Represented by grayed-out block character (light gray color)
+- Shows up when mapper knows a room exists but player hasn't entered it
 - Helps players identify unexplored areas
 
 #### Directional Connections
@@ -164,82 +227,81 @@ Rooms are displayed using Unicode box-drawing characters in a pseudo-graphical l
 The mapper supports six directions: North, South, East, West, Up, and Down.
 
 **Cardinal Directions (N, S, E, W):**
-- North/South: Vertical connections using box-drawing characters
-- East/West: Horizontal connections using box-drawing characters
-- Displayed using Unicode box-drawing to create clean room boundaries
+- Rooms are placed adjacent to each other on the grid
+- North: Room directly above
+- South: Room directly below  
+- East: Room to the right
+- West: Room to the left
+- No explicit connection lines - spatial adjacency shows connectivity
 
 **Up/Down Connections:**
-Up and down connections are indicated with special symbols within or adjacent to room boxes:
-- `↑` or `▲` = Exit up available
-- `↓` or `▼` = Exit down available
-- Both symbols shown if both exits available
+Up and down connections are indicated with special arrow symbols shown near the current room:
+- `↑` = Exit up only (room above on different level)
+- `↓` = Exit down only (room below on different level)
+- `↕` = Both up and down exits available
 
-**Multi-Level Display Examples:**
+**Spacing and Layout:**
+- Each room occupies a single character position
+- Rooms are displayed with minimal spacing for compact view
+- The grid shows spatial relationships through position
+- Unexplored exits shown as grayed blocks (▦)
 
-Simple up/down from current room:
+**Simple Example with Vertical Exits:**
 ```
-┌─────────────────────┐
-│ Temple Square       │
-│                     │
-│      ┌───┐          │
-│      │ ? │↑         │
-│      └─┬─┘          │
-│      ┌─┴─┐          │
-│      │ @ │↑↓        │
-│      └─┬─┘          │
-│      ┌─┴─┐          │
-│      │ ? │↓         │
-│      └───┘          │
-└─────────────────────┘
-```
-
-Complex multi-level area (current room has both U/D):
-```
-┌─────────────────────┐
-│ Temple Square       │
-│                     │
-│ Level above:        │
-│   ┌───┐             │
-│   │ ? │  (go U, N)  │
-│   └───┘             │
-│                     │
-│ Current level:      │
-│   ┌───┐             │
-│   │ @ │↑↓           │
-│   └─┬─┘             │
-│   ┌─┴─┐             │
-│   │ ? │             │
-│   └───┘             │
-│                     │
-│ Level below:        │
-│   ┌───┐             │
-│   │ ? │  (go D, S)  │
-│   └───┘             │
-└─────────────────────┘
+┌────────────────────────────┐
+│ Temple Square              │
+│                            │
+│      ▢ ▢ ▢                 │
+│        ↑     (up to roof)  │
+│      ▢ ▣ ▢                 │
+│        ↓     (down to crypt)│
+│      ▢ ▢ ▢                 │
+│                            │
+└────────────────────────────┘
 ```
 
-In the complex example above:
-- The current room (@) has both up and down exits (↑↓ indicator)
-- The display shows three levels: above, current, and below
-- Text annotations show how to reach rooms on other levels (e.g., "go U, N" means go up then north)
-- This helps players understand vertical spatial relationships
+**Note on Multi-Level Areas:**
+The design focuses on showing the current level with indicators for vertical exits. The display does not attempt to show multiple levels simultaneously, as this would complicate the compact view. Instead:
+- Arrow indicators (↑↓↕) clearly show which vertical exits are available
+- Players understand that going up or down changes the displayed level
+- The mapper tracks all levels but displays one level at a time centered on the current room
 
 #### Grid Layout Specifications
 
 **Standard Grid Size:**
-- Minimum: 3x3 rooms (current room plus one in each direction)
-- Preferred: 5x5 rooms for better context
-- Maximum: As large as panel height permits
+- Minimum: 5x5 rooms (current room in center plus 2 rooms in each direction)
+- Preferred: 9x9 rooms for better context
+- Maximum: As large as panel height permits (could show 11x11 or more)
 
 **Spacing:**
-- Rooms separated by connection symbols (`─` or `│`)
-- Minimum one character between room markers
+- Each room occupies a single character position
+- Rooms separated by single space for compact display
 - Consistent spacing maintained across entire grid
+- Example: `▢ ▢ ▢` shows three adjacent rooms
 
 **Centering:**
 - Current room is always centered in display
 - The map view scrolls/shifts to keep the current room centered as player navigates
 - This provides consistent spatial reference and orientation
+
+**Compact Display Example:**
+```
+┌────────────────────────────┐
+│ Temple Square              │
+│                            │
+│  ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢         │
+│  ▢ ▢       ▢     ▢         │
+│  ▢   ▢ ▢ ▢   ▢ ▢ ▢         │
+│  ▢     ▢       ▢           │
+│  ▢ ▢ ▢ ▣ ▢ ▢ ▢ ▢           │
+│  ▢       ▢                 │
+│  ▢ ▢ ▢ ▢ ▢ ▢ ▢             │
+│  ▢ ▢ ▢   ▢     ▢           │
+│  ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢         │
+│                            │
+└────────────────────────────┘
+```
+This shows a 9x9 grid with the current room (▣) in the center.
 
 ### Mode 2: Compact View
 
@@ -293,14 +355,15 @@ An alternative focused on detailed room information:
 The map panel should use color to convey information:
 
 **Room States:**
-- Current Room (`[@]`): Bright cyan or yellow (highly visible)
-- Visited Rooms (`[?]`): Normal white or gray
-- Unexplored Exits (`[!]`): Dim white or dark gray
+- Current Room (`▣`): Bright cyan or yellow (highly visible)
+- Visited Rooms (`▢`): Normal white or light gray
+- Unexplored Rooms (`▦`): Dim gray (significantly darker/muted)
 - Special Rooms: Varies by type (see Special Room Markers)
 
-**Connection Lines:**
-- Normal connections: Gray or dim white
-- Recently traveled path: Brighter or colored temporarily
+**Spatial Indicators:**
+- No explicit connection lines needed with compact block display
+- Spatial adjacency shows room connections
+- Arrow symbols (↑↓↕) show vertical connections
 
 **Background:**
 - Panel background: Terminal default or subtle dark color
@@ -308,35 +371,33 @@ The map panel should use color to convey information:
 
 ### Special Room Markers
 
-Different room types can be indicated with different symbols or colors within the box-drawn rooms:
+Different room types can be indicated with alternative Unicode block characters or colors:
 
 **Symbol Variations:**
-- `@` = Current location (always in center)
-- `H` = Home/recall point
-- `$` = Shop or merchant
-- `#` = Bank or storage
-- `T` = Trainer or guild
-- `!` = Dangerous area (marked by player)
-- `*` = Points of interest (marked by player)
-- `?` = Standard explored room
+- `▣` = Current location (always in center, bright color)
+- `▢` = Standard explored room
+- `▦` = Unexplored room (grayed out)
+- `◈` = Home/recall point
+- `◆` = Shop or merchant
+- `◇` = Bank or storage
+- `◎` = Trainer or guild
+- `◉` = Dangerous area (marked by player, red color)
+- `⬟` = Points of interest (marked by player)
 
 Example with special rooms:
 ```
 ┌────────────────────────────┐
 │ Temple Square              │
 │                            │
-│  ┌───┐ ┌───┐               │
-│  │ $ ├─┤ # │               │
-│  └─┬─┘ └───┘               │
-│  ┌─┴─┐                     │
-│  │ @ │                     │
-│  └─┬─┘                     │
-│  ┌─┴─┐ ┌───┐               │
-│  │ H ├─┤ T │               │
-│  └───┘ └───┘               │
+│      ◆ ◇                   │
+│                            │
+│    ▢ ▣ ▢                   │
+│                            │
+│      ◈ ◎                   │
+│                            │
 └────────────────────────────┘
 ```
-In this example: Shop ($) to north-west, Bank (#) to north-east, Home (H) to south-west, Trainer (T) to south-east
+In this example: Shop (◆) to north-west, Bank (◇) to north-east, Home (◈) to south-west, Trainer (◎) to south-east
 
 **Color Variations (Alternative or Combined):**
 - Default rooms: White/gray
@@ -349,28 +410,19 @@ In this example: Shop ($) to north-west, Bank (#) to north-east, Home (H) to sou
 
 ### Room Labels
 
-When panel width permits, abbreviated room names can be displayed near or within room boxes:
+Due to the compact nature of the block-based display, individual room labels are not shown within the map grid. Instead:
 
-```
-┌────────────────────────────┐
-│ Temple Square              │
-│                            │
-│  ┌─────┐   ┌───────┐       │
-│  │Mark.├───┤Temple │       │
-│  └──┬──┘   └───┬───┘       │
-│  ┌──┴──┐   ┌───┴───┐       │
-│  │Guild├───┤   @   │       │
-│  └─────┘   └───┬───┘       │
-│             ┌───┴───┐       │
-│             │ Plaza │       │
-│             └───────┘       │
-└────────────────────────────┘
-```
+**Current Room Name:**
+- Always displayed in the panel header
+- Provides clear context for the player's location
+- Updates automatically as player moves
 
-- Names truncated to fit available space (e.g., "Market District" → "Mark.")
-- Only displayed when panel width allows (typically needs 35+ character width)
-- Can be toggled on/off by user preference
-- Shown in smaller or lighter font/color than current room marker
+**Room Information on Hover/Select (Future Enhancement):**
+- Potential future feature to show room details
+- Could display name, exits, and special attributes
+- Would appear as tooltip or in separate info line
+
+The compact grid prioritizes spatial overview over individual room identification. Players can use the `/map` command or other mapping commands to get detailed information about specific rooms.
 
 ### Dynamic Elements
 
@@ -574,9 +626,10 @@ When listing rooms:
 
 ### Symbol Alternatives
 
-- Provide ASCII-only mode (no box-drawing characters)
-- Alternative symbols that work in limited terminals
+- Provide ASCII-only mode for terminals without Unicode support
+- Alternative symbols: `#` for current room, `o` for explored, `.` for unexplored
 - Configurable character set for different terminal types
+- Example ASCII fallback: `o o o / . # o / o o .` (3x3 grid)
 
 ### Color Blindness
 
@@ -623,10 +676,11 @@ Users should eventually be able to configure:
 
 ### Terminal Compatibility
 
-- **Character sets**: Support both UTF-8 box-drawing and ASCII fallback
+- **Character sets**: Support both UTF-8 Unicode blocks (▢▣▦) and ASCII fallback (o#.)
 - **Color support**: Gracefully degrade from 256-color to 16-color to monochrome
 - **Size ranges**: Handle terminals from 80x24 to 200x60+
 - **Terminal types**: Work in common terminals (xterm, tmux, screen, etc.)
+- **Unicode blocks**: Use simple geometric shapes that render well across different fonts
 
 ### Data Requirements
 
