@@ -48,6 +48,8 @@ Start the web server and connect via browser. The web mode runs the full TUI in 
 
 Then open your browser to `http://localhost:8080` (or your custom port). Enter the MUD server host and port, then click Connect. You'll see the complete TUI interface rendered in the browser with all panels and formatting.
 
+**Session Sharing**: In web mode, you can use the `/share` command to get a shareable URL. Anyone who opens this URL in their browser will see and control the same underlying TUI session. This allows you to seamlessly share your MUD session with others for cooperative play or assistance.
+
 ### Connect to a MUD server
 
 ```bash
@@ -96,6 +98,7 @@ The client automatically builds a map as you explore:
 - `/point <room>` - Show next direction to reach a room
 - `/wayfind <room>` - Show full path to reach a room
 - `/map` - Show map information
+- `/share` - Get shareable URL (web mode only)
 - `/help` - Show available commands
 
 Example:

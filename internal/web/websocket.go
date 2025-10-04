@@ -27,14 +27,34 @@ var upgrader = websocket.Upgrader{
 
 // WebSocketHandler handles WebSocket connections
 type WebSocketHandler struct {
-	sessions      map[*websocket.Conn]*Session
-	mu            sync.RWMutex
-	enableLogs    bool   // Whether to enable logging for spawned TUI instances
-	currentSessID string // Current session ID to use for new connections
-	sessionIDMu   sync.RWMutex
+	sessions       map[*websocket.Conn]*ClientConnection
+	sharedSessions map[string]*SharedSession // Maps session ID to shared session
+	mu             sync.RWMutex
+	enableLogs     bool   // Whether to enable logging for spawned TUI instances
+	currentSessID  string // Current session ID to use for new connections
+	sessionIDMu    sync.RWMutex
+	port           int // Server port for generating share URLs
 }
 
-// Session represents a WebSocket session with a PTY running the TUI
+// SharedSession represents a shared PTY session that multiple clients can connect to
+type SharedSession struct {
+	sessionID  string
+	ptmx       *os.File
+	cmd        *exec.Cmd
+	clients    map[*websocket.Conn]bool
+	mu         sync.RWMutex
+	closed     bool
+	utf8Buffer []byte // Buffer for incomplete UTF-8 sequences at PTY read boundaries
+}
+
+// ClientConnection represents a single WebSocket client connection to a shared session
+type ClientConnection struct {
+	ws            *websocket.Conn
+	sharedSession *SharedSession
+	sessionID     string
+}
+
+// Session represents a WebSocket session with a PTY running the TUI (kept for compatibility)
 type Session struct {
 	ws         *websocket.Conn
 	ptmx       *os.File
@@ -69,8 +89,9 @@ func NewWebSocketHandler() *WebSocketHandler {
 // NewWebSocketHandlerWithLogging creates a new WebSocket handler with logging option
 func NewWebSocketHandlerWithLogging(enableLogs bool) *WebSocketHandler {
 	return &WebSocketHandler{
-		sessions:   make(map[*websocket.Conn]*Session),
-		enableLogs: enableLogs,
+		sessions:       make(map[*websocket.Conn]*ClientConnection),
+		sharedSessions: make(map[string]*SharedSession),
+		enableLogs:     enableLogs,
 	}
 }
 
@@ -86,6 +107,11 @@ func (h *WebSocketHandler) GetSessionID() string {
 	h.sessionIDMu.RLock()
 	defer h.sessionIDMu.RUnlock()
 	return h.currentSessID
+}
+
+// SetPort sets the server port for generating share URLs
+func (h *WebSocketHandler) SetPort(port int) {
+	h.port = port
 }
 
 // HandleWebSocket handles WebSocket connections
@@ -106,25 +132,7 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 		sessionID = "default"
 	}
 
-	// Create a new session
-	session := &Session{
-		ws:        ws,
-		sessionID: sessionID,
-	}
-
-	h.mu.Lock()
-	h.sessions[ws] = session
-	h.mu.Unlock()
-
-	defer func() {
-		h.mu.Lock()
-		delete(h.sessions, ws)
-		h.mu.Unlock()
-		session.cleanup()
-	}()
-
-	// Wait for initial message with terminal size before starting TUI
-	// This ensures the PTY is created with the correct size from the start
+	// Wait for initial message with terminal size
 	messageType, message, err := ws.ReadMessage()
 	if err != nil {
 		log.Printf("Error reading initial message: %v", err)
@@ -145,10 +153,71 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	// Auto-start the TUI client with initial size if available
-	h.autoStartTUIWithSize(session, initialSize)
+	// Get or create shared session
+	h.mu.Lock()
+	sharedSession, exists := h.sharedSessions[sessionID]
+	if !exists {
+		// Create new shared session
+		sharedSession = &SharedSession{
+			sessionID: sessionID,
+			clients:   make(map[*websocket.Conn]bool),
+		}
+		h.sharedSessions[sessionID] = sharedSession
+		log.Printf("Created new shared session: %s", sessionID)
+	} else {
+		log.Printf("Joining existing shared session: %s", sessionID)
+	}
+	h.mu.Unlock()
 
-	// Handle incoming messages
+	// Add this client to the shared session
+	sharedSession.mu.Lock()
+	sharedSession.clients[ws] = true
+	needsStart := sharedSession.ptmx == nil
+	sharedSession.mu.Unlock()
+
+	// Create client connection
+	client := &ClientConnection{
+		ws:            ws,
+		sharedSession: sharedSession,
+		sessionID:     sessionID,
+	}
+
+	h.mu.Lock()
+	h.sessions[ws] = client
+	h.mu.Unlock()
+
+	defer func() {
+		// Remove client from shared session
+		sharedSession.mu.Lock()
+		delete(sharedSession.clients, ws)
+		clientCount := len(sharedSession.clients)
+		sharedSession.mu.Unlock()
+
+		// Remove from handler's session map
+		h.mu.Lock()
+		delete(h.sessions, ws)
+		h.mu.Unlock()
+
+		// If no more clients, cleanup the shared session
+		if clientCount == 0 {
+			log.Printf("Last client disconnected from session %s, cleaning up", sessionID)
+			sharedSession.cleanup()
+			h.mu.Lock()
+			delete(h.sharedSessions, sessionID)
+			h.mu.Unlock()
+		} else {
+			log.Printf("Client disconnected from session %s, %d clients remaining", sessionID, clientCount)
+		}
+	}()
+
+	// Start TUI if this is the first client for this session
+	if needsStart {
+		h.startSharedTUI(sharedSession, initialSize)
+		// Start forwarding PTY output to all clients
+		go h.forwardSharedPTYOutput(sharedSession)
+	}
+
+	// Handle incoming messages from this client
 	for {
 		messageType, message, err := ws.ReadMessage()
 		if err != nil {
@@ -165,17 +234,20 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 				if msgType, ok := msg["type"].(string); ok {
 					switch msgType {
 					case "resize":
-						h.handleResize(session, message)
+						h.handleSharedResize(sharedSession, message)
 						continue
 					}
 				}
 			}
 
 			// Otherwise, it's terminal input - send to PTY
-			if session.ptmx != nil && !session.closed {
-				session.mu.Lock()
-				_, err := session.ptmx.Write(message)
-				session.mu.Unlock()
+			sharedSession.mu.RLock()
+			ptmx := sharedSession.ptmx
+			closed := sharedSession.closed
+			sharedSession.mu.RUnlock()
+
+			if ptmx != nil && !closed {
+				_, err := ptmx.Write(message)
 				if err != nil {
 					log.Printf("Error writing to PTY: %v", err)
 					break
@@ -185,7 +257,83 @@ func (h *WebSocketHandler) HandleWebSocket(w http.ResponseWriter, r *http.Reques
 	}
 }
 
-// autoStartTUIWithSize automatically starts the TUI client in a PTY with optional initial size
+// startSharedTUI starts the TUI for a shared session
+func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialSize *ResizeMessage) {
+	// Create session directory
+	sessionDir := filepath.Join(".websessions", sharedSession.sessionID)
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		h.sendErrorToSession(sharedSession, fmt.Sprintf("Failed to create session directory: %v", err))
+		return
+	}
+
+	// Get the path to the dikuclient binary
+	dikuclientPath, err := exec.LookPath("dikuclient")
+	if err != nil {
+		// Try relative path from current working directory
+		cwd, _ := os.Getwd()
+		dikuclientPath = filepath.Join(cwd, "dikuclient")
+		// Check if it exists
+		if _, err := os.Stat(dikuclientPath); err != nil {
+			dikuclientPath = "./dikuclient"
+		}
+	}
+
+	// Build command arguments - no host/port, just optional logging
+	args := []string{}
+	if h.enableLogs {
+		args = append(args, "--log-all")
+	}
+
+	// Start the TUI client
+	cmd := exec.Command(dikuclientPath, args...)
+
+	// Get absolute path for session directory
+	absSessionDir, err := filepath.Abs(sessionDir)
+	if err != nil {
+		h.sendErrorToSession(sharedSession, fmt.Sprintf("Failed to get absolute path: %v", err))
+		return
+	}
+
+	// Set working directory to session directory
+	cmd.Dir = absSessionDir
+
+	// Set environment variables for session sharing and config
+	configDir := filepath.Join(absSessionDir, ".config", "dikuclient")
+	serverURL := fmt.Sprintf("http://localhost:%d", h.port)
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir),
+		fmt.Sprintf("DIKUCLIENT_WEB_SESSION_ID=%s", sharedSession.sessionID),
+		fmt.Sprintf("DIKUCLIENT_WEB_SERVER_URL=%s", serverURL),
+	)
+
+	// Start the command with a PTY
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		h.sendErrorToSession(sharedSession, fmt.Sprintf("Failed to start TUI: %v", err))
+		return
+	}
+
+	// Set initial PTY size from client if available, otherwise use defaults
+	rows := uint16(24)
+	cols := uint16(80)
+	if initialSize != nil && initialSize.Rows > 0 && initialSize.Cols > 0 {
+		rows = uint16(initialSize.Rows)
+		cols = uint16(initialSize.Cols)
+	}
+	pty.Setsize(ptmx, &pty.Winsize{
+		Rows: rows,
+		Cols: cols,
+	})
+
+	sharedSession.mu.Lock()
+	sharedSession.ptmx = ptmx
+	sharedSession.cmd = cmd
+	sharedSession.mu.Unlock()
+
+	log.Printf("Started shared TUI session for %s with size %dx%d", sharedSession.sessionID, cols, rows)
+}
+
+// autoStartTUIWithSize automatically starts the TUI client in a PTY with optional initial size (deprecated)
 func (h *WebSocketHandler) autoStartTUIWithSize(session *Session, initialSize *ResizeMessage) {
 	// Create session directory
 	sessionDir := filepath.Join(".websessions", session.sessionID)
@@ -225,9 +373,14 @@ func (h *WebSocketHandler) autoStartTUIWithSize(session *Session, initialSize *R
 	// Set working directory to session directory
 	cmd.Dir = absSessionDir
 
-	// Set environment variable to use session-specific config directory
+	// Set environment variables for session sharing and config
 	configDir := filepath.Join(absSessionDir, ".config", "dikuclient")
-	cmd.Env = append(os.Environ(), fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir))
+	serverURL := fmt.Sprintf("http://localhost:%d", h.port)
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir),
+		fmt.Sprintf("DIKUCLIENT_WEB_SESSION_ID=%s", session.sessionID),
+		fmt.Sprintf("DIKUCLIENT_WEB_SERVER_URL=%s", serverURL),
+	)
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
@@ -307,9 +460,14 @@ func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 	// Set working directory to session directory
 	cmd.Dir = absSessionDir
 
-	// Set environment variable to use session-specific config directory
+	// Set environment variables for session sharing and config
 	configDir := filepath.Join(absSessionDir, ".config", "dikuclient")
-	cmd.Env = append(os.Environ(), fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir))
+	serverURL := fmt.Sprintf("http://localhost:%d", h.port)
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir),
+		fmt.Sprintf("DIKUCLIENT_WEB_SESSION_ID=%s", session.sessionID),
+		fmt.Sprintf("DIKUCLIENT_WEB_SERVER_URL=%s", serverURL),
+	)
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
@@ -337,7 +495,26 @@ func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 	log.Printf("Started TUI session for %s:%d", connectMsg.Host, connectMsg.Port)
 }
 
-// handleResize handles terminal resize requests
+// handleSharedResize handles terminal resize requests for shared sessions
+func (h *WebSocketHandler) handleSharedResize(sharedSession *SharedSession, message []byte) {
+	var resizeMsg ResizeMessage
+	if err := json.Unmarshal(message, &resizeMsg); err != nil {
+		log.Printf("Invalid resize message: %v", err)
+		return
+	}
+
+	sharedSession.mu.Lock()
+	defer sharedSession.mu.Unlock()
+
+	if sharedSession.ptmx != nil && !sharedSession.closed {
+		pty.Setsize(sharedSession.ptmx, &pty.Winsize{
+			Rows: uint16(resizeMsg.Rows),
+			Cols: uint16(resizeMsg.Cols),
+		})
+	}
+}
+
+// handleResize handles terminal resize requests (deprecated)
 func (h *WebSocketHandler) handleResize(session *Session, message []byte) {
 	var resizeMsg ResizeMessage
 	if err := json.Unmarshal(message, &resizeMsg); err != nil {
@@ -414,7 +591,65 @@ func incompleteUTF8Tail(data []byte) int {
 	return 0
 }
 
-// forwardPTYOutput forwards output from PTY to WebSocket
+// forwardSharedPTYOutput forwards output from PTY to all connected WebSocket clients
+func (h *WebSocketHandler) forwardSharedPTYOutput(sharedSession *SharedSession) {
+	sharedSession.mu.RLock()
+	ptmx := sharedSession.ptmx
+	sharedSession.mu.RUnlock()
+
+	if ptmx == nil {
+		return
+	}
+
+	buf := make([]byte, 4096)
+	for {
+		n, err := ptmx.Read(buf)
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("Error reading from PTY: %v", err)
+			}
+			break
+		}
+
+		if n > 0 {
+			sharedSession.mu.Lock()
+			if !sharedSession.closed {
+				// Prepend any buffered UTF-8 bytes from previous read
+				data := buf[:n]
+				if len(sharedSession.utf8Buffer) > 0 {
+					data = append(sharedSession.utf8Buffer, data...)
+					sharedSession.utf8Buffer = nil
+				}
+
+				// Check if data ends with incomplete UTF-8 sequence
+				incompleteLen := incompleteUTF8Tail(data)
+				if incompleteLen > 0 {
+					// Buffer the incomplete UTF-8 bytes for next read
+					splitPoint := len(data) - incompleteLen
+					sharedSession.utf8Buffer = append(sharedSession.utf8Buffer, data[splitPoint:]...)
+					data = data[:splitPoint]
+				}
+
+				// Broadcast to all connected clients
+				if len(data) > 0 {
+					for ws := range sharedSession.clients {
+						err := ws.WriteMessage(websocket.BinaryMessage, data)
+						if err != nil {
+							log.Printf("Error writing to WebSocket client: %v", err)
+							// Note: Don't break here, try to send to other clients
+						}
+					}
+				}
+			}
+			sharedSession.mu.Unlock()
+		}
+	}
+
+	// PTY closed, clean up
+	sharedSession.cleanup()
+}
+
+// forwardPTYOutput forwards output from PTY to WebSocket (deprecated)
 func (h *WebSocketHandler) forwardPTYOutput(session *Session) {
 	session.mu.Lock()
 	ptmx := session.ptmx
@@ -473,7 +708,28 @@ func (h *WebSocketHandler) forwardPTYOutput(session *Session) {
 	session.cleanup()
 }
 
-// cleanup closes the PTY and terminates the process
+// cleanup closes the PTY and terminates the process for a shared session
+func (s *SharedSession) cleanup() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.closed {
+		return
+	}
+	s.closed = true
+
+	if s.ptmx != nil {
+		s.ptmx.Close()
+		s.ptmx = nil
+	}
+
+	if s.cmd != nil && s.cmd.Process != nil {
+		s.cmd.Process.Kill()
+		s.cmd.Wait()
+	}
+}
+
+// cleanup closes the PTY and terminates the process (deprecated)
 func (s *Session) cleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -494,7 +750,21 @@ func (s *Session) cleanup() {
 	}
 }
 
-// sendError sends an error message to the WebSocket client
+// sendErrorToSession sends an error message to all clients in a shared session
+func (h *WebSocketHandler) sendErrorToSession(sharedSession *SharedSession, message string) {
+	sharedSession.mu.RLock()
+	defer sharedSession.mu.RUnlock()
+
+	errorMsg := fmt.Sprintf("\r\n\x1b[31mERROR: %s\x1b[0m\r\n", message)
+	for ws := range sharedSession.clients {
+		err := ws.WriteMessage(websocket.TextMessage, []byte(errorMsg))
+		if err != nil {
+			log.Printf("Error sending error message to client: %v", err)
+		}
+	}
+}
+
+// sendError sends an error message to the WebSocket client (deprecated)
 func (s *Session) sendError(message string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -61,6 +61,8 @@ type Model struct {
 	killTime              time.Time           // Time when kill command was sent
 	xpViewport            viewport.Model      // Viewport for scrollable XP stats
 	xpStatsManager        *xpstats.Manager    // Persistent XP stats manager
+	webSessionID          string              // Web session ID for sharing (empty if not in web mode)
+	webServerURL          string              // Web server URL for sharing (empty if not in web mode)
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -131,6 +133,10 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 	tellsVp := viewport.New(0, 0)
 	xpVp := viewport.New(0, 0)
 
+	// Read web session information from environment variables
+	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+	webServerURL := os.Getenv("DIKUCLIENT_WEB_SERVER_URL")
+
 	return Model{
 		viewport:          vp,
 		output:            []string{},
@@ -154,6 +160,8 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		xpTracking:        make(map[string]*XPStat),
 		xpViewport:        xpVp,
 		xpStatsManager:    xpStatsManager,
+		webSessionID:      webSessionID,
+		webServerURL:      webServerURL,
 	}
 }
 
@@ -1018,6 +1026,9 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 	case "triggers":
 		m.handleTriggersCommand(args)
 		return nil
+	case "share":
+		m.handleShareCommand()
+		return nil
 	case "help":
 		m.handleHelpCommand()
 		return nil
@@ -1227,6 +1238,21 @@ func (m *Model) handleMapCommand(args []string) {
 	}
 }
 
+// handleShareCommand generates a shareable URL for web sessions
+func (m *Model) handleShareCommand() {
+	if m.webSessionID == "" || m.webServerURL == "" {
+		m.output = append(m.output, "\x1b[91mError: /share command is only available in web mode\x1b[0m")
+		m.output = append(m.output, "\x1b[90mStart the client with --web flag to enable session sharing\x1b[0m")
+		return
+	}
+
+	shareURL := fmt.Sprintf("%s/?id=%s", m.webServerURL, m.webSessionID)
+	m.output = append(m.output, "\x1b[92m=== Share This Session ===\x1b[0m")
+	m.output = append(m.output, fmt.Sprintf("\x1b[96m%s\x1b[0m", shareURL))
+	m.output = append(m.output, "")
+	m.output = append(m.output, "\x1b[90mAnyone who opens this URL will see and control the same session\x1b[0m")
+}
+
 // handleHelpCommand shows available client commands
 func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "\x1b[92m=== Client Commands ===\x1b[0m")
@@ -1240,6 +1266,7 @@ func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "  \x1b[96m/trigger \"pat\" \"act\"\x1b[0m - Add a trigger (pattern can use <var>)")
 	m.output = append(m.output, "  \x1b[96m/triggers list\x1b[0m          - List all triggers")
 	m.output = append(m.output, "  \x1b[96m/triggers remove <n>\x1b[0m    - Remove trigger by number")
+	m.output = append(m.output, "  \x1b[96m/share\x1b[0m                  - Get shareable URL (web mode only)")
 	m.output = append(m.output, "  \x1b[96m/help\x1b[0m                   - Show this help message")
 	m.output = append(m.output, "")
 	m.output = append(m.output, "\x1b[90mRoom search matches all terms in room title, description, or exits\x1b[0m")
