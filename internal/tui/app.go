@@ -665,7 +665,8 @@ func (m *Model) renderMainContent() string {
 }
 
 // Helper function to create a custom border with title embedded in top border
-func createBorderWithTitle(title string, panelWidth int) lipgloss.Border {
+// useJunctionCorners: if true, use ├ and ┤ for top corners (for middle panels in stack)
+func createBorderWithTitle(title string, panelWidth int, useJunctionCorners bool) lipgloss.Border {
 	border := lipgloss.RoundedBorder()
 	if title != "" {
 		titleWithSpaces := "── " + title + " "
@@ -677,6 +678,13 @@ func createBorderWithTitle(title string, panelWidth int) lipgloss.Border {
 			border.Top = titleWithSpaces[:availableWidth]
 		}
 	}
+	
+	// Use T-junction corners for middle panels to join with adjacent panels
+	if useJunctionCorners {
+		border.TopLeft = "├"
+		border.TopRight = "┤"
+	}
+	
 	return border
 }
 
@@ -692,7 +700,7 @@ func (m *Model) renderSidebar(width, height int) string {
 	}
 	m.tellsViewport.SetContent(tellsContent)
 
-	tellsBorder := createBorderWithTitle("Tells", width)
+	tellsBorder := createBorderWithTitle("Tells", width, false) // Top panel uses default rounded corners
 	tellsStyle := lipgloss.NewStyle().
 		BorderStyle(tellsBorder).
 		BorderForeground(lipgloss.Color("62")).
@@ -732,7 +740,7 @@ func (m *Model) renderSidebar(width, height int) string {
 	}
 	m.xpViewport.SetContent(xpContent)
 
-	xpBorder := createBorderWithTitle("XP/s (avg)", width)
+	xpBorder := createBorderWithTitle("XP/s (avg)", width, true) // Middle panel uses T-junction corners
 	xpStyle := lipgloss.NewStyle().
 		BorderStyle(xpBorder).
 		BorderForeground(lipgloss.Color("62")).
@@ -759,7 +767,7 @@ func (m *Model) renderSidebar(width, height int) string {
 	}
 	m.inventoryViewport.SetContent(inventoryContent)
 
-	inventoryBorder := createBorderWithTitle(inventoryTitle, width)
+	inventoryBorder := createBorderWithTitle(inventoryTitle, width, true) // Middle panel uses T-junction corners
 	inventoryStyle := lipgloss.NewStyle().
 		BorderStyle(inventoryBorder).
 		BorderForeground(lipgloss.Color("62")).
@@ -792,7 +800,7 @@ func (m *Model) renderSidebar(width, height int) string {
 		}
 	}
 
-	mapBorder := createBorderWithTitle(mapTitle, width)
+	mapBorder := createBorderWithTitle(mapTitle, width, true) // Middle panel uses T-junction corners
 	mapStyle := lipgloss.NewStyle().
 		BorderStyle(mapBorder).
 		BorderForeground(lipgloss.Color("62")).
