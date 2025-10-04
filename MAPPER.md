@@ -194,6 +194,32 @@ Lists all rooms within 5 steps of your current location, organized by distance. 
 
 The rooms are displayed in order by distance (closest first), making it easy to see what's immediately around you versus what's further away. This is particularly useful when deciding where to explore next or when looking for a specific type of location nearby.
 
+When you run `/nearby`, the rooms are numbered and these numbers temporarily appear on the visual map display (in the sidebar), replacing the usual room symbols. This makes it easy to correlate the list with the visual map.
+
+#### `/legend`
+
+Lists all rooms currently on the map, sorted alphabetically by room title.
+
+**Usage:**
+```
+/legend
+```
+
+**Example:**
+```
+> /legend
+=== All Mapped Rooms (42) ===
+  1. Armory [north, south]
+  2. Barracks [west, east]
+  3. City Gates [south, east]
+  4. Dark Alley [north, south]
+  5. East Market [west, north]
+  6. Fountain Plaza [north, south, east]
+  ...
+```
+
+Like `/nearby`, when you run `/legend`, the rooms are numbered and these numbers appear on the visual map display, replacing the usual room symbols. This provides a complete overview of all explored areas and their locations on the map.
+
 #### `/map`
 
 Shows information about the current map state.

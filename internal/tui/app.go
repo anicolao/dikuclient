@@ -53,6 +53,7 @@ type Model struct {
 	tellsViewport     viewport.Model    // Viewport for scrollable tells
 	skipNextRoomDetection bool          // Skip next room detection (e.g., after recall teleport)
 	autoWalkTarget    string            // Target room title for auto-walk (for recovery)
+	mapLegend         map[string]int    // Room ID to number mapping for map legend display
 }
 
 var (
@@ -663,7 +664,7 @@ func (m *Model) renderSidebar(width, height int) string {
 			mapHeader = lipgloss.NewStyle().Bold(true).Render(currentRoom.Title)
 			// Calculate available height for map content (subtract header and spacing)
 			mapHeight := panelHeight - 2
-			mapContent = m.worldMap.FormatMapPanel(width-4, mapHeight)
+			mapContent = m.worldMap.FormatMapPanelWithLegend(width-4, mapHeight, m.mapLegend)
 		}
 	}
 	
@@ -818,6 +819,11 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 	cmd := strings.ToLower(parts[0])
 	args := parts[1:]
 
+	// Clear map legend unless we're executing nearby or legend commands
+	if cmd != "nearby" && cmd != "legend" {
+		m.mapLegend = nil
+	}
+
 	switch cmd {
 	case "point":
 		m.handlePointCommand(args)
@@ -833,6 +839,9 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 		return nil
 	case "nearby":
 		m.handleNearbyCommand()
+		return nil
+	case "legend":
+		m.handleLegendCommand()
 		return nil
 	case "go":
 		return m.handleGoCommand(args)
@@ -1060,6 +1069,7 @@ func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "  \x1b[96m/map\x1b[0m                    - Show map information")
 	m.output = append(m.output, "  \x1b[96m/rooms [filter]\x1b[0m         - List all known rooms (optionally filtered)")
 	m.output = append(m.output, "  \x1b[96m/nearby\x1b[0m                 - List all rooms within 5 steps")
+	m.output = append(m.output, "  \x1b[96m/legend\x1b[0m                 - List all rooms currently on the map")
 	m.output = append(m.output, "  \x1b[96m/trigger \"pat\" \"act\"\x1b[0m - Add a trigger (pattern can use <var>)")
 	m.output = append(m.output, "  \x1b[96m/triggers list\x1b[0m          - List all triggers")
 	m.output = append(m.output, "  \x1b[96m/triggers remove <n>\x1b[0m    - Remove trigger by number")
@@ -1145,6 +1155,9 @@ func (m *Model) handleNearbyCommand() {
 
 	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== Nearby Rooms (%d within 5 steps) ===\x1b[0m", len(nearby)))
 	
+	// Build room legend mapping for map display
+	m.mapLegend = make(map[string]int)
+	
 	currentDistance := -1
 	for i, nr := range nearby {
 		// Show distance header when it changes
@@ -1170,6 +1183,54 @@ func (m *Model) handleNearbyCommand() {
 		}
 		
 		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", i+1, nr.Room.Title, exitsStr))
+		
+		// Add to legend mapping
+		m.mapLegend[nr.Room.ID] = i + 1
+	}
+}
+
+// handleLegendCommand lists all rooms currently on the map
+func (m *Model) handleLegendCommand() {
+	allRooms := m.worldMap.GetAllRooms()
+	
+	if len(allRooms) == 0 {
+		m.output = append(m.output, "\x1b[93mNo rooms have been explored yet.\x1b[0m")
+		return
+	}
+
+	// Convert map to slice for sorting
+	roomsList := make([]*mapper.Room, 0, len(allRooms))
+	for _, room := range allRooms {
+		roomsList = append(roomsList, room)
+	}
+	
+	// Sort rooms by title for consistent display
+	sort.Slice(roomsList, func(i, j int) bool {
+		return roomsList[i].Title < roomsList[j].Title
+	})
+
+	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== All Mapped Rooms (%d) ===\x1b[0m", len(roomsList)))
+	
+	// Build room legend mapping for map display
+	m.mapLegend = make(map[string]int)
+	
+	for i, room := range roomsList {
+		// Get exits for display
+		exitList := make([]string, 0, len(room.Exits))
+		for dir := range room.Exits {
+			exitList = append(exitList, dir)
+		}
+		sort.Strings(exitList)
+		
+		exitsStr := strings.Join(exitList, ", ")
+		if exitsStr == "" {
+			exitsStr = "none"
+		}
+		
+		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", i+1, room.Title, exitsStr))
+		
+		// Add to legend mapping
+		m.mapLegend[room.ID] = i + 1
 	}
 }
 

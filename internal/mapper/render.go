@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 
@@ -56,7 +57,24 @@ func (m *Map) RenderMap(width, height int) (string, string) {
 	roomGrid := m.buildRoomGrid(currentRoom, width, height)
 
 	// Render the grid to string
-	rendered := renderGrid(roomGrid, width, height)
+	rendered := renderGrid(roomGrid, width, height, nil)
+
+	return rendered, currentRoom.Title
+}
+
+// RenderMapWithLegend generates a visual representation of the map with room numbers
+// Returns the rendered map as a string and the current room title
+func (m *Map) RenderMapWithLegend(width, height int, legend map[string]int) (string, string) {
+	currentRoom := m.GetCurrentRoom()
+	if currentRoom == nil {
+		return "(exploring...)", ""
+	}
+
+	// Build the room grid centered on current room
+	roomGrid := m.buildRoomGrid(currentRoom, width, height)
+
+	// Render the grid to string with legend
+	rendered := renderGrid(roomGrid, width, height, legend)
 
 	return rendered, currentRoom.Title
 }
@@ -159,7 +177,8 @@ func (m *Map) buildRoomGrid(currentRoom *Room, width, height int) map[Coordinate
 }
 
 // renderGrid converts the room grid to a visual string representation
-func renderGrid(grid map[Coordinate]*RoomMarker, width, height int) string {
+// If legend is provided, rooms in the legend will be shown with their number instead of symbol
+func renderGrid(grid map[Coordinate]*RoomMarker, width, height int, legend map[string]int) string {
 	// Define styles for different room types
 	currentRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("226")) // Yellow/gold
 	visitedRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255")) // White
@@ -167,10 +186,26 @@ func renderGrid(grid map[Coordinate]*RoomMarker, width, height int) string {
 	connectionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")) // Dark gray for connections
 
 	// Calculate how many characters we can fit
-	// Each room is 1 character, with 2 character connector between rooms (3 chars per room cell)
-	// We also need space between rows for vertical connectors (2 lines per room row)
+	// When using legend, we need more space per room for numbers
 	charsPerRoom := 3 // room + double connector space
 	linesPerRoom := 2 // room line + connector line
+	
+	// If legend is active, adjust spacing for multi-digit numbers
+	if legend != nil && len(legend) > 0 {
+		// Find max number to determine spacing
+		maxNum := 0
+		for _, num := range legend {
+			if num > maxNum {
+				maxNum = num
+			}
+		}
+		// Adjust chars per room based on max number width
+		if maxNum >= 100 {
+			charsPerRoom = 5 // 3 digits + 2 connector
+		} else if maxNum >= 10 {
+			charsPerRoom = 4 // 2 digits + 2 connector
+		}
+	}
 
 	maxRoomsPerLine := width / charsPerRoom
 	maxRoomsPerHeight := height / linesPerRoom
@@ -203,42 +238,63 @@ func renderGrid(grid map[Coordinate]*RoomMarker, width, height int) string {
 					roomLine.WriteString(unexploredRoomStyle.Render("▦"))
 				} else {
 					room := marker.Room
-					// Check for vertical exits
-					hasUp := false
-					hasDown := false
-					for direction := range room.Exits {
-						switch direction {
-						case "up", "u":
-							hasUp = true
-						case "down", "d":
-							hasDown = true
-						}
-					}
-
-					// Determine the symbol based on vertical exits
-					var symbol string
 					isCurrentRoom := (x == 0 && y == 0)
 					
-					if hasUp && hasDown {
-						symbol = "⇅" // Both up and down
-					} else if hasUp {
-						symbol = "⇱" // Up only
-					} else if hasDown {
-						symbol = "⇲" // Down only
-					} else {
-						// No vertical exits - use regular room symbols
-						if isCurrentRoom {
-							symbol = "▣" // Current room - filled square
+					// Check if this room is in the legend
+					if legend != nil {
+						if roomNum, inLegend := legend[room.ID]; inLegend {
+							// Show room number from legend
+							symbol := fmt.Sprintf("%d", roomNum)
+							if isCurrentRoom {
+								roomLine.WriteString(currentRoomStyle.Render(symbol))
+							} else {
+								roomLine.WriteString(visitedRoomStyle.Render(symbol))
+							}
 						} else {
-							symbol = "▢" // Visited room - hollow square
+							// Not in legend, use regular symbol
+							if isCurrentRoom {
+								roomLine.WriteString(currentRoomStyle.Render("▣"))
+							} else {
+								roomLine.WriteString(visitedRoomStyle.Render("▢"))
+							}
 						}
-					}
-					
-					// Apply color - current room is always yellow, others are white
-					if isCurrentRoom {
-						roomLine.WriteString(currentRoomStyle.Render(symbol))
 					} else {
-						roomLine.WriteString(visitedRoomStyle.Render(symbol))
+						// No legend, use symbols based on vertical exits
+						hasUp := false
+						hasDown := false
+						for direction := range room.Exits {
+							switch direction {
+							case "up", "u":
+								hasUp = true
+							case "down", "d":
+								hasDown = true
+							}
+						}
+
+						// Determine the symbol based on vertical exits
+						var symbol string
+						
+						if hasUp && hasDown {
+							symbol = "⇅" // Both up and down
+						} else if hasUp {
+							symbol = "⇱" // Up only
+						} else if hasDown {
+							symbol = "⇲" // Down only
+						} else {
+							// No vertical exits - use regular room symbols
+							if isCurrentRoom {
+								symbol = "▣" // Current room - filled square
+							} else {
+								symbol = "▢" // Visited room - hollow square
+							}
+						}
+						
+						// Apply color - current room is always yellow, others are white
+						if isCurrentRoom {
+							roomLine.WriteString(currentRoomStyle.Render(symbol))
+						} else {
+							roomLine.WriteString(visitedRoomStyle.Render(symbol))
+						}
 					}
 				}
 			} else {
@@ -391,5 +447,12 @@ func RenderVerticalExits(hasUp, hasDown bool) string {
 func (m *Map) FormatMapPanel(width, height int) string {
 	// Render the map using the full available height
 	mapContent, _ := m.RenderMap(width, height)
+	return mapContent
+}
+
+// FormatMapPanelWithLegend formats the complete map panel with optional room number legend
+func (m *Map) FormatMapPanelWithLegend(width, height int, legend map[string]int) string {
+	// Render the map with legend using the full available height
+	mapContent, _ := m.RenderMapWithLegend(width, height, legend)
 	return mapContent
 }
