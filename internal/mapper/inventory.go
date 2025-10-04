@@ -26,7 +26,7 @@ func ParseInventoryInfo(lines []string, enableDebug bool) *InventoryInfo {
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := stripANSI(lines[i])
 		line = strings.TrimSpace(line)
-		
+
 		if inventoryHeaderPattern.MatchString(line) {
 			headerIdx = i
 			break
@@ -44,7 +44,7 @@ func ParseInventoryInfo(lines []string, enableDebug bool) *InventoryInfo {
 	for i := headerIdx + 1; i < len(lines); i++ {
 		line := stripANSI(lines[i])
 		line = strings.TrimSpace(line)
-		
+
 		if isPromptLine(line) {
 			promptIdx = i
 			break
@@ -61,12 +61,12 @@ func ParseInventoryInfo(lines []string, enableDebug bool) *InventoryInfo {
 	for i := headerIdx + 1; i < promptIdx; i++ {
 		line := stripANSI(lines[i])
 		line = strings.TrimSpace(line)
-		
+
 		// Skip empty lines
 		if line == "" {
 			continue
 		}
-		
+
 		items = append(items, line)
 	}
 

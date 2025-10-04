@@ -34,7 +34,7 @@ func TestInventoryIntegration(t *testing.T) {
 	for _, line := range mudOutput {
 		m.output = append(m.output, line)
 		m.recentOutput = append(m.recentOutput, line)
-		
+
 		// Keep recentOutput to last 30 lines
 		if len(m.recentOutput) > 30 {
 			m.recentOutput = m.recentOutput[len(m.recentOutput)-30:]
@@ -91,7 +91,7 @@ func TestInventoryRenderingWithItems(t *testing.T) {
 		height:        40,
 		sidebarWidth:  30,
 	}
-	
+
 	// Initialize inventory viewport
 	m.inventoryViewport = viewport.New(m.sidebarWidth-4, 10)
 
@@ -125,7 +125,7 @@ func TestInventoryRenderingWithoutItems(t *testing.T) {
 		height:       40,
 		sidebarWidth: 30,
 	}
-	
+
 	// Initialize inventory viewport
 	m.inventoryViewport = viewport.New(m.sidebarWidth-4, 10)
 

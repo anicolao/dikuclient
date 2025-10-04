@@ -326,4 +326,3 @@ func TestParseRoomInfo_ReceptionToInn(t *testing.T) {
 	t.Logf("Description: %q", info.Description)
 	t.Logf("Exits: %v", info.Exits)
 }
-

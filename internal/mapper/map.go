@@ -10,10 +10,10 @@ import (
 
 // Map represents the entire MUD world map
 type Map struct {
-	Rooms          map[string]*Room `json:"rooms"`           // roomID -> Room
-	CurrentRoomID  string           `json:"current_room_id"` // ID of current room
+	Rooms          map[string]*Room `json:"rooms"`            // roomID -> Room
+	CurrentRoomID  string           `json:"current_room_id"`  // ID of current room
 	PreviousRoomID string           `json:"previous_room_id"` // ID of previous room (for linking)
-	LastDirection  string           `json:"last_direction"`  // Last movement direction
+	LastDirection  string           `json:"last_direction"`   // Last movement direction
 	mapPath        string           // Path to the map file (not serialized)
 }
 
@@ -215,6 +215,75 @@ func (m *Map) FindPath(targetRoomID string) []string {
 	return nil // No path found
 }
 
+// PathStep represents a single step in a path with direction and destination room
+type PathStep struct {
+	Direction string
+	RoomTitle string
+}
+
+// FindPathWithRooms finds the shortest path and returns steps with room information
+func (m *Map) FindPathWithRooms(targetRoomID string) []PathStep {
+	if m.CurrentRoomID == "" || targetRoomID == "" {
+		return nil
+	}
+
+	if m.CurrentRoomID == targetRoomID {
+		return []PathStep{} // Already at target
+	}
+
+	// BFS to find shortest path
+	type queueItem struct {
+		roomID string
+		path   []PathStep
+	}
+
+	visited := make(map[string]bool)
+	queue := []queueItem{{roomID: m.CurrentRoomID, path: []PathStep{}}}
+	visited[m.CurrentRoomID] = true
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		room := m.Rooms[current.roomID]
+		if room == nil {
+			continue
+		}
+
+		// Check all exits
+		for direction, destID := range room.Exits {
+			if destID == "" {
+				continue // Unknown destination
+			}
+
+			destRoom := m.Rooms[destID]
+			if destRoom == nil {
+				continue
+			}
+
+			step := PathStep{
+				Direction: direction,
+				RoomTitle: destRoom.Title,
+			}
+
+			if destID == targetRoomID {
+				// Found target!
+				return append(current.path, step)
+			}
+
+			if !visited[destID] {
+				visited[destID] = true
+				newPath := make([]PathStep, len(current.path)+1)
+				copy(newPath, current.path)
+				newPath[len(current.path)] = step
+				queue = append(queue, queueItem{roomID: destID, path: newPath})
+			}
+		}
+	}
+
+	return nil // No path found
+}
+
 // GetCurrentRoom returns the current room
 func (m *Map) GetCurrentRoom() *Room {
 	if m.CurrentRoomID == "" {
@@ -231,16 +300,16 @@ func (m *Map) GetAllRooms() map[string]*Room {
 // getReverseDirection returns the opposite direction
 func getReverseDirection(direction string) string {
 	reverseMap := map[string]string{
-		"north": "south",
-		"south": "north",
-		"east":  "west",
-		"west":  "east",
-		"up":    "down",
-		"down":  "up",
-		"ne":    "sw",
-		"nw":    "se",
-		"se":    "nw",
-		"sw":    "ne",
+		"north":     "south",
+		"south":     "north",
+		"east":      "west",
+		"west":      "east",
+		"up":        "down",
+		"down":      "up",
+		"ne":        "sw",
+		"nw":        "se",
+		"se":        "nw",
+		"sw":        "ne",
 		"northeast": "southwest",
 		"northwest": "southeast",
 		"southeast": "northwest",

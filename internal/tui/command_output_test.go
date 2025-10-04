@@ -12,7 +12,7 @@ import (
 func TestClientCommandOutputFormatting(t *testing.T) {
 	// Create a model with a simple setup
 	m := Model{
-		output:    []string{"Welcome to the MUD", "> "},  // Simulate some output with a prompt
+		output:    []string{"Welcome to the MUD", "> "}, // Simulate some output with a prompt
 		connected: true,
 		worldMap:  mapper.NewMap(),
 	}
@@ -29,9 +29,9 @@ func TestClientCommandOutputFormatting(t *testing.T) {
 		// Replace the prompt line with the command
 		m.output[len(m.output)-1] = savedPrompt + "\x1b[93m/help\x1b[0m"
 	}
-	
+
 	m.handleClientCommand("/help")
-	
+
 	// Add two empty lines and restore prompt after command output
 	m.output = append(m.output, "")
 	m.output = append(m.output, "")

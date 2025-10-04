@@ -83,18 +83,18 @@ func TestParseInventoryInfo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ParseInventoryInfo(tt.lines, false)
-			
+
 			if tt.expectedItems == nil {
 				if result != nil {
 					t.Errorf("Expected nil result, got %+v", result)
 				}
 				return
 			}
-			
+
 			if result == nil {
 				t.Fatalf("Expected result, got nil")
 			}
-			
+
 			if !reflect.DeepEqual(result.Items, tt.expectedItems) {
 				t.Errorf("Items mismatch.\nExpected: %v\nGot: %v", tt.expectedItems, result.Items)
 			}

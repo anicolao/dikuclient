@@ -58,7 +58,7 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := stripANSI(lines[i])
 		line = strings.TrimSpace(line)
-		
+
 		if parsedExits := parseExitsLine(line); len(parsedExits) > 0 {
 			exits = parsedExits
 			exitsLineIdx = i
@@ -87,7 +87,7 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 	for i := exitsLineIdx - 1; i >= 0; i-- {
 		line := stripANSI(lines[i])
 		line = strings.TrimSpace(line)
-		
+
 		// A prompt line typically ends with > and contains stats (H, V, X, etc.)
 		if isPromptLine(line) {
 			previousPromptIdx = i
@@ -96,7 +96,7 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 			}
 			break
 		}
-		
+
 		// Track if we find another exits line (but don't stop immediately)
 		if previousExitsIdx == -1 && parseExitsLine(line) != nil {
 			previousExitsIdx = i
@@ -104,16 +104,16 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found previous exits line at index %d\n", i))
 			}
 		}
-		
+
 		// Don't search too far back
-		if exitsLineIdx - i > 25 {
+		if exitsLineIdx-i > 25 {
 			if enableDebug {
 				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Reached search limit at index %d\n", i))
 			}
 			break
 		}
 	}
-	
+
 	// Use the prompt as boundary if found, otherwise use previous exits line
 	startSearchIdx := 0
 	if previousPromptIdx >= 0 {
@@ -127,17 +127,17 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 			debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Using previous exits at %d as boundary\n", previousExitsIdx))
 		}
 	}
-	
+
 	firstIndentedIdx := -1
 	for i := startSearchIdx; i < exitsLineIdx; i++ {
 		line := lines[i] // Don't strip ANSI yet - we need to check original indentation
 		stripped := stripANSI(line)
-		
+
 		// Skip empty lines
 		if strings.TrimSpace(stripped) == "" {
 			continue
 		}
-		
+
 		// Check if line is indented (starts with whitespace)
 		if len(stripped) > 0 && (stripped[0] == ' ' || stripped[0] == '\t') {
 			firstIndentedIdx = i
@@ -151,18 +151,18 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 	// The title is the line before the first indented line
 	var title string
 	var descriptionStartIdx int
-	
+
 	if firstIndentedIdx > startSearchIdx {
 		// Found indented line, so title is the line before it
 		for i := firstIndentedIdx - 1; i >= startSearchIdx; i-- {
 			line := stripANSI(lines[i])
 			line = strings.TrimSpace(line)
-			
+
 			// Skip empty lines
 			if line == "" {
 				continue
 			}
-			
+
 			// This is the title
 			title = line
 			descriptionStartIdx = firstIndentedIdx
@@ -172,7 +172,7 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 			break
 		}
 	}
-	
+
 	// If we didn't find a title using indentation, fail
 	if title == "" {
 		if enableDebug {
@@ -188,17 +188,17 @@ func ParseRoomInfo(lines []string, enableDebug bool) *RoomInfo {
 	for i := descriptionStartIdx; i < exitsLineIdx; i++ {
 		line := stripANSI(lines[i])
 		line = strings.TrimSpace(line)
-		
+
 		// Skip empty lines
 		if line == "" {
 			continue
 		}
-		
+
 		// Stop if we hit status/mob lines (these come after description)
 		if isStatusOrCombatLine(line) {
 			break
 		}
-		
+
 		descriptionLines = append(descriptionLines, line)
 	}
 
@@ -234,7 +234,7 @@ func isPromptLine(line string) bool {
 	if !strings.HasSuffix(line, ">") {
 		return false
 	}
-	
+
 	// Look for stat indicators (H for health, V for movement, etc.)
 	return strings.Contains(line, "H ") && strings.Contains(line, "V ")
 }
@@ -243,7 +243,7 @@ func isPromptLine(line string) bool {
 // These lines appear between rooms and should be skipped
 func isStatusOrCombatLine(line string) bool {
 	line = strings.ToLower(line)
-	
+
 	// Skip lines that are clearly status/combat/mob descriptions
 	skipPatterns := []string{
 		"you feel",
@@ -261,13 +261,13 @@ func isStatusOrCombatLine(line string) bool {
 		"a long",
 		"the corpse",
 	}
-	
+
 	for _, pattern := range skipPatterns {
 		if strings.Contains(line, pattern) {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -278,7 +278,7 @@ func isRoomTitle(line string) bool {
 	if len(line) == 0 {
 		return false
 	}
-	
+
 	// Room titles don't usually start with these words
 	lowerLine := strings.ToLower(line)
 	badStarts := []string{"you ", "the corpse", "a small", "a large", "a long"}
@@ -287,18 +287,18 @@ func isRoomTitle(line string) bool {
 			return false
 		}
 	}
-	
+
 	// Room titles are typically 2-8 words
 	words := strings.Fields(line)
 	if len(words) < 2 || len(words) > 8 {
 		return false
 	}
-	
+
 	// Room titles typically start with a capital letter
 	if line[0] < 'A' || line[0] > 'Z' {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -316,7 +316,7 @@ func parseExitsLine(line string) []string {
 // parseExitsList parses a comma/space separated list of exits
 func parseExitsList(exitText string) []string {
 	exitText = strings.TrimSpace(exitText)
-	
+
 	// Check if it's compact format (no spaces, just letters like "EW" or "NESW" or "N(S)E")
 	if len(exitText) > 0 && !strings.Contains(exitText, " ") && !strings.Contains(exitText, ",") {
 		// Split each character as a direction, handling parentheses for closed doors
@@ -326,7 +326,7 @@ func parseExitsList(exitText string) []string {
 			if ch == '(' || ch == ')' {
 				continue
 			}
-			
+
 			dir := strings.ToLower(string(ch))
 			if isValidDirection(dir) {
 				// Expand alias to full direction name
@@ -339,13 +339,13 @@ func parseExitsList(exitText string) []string {
 		}
 		return exits
 	}
-	
+
 	// Replace commas with spaces for uniform splitting
 	exitText = strings.ReplaceAll(exitText, ",", " ")
-	
+
 	// Split on whitespace
 	words := strings.Fields(exitText)
-	
+
 	var exits []string
 	for _, word := range words {
 		word = strings.ToLower(word)
@@ -353,18 +353,18 @@ func parseExitsList(exitText string) []string {
 		if word == "and" || word == "or" || word == "none" {
 			continue
 		}
-		
+
 		// Expand aliases
 		if fullDir, ok := directionAliases[word]; ok {
 			word = fullDir
 		}
-		
+
 		// Only keep known directions
 		if isValidDirection(word) {
 			exits = append(exits, word)
 		}
 	}
-	
+
 	return exits
 }
 
@@ -389,7 +389,7 @@ func stripANSI(str string) string {
 // DetectMovement checks if a line represents a movement command
 func DetectMovement(line string) string {
 	line = strings.TrimSpace(strings.ToLower(line))
-	
+
 	// Check for full direction names
 	if isValidDirection(line) {
 		// Expand aliases
@@ -398,6 +398,6 @@ func DetectMovement(line string) string {
 		}
 		return line
 	}
-	
+
 	return ""
 }
