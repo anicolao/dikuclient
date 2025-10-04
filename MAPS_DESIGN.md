@@ -45,14 +45,14 @@ The Map Panel is located in the right sidebar of the TUI, positioned as the thir
 
 ### Panel Header
 
-The panel header should display:
-- **Title**: "Map" in bold text
-- **Optional Subtitle**: Room count or current area name in a smaller, lighter font
+The panel header should display the current room name as the title:
+- **Title**: Current room name in bold text (e.g., "Temple Square")
+- **Optional Subtitle**: Room count in a smaller, lighter font (e.g., "42 rooms explored")
 
 Example:
 ```
 ┌────────────────────────────┐
-│ Map                        │
+│ Temple Square              │
 │ (42 rooms explored)        │
 │                            │
 ```
@@ -91,66 +91,138 @@ The default and most common display mode showing the immediate area around the p
 
 #### Visual Representation
 
-Rooms are displayed using ASCII characters in a grid layout:
+Rooms are displayed using Unicode box-drawing characters in a pseudo-graphical layout. The current room is always displayed in the center of the view.
 
+**Basic Example:**
 ```
 ┌────────────────────────────┐
-│ Map                        │
-│ (42 rooms)                 │
+│ Temple Square              │
+│ (42 rooms explored)        │
 │                            │
-│     [?]─[?]─[?]            │
-│      │   │   │             │
-│     [?]─[@]─[?]            │
-│      │   │   │             │
-│     [?]─[?]─[?]            │
+│      ┌───┐                 │
+│      │ ? │                 │
+│      └─┬─┘                 │
+│  ┌───┐ │ ┌───┐            │
+│  │ ? ├─┼─┤ ? │            │
+│  └───┘ │ └───┘            │
+│      ┌─┴─┐                 │
+│      │ @ │                 │
+│      └───┘                 │
 │                            │
 └────────────────────────────┘
 ```
 
+**Larger Example with More Rooms:**
+```
+┌────────────────────────────┐
+│ Temple Square              │
+│ (15 rooms explored)        │
+│                            │
+│  ┌───┐     ┌───┐           │
+│  │ ? │     │ ? │           │
+│  └─┬─┘     └─┬─┘           │
+│  ┌─┴─┐ ┌───┐ │             │
+│  │ ? ├─┤ ? ├─┘             │
+│  └─┬─┘ └─┬─┘               │
+│  ┌─┴─┐ ┌─┴─┐ ┌───┐         │
+│  │ ? ├─┤ @ ├─┤ ? │         │
+│  └───┘ └─┬─┘ └───┘         │
+│        ┌─┴─┐               │
+│        │ ? │↓              │
+│        └───┘               │
+└────────────────────────────┘
+```
+
 **Legend:**
-- `[@]` = Current room (player's location)
-- `[?]` = Explored room (visited before)
-- `[!]` = Unexplored exit (room exists but not visited)
-- `[ ]` = Empty space (no known room)
-- `─` = Horizontal connection (east/west)
-- `│` = Vertical connection (north/south)
-- `┌ ┐ └ ┘ ├ ┤ ┬ ┴ ┼` = Corner/junction connectors
+- `┌─┬─┐ │ ├─┼─┤ └─┴─┘` = Unicode box-drawing characters forming room boundaries
+- `@` in center = Current room (player's location), shown in bright color
+- `?` = Explored rooms (visited before)
+- `!` = Unexplored exit indicator (room exists but not visited yet)
+- `↑` = Exit up available
+- `↓` = Exit down available
 
 #### Room Representation Details
 
 **Current Room (@):**
-- Displayed in the center of the view when possible
-- Highlighted with distinct styling (bright color, possibly inverted)
-- Always visible unless player moves to edge of explored area
+- Always displayed in the center of the view
+- Highlighted with distinct styling (bright cyan or yellow color)
+- Room name displayed in panel header
+- The map view always keeps the current room centered
 
 **Visited Rooms (?):**
 - Shows rooms the player has previously entered
 - Standard styling (normal brightness)
 - May use different symbols to indicate special rooms (see Special Room Markers below)
 
-**Exits to Unexplored Rooms (!):**
-- Indicates there is an exit in that direction
+**Unexplored Exits (!):**
+- Small indicator showing there is an unexplored exit in a direction
 - Room details unknown until visited
 - Helps players identify unexplored areas
 
 #### Directional Connections
 
-**Cardinal Directions:**
-- North/South: Vertical line `│`
-- East/West: Horizontal line `─`
-- Displayed between adjacent room markers
+The mapper supports six directions: North, South, East, West, Up, and Down.
 
-**Diagonal Connections:**
-- Northeast: `╱` or `/`
-- Northwest: `╲` or `\`
-- Southeast: `╲` or `\`
-- Southwest: `╱` or `/`
-- May be displayed at an angle if space permits
+**Cardinal Directions (N, S, E, W):**
+- North/South: Vertical connections using box-drawing characters
+- East/West: Horizontal connections using box-drawing characters
+- Displayed using Unicode box-drawing to create clean room boundaries
 
 **Up/Down Connections:**
-- Indicated by `^` (up) or `v` (down) symbol adjacent to room marker
-- Example: `[?]^` means there's an exit up from this room
-- Example: `[?]v` means there's an exit down from this room
+Up and down connections are indicated with special symbols within or adjacent to room boxes:
+- `↑` or `▲` = Exit up available
+- `↓` or `▼` = Exit down available
+- Both symbols shown if both exits available
+
+**Multi-Level Display Examples:**
+
+Simple up/down from current room:
+```
+┌─────────────────────┐
+│ Temple Square       │
+│                     │
+│      ┌───┐          │
+│      │ ? │↑         │
+│      └─┬─┘          │
+│      ┌─┴─┐          │
+│      │ @ │↑↓        │
+│      └─┬─┘          │
+│      ┌─┴─┐          │
+│      │ ? │↓         │
+│      └───┘          │
+└─────────────────────┘
+```
+
+Complex multi-level area (current room has both U/D):
+```
+┌─────────────────────┐
+│ Temple Square       │
+│                     │
+│ Level above:        │
+│   ┌───┐             │
+│   │ ? │  (go U, N)  │
+│   └───┘             │
+│                     │
+│ Current level:      │
+│   ┌───┐             │
+│   │ @ │↑↓           │
+│   └─┬─┘             │
+│   ┌─┴─┐             │
+│   │ ? │             │
+│   └───┘             │
+│                     │
+│ Level below:        │
+│   ┌───┐             │
+│   │ ? │  (go D, S)  │
+│   └───┘             │
+└─────────────────────┘
+```
+
+In the complex example above:
+- The current room (@) has both up and down exits (↑↓ indicator)
+- The display shows three levels: above, current, and below
+- Text annotations show how to reach rooms on other levels (e.g., "go U, N" means go up then north)
+- This helps players understand vertical spatial relationships
 
 #### Grid Layout Specifications
 
@@ -165,9 +237,9 @@ Rooms are displayed using ASCII characters in a grid layout:
 - Consistent spacing maintained across entire grid
 
 **Centering:**
-- Current room centered in display when possible
-- View shifts when player moves to edge of explored area
-- Smooth transitions as player navigates
+- Current room is always centered in display
+- The map view scrolls/shifts to keep the current room centered as player navigates
+- This provides consistent spatial reference and orientation
 
 ### Mode 2: Compact View
 
@@ -175,24 +247,25 @@ When panel height is limited (too small for standard grid), display a text-based
 
 ```
 ┌────────────────────────────┐
-│ Map (compact)              │
-│                            │
-│ Current: Temple Square     │
+│ Temple Square              │
 │                            │
 │ Exits:                     │
 │   N: Market District       │
 │   S: Guard Post            │
 │   E: Training Ground       │
 │   W: (unexplored)          │
+│   U: Temple Roof           │
+│   D: Catacombs             │
 │                            │
 └────────────────────────────┘
 ```
 
 This mode shows:
-- Current room name
-- List of exits with destinations
+- Current room name as the panel title
+- List of all exits (N, S, E, W, U, D) with destinations
 - Known room names or "(unexplored)" for unknown exits
 - No graphical representation
+- Simple, space-efficient layout
 
 ### Mode 3: Room Info View (Alternative)
 
@@ -200,16 +273,15 @@ An alternative focused on detailed room information:
 
 ```
 ┌────────────────────────────┐
-│ Map                        │
-│                            │
 │ Temple Square              │
 │ Visited: 3 times           │
 │                            │
-│ Exits: N, S, E, W          │
+│ Exits: N, S, E, W, U       │
 │                            │
 │ Nearby (1 step):           │
 │ • Market District (N)      │
 │ • Guard Post (S)           │
+│ • Temple Roof (U)          │
 │                            │
 └────────────────────────────┘
 ```
@@ -236,17 +308,35 @@ The map panel should use color to convey information:
 
 ### Special Room Markers
 
-Different room types can be indicated with different symbols or colors:
+Different room types can be indicated with different symbols or colors within the box-drawn rooms:
 
 **Symbol Variations:**
-- `[@]` = Current location
-- `[H]` = Home/recall point
-- `[$]` = Shop or merchant
-- `[#]` = Bank or storage
-- `[T]` = Trainer or guild
-- `[!]` = Dangerous area (marked by player)
-- `[*]` = Points of interest (marked by player)
-- `[?]` = Standard explored room
+- `@` = Current location (always in center)
+- `H` = Home/recall point
+- `$` = Shop or merchant
+- `#` = Bank or storage
+- `T` = Trainer or guild
+- `!` = Dangerous area (marked by player)
+- `*` = Points of interest (marked by player)
+- `?` = Standard explored room
+
+Example with special rooms:
+```
+┌────────────────────────────┐
+│ Temple Square              │
+│                            │
+│  ┌───┐ ┌───┐               │
+│  │ $ ├─┤ # │               │
+│  └─┬─┘ └───┘               │
+│  ┌─┴─┐                     │
+│  │ @ │                     │
+│  └─┬─┘                     │
+│  ┌─┴─┐ ┌───┐               │
+│  │ H ├─┤ T │               │
+│  └───┘ └───┘               │
+└────────────────────────────┘
+```
+In this example: Shop ($) to north-west, Bank (#) to north-east, Home (H) to south-west, Trainer (T) to south-east
 
 **Color Variations (Alternative or Combined):**
 - Default rooms: White/gray
@@ -259,25 +349,28 @@ Different room types can be indicated with different symbols or colors:
 
 ### Room Labels
 
-When space permits, rooms can display abbreviated names:
+When panel width permits, abbreviated room names can be displayed near or within room boxes:
 
 ```
 ┌────────────────────────────┐
-│ Map                        │
+│ Temple Square              │
 │                            │
-│  Market─Temple─Training    │
-│     │      │       │       │
-│  Guild──[@]────Plaza       │
-│     │      │       │       │
-│  Alley──Bank──Fountain     │
-│                            │
+│  ┌─────┐   ┌───────┐       │
+│  │Mark.├───┤Temple │       │
+│  └──┬──┘   └───┬───┘       │
+│  ┌──┴──┐   ┌───┴───┐       │
+│  │Guild├───┤   @   │       │
+│  └─────┘   └───┬───┘       │
+│             ┌───┴───┐       │
+│             │ Plaza │       │
+│             └───────┘       │
 └────────────────────────────┘
 ```
 
-- Names truncated to fit available space (e.g., "Temple Square" → "Temple")
-- Only displayed when panel width allows
+- Names truncated to fit available space (e.g., "Market District" → "Mark.")
+- Only displayed when panel width allows (typically needs 35+ character width)
 - Can be toggled on/off by user preference
-- Shown in smaller or lighter font than room markers
+- Shown in smaller or lighter font/color than current room marker
 
 ### Dynamic Elements
 
