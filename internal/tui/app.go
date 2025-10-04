@@ -602,7 +602,7 @@ func (m *Model) renderStatusBar() string {
 func (m *Model) renderMainContent() string {
 	headerHeight := 3
 	sidebarWidth := m.sidebarWidth
-	mainWidth := m.width - sidebarWidth - 6
+	mainWidth := m.width - sidebarWidth - 4
 	contentHeight := m.height - headerHeight - 2
 
 	// Build title for main window with current room and exits
@@ -630,8 +630,16 @@ func (m *Model) renderMainContent() string {
 		mainContent = lipgloss.JoinVertical(lipgloss.Left, titleLine, "", mainContent)
 	}
 
-	// Game output viewport with border
-	gameOutput := mainStyle.
+	// Game output viewport with only right and bottom borders
+	mainBorderStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62")).
+		BorderTop(false).
+		BorderLeft(false).
+		BorderRight(true).
+		BorderBottom(true)
+
+	gameOutput := mainBorderStyle.
 		Width(mainWidth).
 		Height(contentHeight).
 		Render(mainContent)
@@ -649,24 +657,14 @@ func (m *Model) renderMainContent() string {
 func (m *Model) renderSidebar(width, height int) string {
 	panelHeight := (height - 8) / 4
 
-	// Style for sidebar panels with selective borders for merging
-	topPanelStyle := lipgloss.NewStyle().
+	// Style for sidebar panels with only right and bottom borders
+	panelStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("62")).
-		BorderBottom(false). // Will merge with panel below
-		Padding(1)
-	
-	middlePanelStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
-		BorderTop(false). // Merge with panel above
-		BorderBottom(false). // Will merge with panel below
-		Padding(1)
-	
-	bottomPanelStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62")).
-		BorderTop(false). // Merge with panel above
+		BorderTop(false).
+		BorderLeft(false).
+		BorderRight(true).
+		BorderBottom(true).
 		Padding(1)
 
 	// Tells panel with scrollable viewport
@@ -681,7 +679,7 @@ func (m *Model) renderSidebar(width, height int) string {
 	}
 	m.tellsViewport.SetContent(tellsContent)
 
-	tellsPanel := topPanelStyle.
+	tellsPanel := panelStyle.
 		Width(width - 2).
 		Height(panelHeight).
 		Render(
@@ -722,7 +720,7 @@ func (m *Model) renderSidebar(width, height int) string {
 	}
 	m.xpViewport.SetContent(xpContent)
 
-	xpPanel := middlePanelStyle.
+	xpPanel := panelStyle.
 		Width(width - 2).
 		Height(panelHeight).
 		Render(
@@ -752,7 +750,7 @@ func (m *Model) renderSidebar(width, height int) string {
 	}
 	m.inventoryViewport.SetContent(inventoryContent)
 
-	inventoryPanel := middlePanelStyle.
+	inventoryPanel := panelStyle.
 		Width(width - 2).
 		Height(panelHeight).
 		Render(
@@ -784,7 +782,7 @@ func (m *Model) renderSidebar(width, height int) string {
 		}
 	}
 	
-	mapPanel := bottomPanelStyle.
+	mapPanel := panelStyle.
 		Width(width - 2).
 		Height(panelHeight).
 		Render(
