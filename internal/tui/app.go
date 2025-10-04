@@ -647,16 +647,35 @@ func (m *Model) renderSidebar(width, height int) string {
 			),
 		)
 
-	// Map panel (empty placeholder)
+	// Map panel
+	var mapHeader string
+	var mapContent string
+	
+	if m.worldMap == nil {
+		mapHeader = lipgloss.NewStyle().Bold(true).Render("Map")
+		mapContent = emptyPanelStyle.Render("(not implemented)")
+	} else {
+		currentRoom := m.worldMap.GetCurrentRoom()
+		if currentRoom == nil {
+			mapHeader = lipgloss.NewStyle().Bold(true).Render("Map")
+			mapContent = emptyPanelStyle.Render("(exploring...)")
+		} else {
+			mapHeader = lipgloss.NewStyle().Bold(true).Render(currentRoom.Title)
+			// Calculate available height for map content (subtract header and spacing)
+			mapHeight := panelHeight - 2
+			mapContent = m.worldMap.FormatMapPanel(width-4, mapHeight)
+		}
+	}
+	
 	mapPanel := sidebarStyle.
 		Width(width - 2).
 		Height(panelHeight).
 		Render(
 			lipgloss.JoinVertical(
 				lipgloss.Left,
-				lipgloss.NewStyle().Bold(true).Render("Map"),
+				mapHeader,
 				"",
-				emptyPanelStyle.Render("(not implemented)"),
+				mapContent,
 			),
 		)
 
