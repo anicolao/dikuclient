@@ -751,6 +751,13 @@ func (m *Model) renderSidebar(width, height int) string {
 		t := table.New().
 			Border(lipgloss.NormalBorder()).
 			BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("240"))).
+			BorderTop(true).
+			BorderBottom(true).
+			BorderLeft(true).
+			BorderRight(true).
+			BorderHeader(true).
+			BorderColumn(true).
+			BorderRow(false).
 			Headers("Creature", "XP/s", "Samples").
 			StyleFunc(func(row, col int) lipgloss.Style {
 				if row == table.HeaderRow {
