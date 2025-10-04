@@ -171,14 +171,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						// Replace the prompt line with the command
 						m.output[len(m.output)-1] = savedPrompt + "\x1b[93m" + command + "\x1b[0m"
 					}
-					
+
 					clientCmd := m.handleClientCommand(command)
-					
+
 					// Add two newlines (empty lines) and restore prompt after command output
 					m.output = append(m.output, "")
 					m.output = append(m.output, "")
 					m.output = append(m.output, savedPrompt)
-					
+
 					m.currentInput = ""
 					m.cursorPos = 0
 					m.updateViewport()
@@ -271,12 +271,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Update inventory viewport size
 		panelHeight := (m.height - headerHeight - 2 - 6) / 3
-		m.inventoryViewport.Width = sidebarWidth - 4  // Account for borders and padding
-		m.inventoryViewport.Height = panelHeight - 4  // Account for header, timestamp, and borders
-		
+		m.inventoryViewport.Width = sidebarWidth - 4 // Account for borders and padding
+		m.inventoryViewport.Height = panelHeight - 4 // Account for header, timestamp, and borders
+
 		// Update tells viewport size
-		m.tellsViewport.Width = sidebarWidth - 4  // Account for borders and padding
-		m.tellsViewport.Height = panelHeight - 4  // Account for header and borders
+		m.tellsViewport.Width = sidebarWidth - 4 // Account for borders and padding
+		m.tellsViewport.Height = panelHeight - 4 // Account for header and borders
 
 		m.updateViewport()
 		return m, nil
@@ -307,10 +307,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.output = append(m.output, line)
 			m.recentOutput = append(m.recentOutput, line)
-			
+
 			// Check if this line is a tell message
 			m.detectAndParseTell(line)
-			
+
 			// Check if this line matches any triggers
 			if m.triggerManager != nil && m.conn != nil {
 				actions := m.triggerManager.Match(line)
@@ -329,7 +329,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Try to detect room information from recent output
 		m.detectAndUpdateRoom()
-		
+
 		// Try to detect inventory information from recent output
 		m.detectAndUpdateInventory()
 
@@ -381,13 +381,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.output = append(m.output, fmt.Sprintf("Error: %v", msg))
 		m.updateViewport()
 		return m, nil
-		
+
 	case autoWalkTickMsg:
 		// Process next step in auto-walk
 		if m.autoWalking && m.autoWalkIndex < len(m.autoWalkPath) {
 			direction := m.autoWalkPath[m.autoWalkIndex]
 			m.autoWalkIndex++
-			
+
 			// Send the movement command
 			if m.conn != nil && m.connected {
 				m.conn.Send(direction)
@@ -395,7 +395,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.output = append(m.output, fmt.Sprintf("\x1b[90m[Auto-walk: %s (%d/%d)]\x1b[0m", direction, m.autoWalkIndex, len(m.autoWalkPath)))
 				m.updateViewport()
 			}
-			
+
 			// If more steps remain, schedule next tick
 			if m.autoWalkIndex < len(m.autoWalkPath) {
 				return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
@@ -568,10 +568,10 @@ func (m *Model) renderSidebar(width, height int) string {
 		tellsHeader = lipgloss.NewStyle().Bold(true).Render("Tells")
 		tellsContent = emptyPanelStyle.Render("(no tells yet)")
 	}
-	
+
 	// Update viewport content
 	m.tellsViewport.SetContent(tellsContent)
-	
+
 	// Render tells panel with header and scrollable content
 	tellsPanel := sidebarStyle.
 		Width(width - 2).
@@ -596,17 +596,17 @@ func (m *Model) renderSidebar(width, height int) string {
 			lipgloss.NewStyle().Bold(true).Render("Inventory"),
 			lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("("+timeStr+")"),
 		)
-		
+
 		// Add all items without truncation - viewport will handle scrolling
 		inventoryContent = strings.Join(m.inventory, "\n")
 	} else {
 		inventoryHeader = lipgloss.NewStyle().Bold(true).Render("Inventory")
 		inventoryContent = emptyPanelStyle.Render("(not populated)")
 	}
-	
+
 	// Update viewport content
 	m.inventoryViewport.SetContent(inventoryContent)
-	
+
 	// Render inventory panel with header and scrollable content
 	inventoryPanel := sidebarStyle.
 		Width(width - 2).
@@ -654,14 +654,14 @@ func (m *Model) detectAndUpdateRoom() {
 	if m.pendingMovement == "" {
 		return
 	}
-	
+
 	if len(m.recentOutput) < 3 {
 		return // Need at least a few lines to detect a room
 	}
 
 	// Try to parse room info from recent output
 	roomInfo := mapper.ParseRoomInfo(m.recentOutput, m.mapDebug)
-	
+
 	// Only display debug info if mapDebug flag is enabled
 	if m.mapDebug && roomInfo != nil && roomInfo.DebugInfo != "" {
 		// Add debug info to output
@@ -670,23 +670,23 @@ func (m *Model) detectAndUpdateRoom() {
 			m.output = append(m.output, "\x1b[90m"+line+"\x1b[0m") // Gray color for debug
 		}
 	}
-	
+
 	if roomInfo == nil || roomInfo.Title == "" {
 		return // No valid room detected
 	}
 
 	// Create or update room in map
 	room := mapper.NewRoom(roomInfo.Title, roomInfo.Description, roomInfo.Exits)
-	
+
 	// Set the movement direction
 	m.worldMap.SetLastDirection(m.pendingMovement)
 	m.pendingMovement = ""
-	
+
 	m.worldMap.AddOrUpdateRoom(room)
-	
+
 	// Save map periodically (every room visit)
 	m.worldMap.Save()
-	
+
 	// Notify user that room was added (only if debug enabled)
 	if m.mapDebug {
 		m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, roomInfo.Exits))
@@ -701,7 +701,7 @@ func (m *Model) detectAndUpdateInventory() {
 
 	// Try to parse inventory info from recent output
 	invInfo := mapper.ParseInventoryInfo(m.recentOutput, false)
-	
+
 	if invInfo == nil {
 		return // No valid inventory detected
 	}
@@ -718,18 +718,18 @@ var tellRegex = regexp.MustCompile(`^(.+?) tells you '(.*)'$`)
 func (m *Model) detectAndParseTell(line string) {
 	// Strip ANSI codes for pattern matching
 	cleanLine := stripANSI(line)
-	
+
 	matches := tellRegex.FindStringSubmatch(cleanLine)
 	if matches == nil || len(matches) != 3 {
 		return // Not a tell message
 	}
-	
+
 	player := matches[1]
 	content := matches[2]
-	
+
 	// Format as "Player: content" for the tells panel
 	tellEntry := fmt.Sprintf("%s: %s", player, content)
-	
+
 	// Add to tells list (keep last 50 tells)
 	m.tells = append(m.tells, tellEntry)
 	if len(m.tells) > 50 {
@@ -753,7 +753,7 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 	// Remove the leading /
 	command = strings.TrimPrefix(command, "/")
 	parts := strings.Fields(command)
-	
+
 	if len(parts) == 0 {
 		m.output = append(m.output, "\x1b[91mError: Empty command\x1b[0m")
 		return nil
@@ -801,12 +801,12 @@ func (m *Model) handlePointCommand(args []string) {
 
 	var rooms []*mapper.Room
 	var query string
-	
+
 	// Check if first argument is a number for room selection
 	if roomNum, err := fmt.Sscanf(args[0], "%d", new(int)); err == nil && roomNum == 1 {
 		var index int
 		fmt.Sscanf(args[0], "%d", &index)
-		
+
 		// If only a number is provided, use lastRoomSearch
 		if len(args) == 1 {
 			if len(m.lastRoomSearch) == 0 {
@@ -822,17 +822,17 @@ func (m *Model) handlePointCommand(args []string) {
 			// Number followed by search terms - search first, then select by index
 			query = strings.Join(args[1:], " ")
 			allMatches := m.worldMap.FindRooms(query)
-			
+
 			if len(allMatches) == 0 {
 				m.output = append(m.output, fmt.Sprintf("\x1b[91mNo rooms found matching '%s'\x1b[0m", query))
 				return
 			}
-			
+
 			if index < 1 || index > len(allMatches) {
 				m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Found %d rooms matching '%s'. Must be between 1 and %d.\x1b[0m", len(allMatches), query, len(allMatches)))
 				return
 			}
-			
+
 			rooms = []*mapper.Room{allMatches[index-1]}
 			m.lastRoomSearch = allMatches
 		}
@@ -850,7 +850,7 @@ func (m *Model) handlePointCommand(args []string) {
 	if len(rooms) > 1 {
 		// Store results for later disambiguation
 		m.lastRoomSearch = rooms
-		
+
 		m.output = append(m.output, fmt.Sprintf("\x1b[93mFound %d rooms matching '%s':\x1b[0m", len(rooms), query))
 		for i, room := range rooms {
 			if i >= 5 {
@@ -889,12 +889,12 @@ func (m *Model) handleWayfindCommand(args []string) {
 
 	var rooms []*mapper.Room
 	var query string
-	
+
 	// Check if first argument is a number for room selection
 	if roomNum, err := fmt.Sscanf(args[0], "%d", new(int)); err == nil && roomNum == 1 {
 		var index int
 		fmt.Sscanf(args[0], "%d", &index)
-		
+
 		// If only a number is provided, use lastRoomSearch
 		if len(args) == 1 {
 			if len(m.lastRoomSearch) == 0 {
@@ -910,17 +910,17 @@ func (m *Model) handleWayfindCommand(args []string) {
 			// Number followed by search terms - search first, then select by index
 			query = strings.Join(args[1:], " ")
 			allMatches := m.worldMap.FindRooms(query)
-			
+
 			if len(allMatches) == 0 {
 				m.output = append(m.output, fmt.Sprintf("\x1b[91mNo rooms found matching '%s'\x1b[0m", query))
 				return
 			}
-			
+
 			if index < 1 || index > len(allMatches) {
 				m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Found %d rooms matching '%s'. Must be between 1 and %d.\x1b[0m", len(allMatches), query, len(allMatches)))
 				return
 			}
-			
+
 			rooms = []*mapper.Room{allMatches[index-1]}
 			m.lastRoomSearch = allMatches
 		}
@@ -938,7 +938,7 @@ func (m *Model) handleWayfindCommand(args []string) {
 	if len(rooms) > 1 {
 		// Store results for later disambiguation
 		m.lastRoomSearch = rooms
-		
+
 		m.output = append(m.output, fmt.Sprintf("\x1b[93mFound %d rooms matching '%s':\x1b[0m", len(rooms), query))
 		for i, room := range rooms {
 			if i >= 5 {
@@ -974,10 +974,10 @@ func (m *Model) handleWayfindCommand(args []string) {
 // handleMapCommand shows information about the current map
 func (m *Model) handleMapCommand(args []string) {
 	current := m.worldMap.GetCurrentRoom()
-	
+
 	m.output = append(m.output, "\x1b[92m=== Map Information ===\x1b[0m")
 	m.output = append(m.output, fmt.Sprintf("Total rooms explored: \x1b[96m%d\x1b[0m", len(m.worldMap.Rooms)))
-	
+
 	if current != nil {
 		m.output = append(m.output, fmt.Sprintf("Current room: \x1b[96m%s\x1b[0m", current.Title))
 		if len(current.Exits) > 0 {
@@ -1013,16 +1013,16 @@ func (m *Model) handleHelpCommand() {
 func (m *Model) handleRoomsCommand(args []string) {
 	var roomsToDisplay []*mapper.Room
 	var headerText string
-	
+
 	if len(args) == 0 {
 		// No filter - show all rooms
 		allRooms := m.worldMap.GetAllRooms()
-		
+
 		if len(allRooms) == 0 {
 			m.output = append(m.output, "\x1b[93mNo rooms have been explored yet.\x1b[0m")
 			return
 		}
-		
+
 		roomsToDisplay = make([]*mapper.Room, 0, len(allRooms))
 		for _, room := range allRooms {
 			roomsToDisplay = append(roomsToDisplay, room)
@@ -1032,25 +1032,25 @@ func (m *Model) handleRoomsCommand(args []string) {
 		// Filter by search terms
 		query := strings.Join(args, " ")
 		roomsToDisplay = m.worldMap.FindRooms(query)
-		
+
 		if len(roomsToDisplay) == 0 {
 			m.output = append(m.output, fmt.Sprintf("\x1b[93mNo rooms found matching '%s'\x1b[0m", query))
 			return
 		}
-		
+
 		headerText = fmt.Sprintf("\x1b[92m=== Rooms matching '%s' (%d) ===\x1b[0m", query, len(roomsToDisplay))
 	}
-	
+
 	m.output = append(m.output, headerText)
-	
+
 	// Sort rooms by title for consistent display
 	sort.Slice(roomsToDisplay, func(i, j int) bool {
 		return roomsToDisplay[i].Title < roomsToDisplay[j].Title
 	})
-	
+
 	// Store results for later disambiguation
 	m.lastRoomSearch = roomsToDisplay
-	
+
 	// Display rooms
 	for i, room := range roomsToDisplay {
 		exitList := make([]string, 0, len(room.Exits))
@@ -1058,12 +1058,12 @@ func (m *Model) handleRoomsCommand(args []string) {
 			exitList = append(exitList, dir)
 		}
 		sort.Strings(exitList)
-		
+
 		exitsStr := strings.Join(exitList, ", ")
 		if exitsStr == "" {
 			exitsStr = "none"
 		}
-		
+
 		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s\x1b[0m \x1b[90m[%s]\x1b[0m", i+1, room.Title, exitsStr))
 	}
 }
@@ -1078,20 +1078,20 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 		m.output = append(m.output, "\x1b[93mAuto-walk cancelled.\x1b[0m")
 		return nil
 	}
-	
+
 	if len(args) == 0 {
 		m.output = append(m.output, "\x1b[91mUsage: /go <room search terms> or /go <number> [search terms]\x1b[0m")
 		return nil
 	}
-	
+
 	var rooms []*mapper.Room
 	var query string
-	
+
 	// Check if first argument is a number for room selection
 	if roomNum, err := fmt.Sscanf(args[0], "%d", new(int)); err == nil && roomNum == 1 {
 		var index int
 		fmt.Sscanf(args[0], "%d", &index)
-		
+
 		// If only a number is provided, use lastRoomSearch
 		if len(args) == 1 {
 			if len(m.lastRoomSearch) == 0 {
@@ -1107,17 +1107,17 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 			// Number followed by search terms - search first, then select by index
 			query = strings.Join(args[1:], " ")
 			allMatches := m.worldMap.FindRooms(query)
-			
+
 			if len(allMatches) == 0 {
 				m.output = append(m.output, fmt.Sprintf("\x1b[91mNo rooms found matching '%s'\x1b[0m", query))
 				return nil
 			}
-			
+
 			if index < 1 || index > len(allMatches) {
 				m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Found %d rooms matching '%s'. Must be between 1 and %d.\x1b[0m", len(allMatches), query, len(allMatches)))
 				return nil
 			}
-			
+
 			rooms = []*mapper.Room{allMatches[index-1]}
 			m.lastRoomSearch = allMatches
 		}
@@ -1126,16 +1126,16 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 		query = strings.Join(args, " ")
 		rooms = m.worldMap.FindRooms(query)
 	}
-	
+
 	if len(rooms) == 0 {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mNo rooms found matching '%s'\x1b[0m", query))
 		return nil
 	}
-	
+
 	if len(rooms) > 1 {
 		// Store results for later disambiguation
 		m.lastRoomSearch = rooms
-		
+
 		m.output = append(m.output, fmt.Sprintf("\x1b[93mFound %d rooms matching '%s':\x1b[0m", len(rooms), query))
 		for i, room := range rooms {
 			if i >= 5 {
@@ -1147,27 +1147,27 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 		m.output = append(m.output, "\x1b[93mPlease be more specific, or use /go <number> to select a room.\x1b[0m")
 		return nil
 	}
-	
+
 	// Find path to the room
 	targetRoom := rooms[0]
 	path := m.worldMap.FindPath(targetRoom.ID)
-	
+
 	if path == nil {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mNo path found to '%s'\x1b[0m", targetRoom.Title))
 		return nil
 	}
-	
+
 	if len(path) == 0 {
 		m.output = append(m.output, "\x1b[92mYou are already at that location!\x1b[0m")
 		return nil
 	}
-	
+
 	// Start auto-walking
 	m.autoWalking = true
 	m.autoWalkPath = path
 	m.autoWalkIndex = 0
 	m.output = append(m.output, fmt.Sprintf("\x1b[92mAuto-walking to '%s' (%d steps). Type /go to cancel.\x1b[0m", targetRoom.Title, len(path)))
-	
+
 	// Return a command that starts the first tick after 1 second
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return autoWalkTickMsg{}
@@ -1178,11 +1178,11 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 func (m *Model) handleTriggerCommand(command string) {
 	// Parse the command to extract pattern and action
 	// Expected format: /trigger "pattern" "action"
-	
+
 	// Remove "/trigger " prefix
 	command = strings.TrimPrefix(command, "trigger ")
 	command = strings.TrimSpace(command)
-	
+
 	// Parse quoted strings
 	pattern, action, err := parseQuotedArgs(command)
 	if err != nil {
@@ -1192,20 +1192,20 @@ func (m *Model) handleTriggerCommand(command string) {
 		m.output = append(m.output, "\x1b[93mExample: /trigger \"The <subject> dies\" \"get <subject>\"\x1b[0m")
 		return
 	}
-	
+
 	// Add the trigger
 	trigger, err := m.triggerManager.Add(pattern, action)
 	if err != nil {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mError adding trigger: %v\x1b[0m", err))
 		return
 	}
-	
+
 	// Save triggers
 	if err := m.triggerManager.Save(); err != nil {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving triggers: %v\x1b[0m", err))
 		return
 	}
-	
+
 	m.output = append(m.output, fmt.Sprintf("\x1b[92mTrigger added: \"%s\" -> \"%s\"\x1b[0m", trigger.Pattern, trigger.Action))
 }
 
@@ -1216,7 +1216,7 @@ func (m *Model) handleTriggersCommand(args []string) {
 		m.handleTriggersListCommand()
 		return
 	}
-	
+
 	subCmd := strings.ToLower(args[0])
 	switch subCmd {
 	case "list":
@@ -1246,7 +1246,7 @@ func (m *Model) handleTriggersListCommand() {
 		m.output = append(m.output, "\x1b[93mUse /trigger \"pattern\" \"action\" to add a trigger.\x1b[0m")
 		return
 	}
-	
+
 	m.output = append(m.output, "\x1b[92m=== Active Triggers ===\x1b[0m")
 	for i, trigger := range m.triggerManager.Triggers {
 		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. \"%s\" -> \"%s\"\x1b[0m", i+1, trigger.Pattern, trigger.Action))
@@ -1257,36 +1257,36 @@ func (m *Model) handleTriggersListCommand() {
 func (m *Model) handleTriggersRemoveCommand(index int) {
 	// Convert from 1-based to 0-based index
 	index--
-	
+
 	if index < 0 || index >= len(m.triggerManager.Triggers) {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mError: Invalid trigger index. Use /triggers list to see available triggers.\x1b[0m"))
 		return
 	}
-	
+
 	trigger := m.triggerManager.Triggers[index]
 	if err := m.triggerManager.Remove(index); err != nil {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mError removing trigger: %v\x1b[0m", err))
 		return
 	}
-	
+
 	// Save triggers
 	if err := m.triggerManager.Save(); err != nil {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving triggers: %v\x1b[0m", err))
 		return
 	}
-	
+
 	m.output = append(m.output, fmt.Sprintf("\x1b[92mRemoved trigger: \"%s\" -> \"%s\"\x1b[0m", trigger.Pattern, trigger.Action))
 }
 
 // parseQuotedArgs parses two quoted strings from a command
 func parseQuotedArgs(input string) (string, string, error) {
 	input = strings.TrimSpace(input)
-	
+
 	// Find first quoted string
 	if !strings.HasPrefix(input, "\"") {
 		return "", "", fmt.Errorf("expected quoted pattern")
 	}
-	
+
 	// Find the closing quote for the first string
 	endQuote := 1
 	for endQuote < len(input) {
@@ -1295,19 +1295,19 @@ func parseQuotedArgs(input string) (string, string, error) {
 		}
 		endQuote++
 	}
-	
+
 	if endQuote >= len(input) {
 		return "", "", fmt.Errorf("unterminated pattern quote")
 	}
-	
+
 	pattern := input[1:endQuote]
-	
+
 	// Find second quoted string
 	rest := strings.TrimSpace(input[endQuote+1:])
 	if !strings.HasPrefix(rest, "\"") {
 		return "", "", fmt.Errorf("expected quoted action")
 	}
-	
+
 	// Find the closing quote for the second string
 	endQuote = 1
 	for endQuote < len(rest) {
@@ -1316,12 +1316,12 @@ func parseQuotedArgs(input string) (string, string, error) {
 		}
 		endQuote++
 	}
-	
+
 	if endQuote >= len(rest) {
 		return "", "", fmt.Errorf("unterminated action quote")
 	}
-	
+
 	action := rest[1:endQuote]
-	
+
 	return pattern, action, nil
 }

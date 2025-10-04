@@ -11,9 +11,9 @@ import (
 
 // Trigger represents a pattern-action pair
 type Trigger struct {
-	ID      string `json:"id"`      // Unique identifier
-	Pattern string `json:"pattern"` // Pattern to match (may contain <variable> placeholders)
-	Action  string `json:"action"`  // Action to execute (may contain <variable> placeholders)
+	ID      string         `json:"id"`      // Unique identifier
+	Pattern string         `json:"pattern"` // Pattern to match (may contain <variable> placeholders)
+	Action  string         `json:"action"`  // Action to execute (may contain <variable> placeholders)
 	regex   *regexp.Regexp // Compiled regex (not serialized)
 }
 
@@ -182,10 +182,10 @@ func (t *Trigger) compilePattern() error {
 	// Escape the pattern first, but preserve our placeholders
 	// Replace <variable> with a temporary marker
 	tempPattern := placeholderRegex.ReplaceAllString(pattern, "§§§PLACEHOLDER§§§")
-	
+
 	// Escape regex special characters
 	tempPattern = regexp.QuoteMeta(tempPattern)
-	
+
 	// Replace temporary markers with regex capture groups
 	// Use (.+?) for non-greedy matching of any characters
 	tempPattern = strings.ReplaceAll(tempPattern, "§§§PLACEHOLDER§§§", "(.+?)")

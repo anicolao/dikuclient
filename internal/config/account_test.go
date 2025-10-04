@@ -219,4 +219,3 @@ func TestGetConfigPathWithEnvVar(t *testing.T) {
 		t.Errorf("Account from custom config doesn't match")
 	}
 }
-

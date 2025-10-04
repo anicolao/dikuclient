@@ -28,7 +28,7 @@ type Config struct {
 // Otherwise, it defaults to ~/.config/dikuclient
 func GetConfigPath() (string, error) {
 	var configDir string
-	
+
 	// Check for environment variable override
 	if envConfigDir := os.Getenv("DIKUCLIENT_CONFIG_DIR"); envConfigDir != "" {
 		configDir = envConfigDir

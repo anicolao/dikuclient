@@ -56,7 +56,7 @@ func StartWithLogging(port int, enableLogs bool) error {
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	// Check if session ID is provided
 	sessionID := r.URL.Query().Get("id")
-	
+
 	if sessionID == "" {
 		// No session ID - generate a new GUID and redirect
 		newSessionID := uuid.New().String()
@@ -65,12 +65,11 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		log.Printf("New session created: %s", newSessionID)
 		return
 	}
-	
+
 	// Session ID provided - use it directly without validation
 	// This allows users to share URLs with specific session IDs
 	log.Printf("Using session ID from URL: %s", sessionID)
-	
+
 	// Serve the static index.html file
 	http.ServeFile(w, r, filepath.Join("web", "static", "index.html"))
 }
-

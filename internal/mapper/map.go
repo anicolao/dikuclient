@@ -10,10 +10,10 @@ import (
 
 // Map represents the entire MUD world map
 type Map struct {
-	Rooms          map[string]*Room `json:"rooms"`           // roomID -> Room
-	CurrentRoomID  string           `json:"current_room_id"` // ID of current room
+	Rooms          map[string]*Room `json:"rooms"`            // roomID -> Room
+	CurrentRoomID  string           `json:"current_room_id"`  // ID of current room
 	PreviousRoomID string           `json:"previous_room_id"` // ID of previous room (for linking)
-	LastDirection  string           `json:"last_direction"`  // Last movement direction
+	LastDirection  string           `json:"last_direction"`   // Last movement direction
 	mapPath        string           // Path to the map file (not serialized)
 }
 
@@ -300,16 +300,16 @@ func (m *Map) GetAllRooms() map[string]*Room {
 // getReverseDirection returns the opposite direction
 func getReverseDirection(direction string) string {
 	reverseMap := map[string]string{
-		"north": "south",
-		"south": "north",
-		"east":  "west",
-		"west":  "east",
-		"up":    "down",
-		"down":  "up",
-		"ne":    "sw",
-		"nw":    "se",
-		"se":    "nw",
-		"sw":    "ne",
+		"north":     "south",
+		"south":     "north",
+		"east":      "west",
+		"west":      "east",
+		"up":        "down",
+		"down":      "up",
+		"ne":        "sw",
+		"nw":        "se",
+		"se":        "nw",
+		"sw":        "ne",
 		"northeast": "southwest",
 		"northwest": "southeast",
 		"southeast": "northwest",
