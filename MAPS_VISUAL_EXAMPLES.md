@@ -12,7 +12,9 @@ Player is at Temple Square with exits in all four cardinal directions.
 │ Temple Square              │
 │                            │
 │           ▢                │
-│         ▢ ▣ ▢              │
+│           │                │
+│         ▢─▣─▢              │
+│           │                │
 │           ▢                │
 │                            │
 ╰────────────────────────────╯
@@ -21,6 +23,7 @@ Player is at Temple Square with exits in all four cardinal directions.
 **Legend:**
 - `▣` = Current room (Temple Square) - shown in yellow
 - `▢` = Visited rooms (North Gate, South Gate, East Market, West Temple) - shown in white
+- `─` and `│` = Connection lines showing actual exits between rooms - shown in dim gray
 
 ## Example 2: Temple Complex with Vertical Exits
 
@@ -52,12 +55,12 @@ Player is in the middle of a long corridor.
 │                                        │
 │ Corridor 4                             │
 │                                        │
-│      ▢ ▢ ▢ ▣ ▢ ▢ ▢                    │
+│      ▢─▢─▢─▣─▢─▢─▢                    │
 │                                        │
 ╰────────────────────────────────────────╯
 ```
 
-Shows 7 connected rooms in a straight line (east-west).
+Shows 7 connected rooms in a straight line (east-west) with clear connection lines.
 
 ## Example 4: Large Area (3x3 Grid)
 
@@ -68,14 +71,16 @@ Player is at the center of a 3x3 grid of rooms.
 │                            │
 │ Room (1,1)                 │
 │                            │
-│        ▢ ▢ ▢               │
-│        ▢ ▣ ▢               │
-│        ▢ ▢ ▢               │
+│        ▢─▢─▢               │
+│        │ │ │               │
+│        ▢─▣─▢               │
+│        │ │ │               │
+│        ▢─▢─▢               │
 │                            │
 ╰────────────────────────────╯
 ```
 
-Shows all 9 rooms in a compact grid layout.
+Shows all 9 rooms in a compact grid layout with connection lines forming a grid pattern.
 
 ## Example 5: Complete Sidebar with Map
 
@@ -101,7 +106,9 @@ Full sidebar view showing all three panels (Tells, Inventory, Map).
 │ Temple Square              │
 │                            │
 │           ▢                │
-│         ▢ ▣ ▢              │
+│           │                │
+│         ▢─▣─▢              │
+│           │                │
 │           ▢                │
 │                            │
 ╰────────────────────────────╯
@@ -161,15 +168,15 @@ Player is in Temple Hall which connects to both a tower above and a crypt below.
 │ Temple Hall                │
 │                            │
 │           ▢                │
-│           ▣                │
-│           ▢                │
-│                            │
+│           │                │
 │           ⇅                │
+│           │                │
+│           ▢                │
 │                            │
 ╰────────────────────────────╯
 ```
 
-The `⇅` symbol indicates both up and down exits are available from this room.
+The `⇅` symbol indicates both up and down exits are available from this room. Connection lines show the north-south corridor.
 
 ## Color Rendering
 
@@ -177,9 +184,10 @@ While this document shows text-only examples, the actual implementation uses ter
 
 - **Current Room** (`▣`): Bright yellow/gold (ANSI color 226)
 - **Visited Rooms** (`▢`): White (ANSI color 255)
+- **Connection Lines** (`─` `│`): Dim gray (ANSI color 240)
 - **Vertical Exit Symbols**: Default terminal color
 
-This provides clear visual distinction between your current location and previously visited areas.
+This provides clear visual distinction between your current location, previously visited areas, and the connections between them.
 
 ## Dynamic Updates
 

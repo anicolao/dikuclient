@@ -119,3 +119,38 @@ func TestMapPanelWithVerticalExits(t *testing.T) {
 
 	t.Logf("Sidebar with vertical exits:\n%s", sidebar)
 }
+
+// TestMapPanelWithConnectionLines demonstrates the connection lines feature in TUI
+func TestMapPanelWithConnectionLines(t *testing.T) {
+	m := NewModel("localhost", 4000, nil, nil)
+
+	// Create a map with T-shaped layout to demonstrate connection lines
+	worldMap := mapper.NewMap()
+	center := mapper.NewRoom("Center", "Center room.", []string{"north", "south", "west"})
+	north := mapper.NewRoom("North", "North room.", []string{"south"})
+	south := mapper.NewRoom("South", "South room.", []string{"north"})
+	west := mapper.NewRoom("West", "West room.", []string{"east"})
+
+	// Link rooms - note North and West are NOT connected
+	center.UpdateExit("north", north.ID)
+	center.UpdateExit("south", south.ID)
+	center.UpdateExit("west", west.ID)
+	north.UpdateExit("south", center.ID)
+	south.UpdateExit("north", center.ID)
+	west.UpdateExit("east", center.ID)
+
+	worldMap.AddOrUpdateRoom(center)
+	worldMap.AddOrUpdateRoom(north)
+	worldMap.AddOrUpdateRoom(south)
+	worldMap.AddOrUpdateRoom(west)
+	worldMap.CurrentRoomID = center.ID
+
+	m.worldMap = worldMap
+	m.width = 80
+	m.height = 30  // More height to show all rooms
+
+	sidebar := m.renderSidebar(30, 25)
+
+	t.Log("=== Map Panel with Connection Lines ===")
+	t.Logf("T-shaped layout (North and West are adjacent but NOT connected):\n%s", sidebar)
+}

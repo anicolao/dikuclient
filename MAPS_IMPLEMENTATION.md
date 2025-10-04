@@ -21,14 +21,17 @@ All core features from MAPS_DESIGN.md have been implemented and tested.
 #### Room Representation
 - `▣` (U+25A3) - Current room (filled square) in **yellow/gold**
 - `▢` (U+25A2) - Visited rooms (hollow square) in **white**
-- Proper spacing between rooms for readability
+- `─` (U+2500) - Horizontal connection line in **dim gray**
+- `│` (U+2502) - Vertical connection line in **dim gray**
+- Connection lines only shown between rooms with actual exits
 
 #### Directional Connections
 - **Cardinal Directions**: North, South, East, West
-  - North: Room positioned above (Y-1)
-  - South: Room positioned below (Y+1)
-  - East: Room positioned right (X+1)
-  - West: Room positioned left (X-1)
+  - North: Room positioned above (Y-1), connected with `│`
+  - South: Room positioned below (Y+1), connected with `│`
+  - East: Room positioned right (X+1), connected with `─`
+  - West: Room positioned left (X-1), connected with `─`
+  - Connection lines only drawn when exits actually link the rooms
   
 - **Vertical Exits**: Up and Down indicated with special symbols
   - `⇱` (U+21F1) - Up exit only
@@ -39,6 +42,8 @@ All core features from MAPS_DESIGN.md have been implemented and tested.
 Uses `lipgloss` styling for terminal color support:
 - Current room: Color 226 (bright yellow/gold)
 - Visited rooms: Color 255 (white)
+- Connection lines: Color 240 (dim gray)
+- Unexplored rooms: Color 240 (dim gray)
 
 ### 2. TUI Integration (`internal/tui/app.go`)
 
@@ -69,7 +74,9 @@ if m.worldMap == nil {
 │ Temple Square              │
 │                            │
 │        ▢                   │
-│      ▢ ▣ ▢                 │
+│        │                   │
+│      ▢─▣─▢                 │
+│        │                   │
 │        ▢                   │
 │                            │
 └────────────────────────────┘
