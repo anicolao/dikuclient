@@ -105,8 +105,9 @@ layout. The current room is always displayed in the center of the view.
 │ Temple Square              │
 │                            │
 │        ▢                   │
-│        ▢                   │
-│      ▢ ▣ ▢                 │
+│        │                   │
+│      ▢─▣─▢                 │
+│        │                   │
 │        ▢                   │
 │                            │
 └────────────────────────────┘
@@ -137,10 +138,14 @@ layout. The current room is always displayed in the center of the view.
 ┌────────────────────────────┐
 │ Temple Square              │
 │                            │
-│      ▢ ▢ ▢                 │
+│      ▢─▢─▢                 │
+│        │                   │
 │        ⇱                   │
-│      ▢ ▣ ▢                 │
+│        │                   │
+│      ▢─▣─▢                 │
+│        │                   │
 │        ⇲                   │
+│        │                   │
 │        ▢                   │
 │                            │
 └────────────────────────────┘
@@ -152,9 +157,12 @@ layout. The current room is always displayed in the center of the view.
 ┌────────────────────────────┐
 │ Temple Square              │
 │                            │
-│      ▢ ▢ ▢                 │
+│      ▢─▢─▢                 │
+│        │                   │
 │        ⇅                   │
-│      ▢ ▣ ▢                 │
+│        │                   │
+│      ▢─▣─▢                 │
+│        │                   │
 │        ▢                   │
 │                            │
 └────────────────────────────┘
@@ -167,10 +175,10 @@ layout. The current room is always displayed in the center of the view.
 │ Market District            │
 │                            │
 │      ▢ ▦ ▢                 │
-│        ▢                   │
-│      ▢ ▣ ▢                 │
-│        ▢                   │
-│      ▢ ▢ ▦                 │
+│      │   │                 │
+│      ▢─▣─▢                 │
+│        │                   │
+│      ▢─▢ ▦                 │
 │                            │
 └────────────────────────────┘
 ```
@@ -247,7 +255,8 @@ The mapper supports six directions: North, South, East, West, Up, and Down.
 - South: Room directly below
 - East: Room to the right
 - West: Room to the left
-- No explicit connection lines - spatial adjacency shows connectivity
+- Connection lines (─ and │) show which rooms are actually connected
+- Adjacent rooms without connection lines are not connected
 
 **Up/Down Connections:** Up and down connections are indicated with special
 arrow symbols shown near the current room:
@@ -259,8 +268,9 @@ arrow symbols shown near the current room:
 **Spacing and Layout:**
 
 - Each room occupies a single character position
-- Rooms are displayed with minimal spacing for compact view
-- The grid shows spatial relationships through position
+- Rooms are displayed with connection lines showing connectivity
+- Box drawing characters (─ │) connect rooms that are linked
+- The grid shows spatial relationships through position and connections
 - Unexplored exits shown as grayed blocks (▦)
 
 **Simple Example with Vertical Exits:**
@@ -269,11 +279,15 @@ arrow symbols shown near the current room:
 ┌────────────────────────────┐
 │ Temple Square              │
 │                            │
-│      ▢ ▢ ▢                 │
+│      ▢─▢─▢                 │
+│        │                   │
 │        ⇱                   │
-│      ▢ ▣ ▢                 │
+│        │                   │
+│      ▢─▣─▢                 │
+│        │                   │
 │        ⇲                   │
-│      ▢ ▢ ▢                 │
+│        │                   │
+│      ▢─▢─▢                 │
 │                            │
 └────────────────────────────┘
 ```
@@ -296,9 +310,10 @@ the current room:
 **Spacing:**
 
 - Each room occupies a single character position
-- Rooms separated by single space for compact display
+- Connection lines between rooms show actual exits
 - Consistent spacing maintained across entire grid
-- Example: `▢ ▢ ▢` shows three adjacent rooms
+- Example: `▢─▢─▢` shows three connected rooms
+- Example: `▢ ▢ ▢` shows three adjacent but unconnected rooms
 
 **Centering:**
 
@@ -323,8 +338,8 @@ The map panel should use color to convey information:
 
 **Spatial Indicators:**
 
-- No explicit connection lines needed with compact block display
-- Spatial adjacency shows room connections
+- Connection lines (─ │) in dim gray show cardinal direction exits
+- Spatial adjacency without lines indicates no connection
 - Arrow symbols (⇱⇲⇅) show vertical connections
 
 **Background:**
