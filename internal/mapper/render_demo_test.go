@@ -223,3 +223,39 @@ func TestRenderMapWithVerticalExitsDemo(t *testing.T) {
 	content3 := m3.FormatMapPanel(30, 8)
 	t.Logf("Map:\n%s\n", content3)
 }
+
+// TestAdjacentNotConnectedDemo demonstrates the problem with adjacent but unconnected rooms
+func TestAdjacentNotConnectedDemo(t *testing.T) {
+	m := NewMap()
+
+	// Create a scenario where rooms are adjacent but not connected
+	// This is a "T" shape layout:
+	//     N
+	//   W C
+	//     S
+	// The issue: West room (W) appears next to North room (N) but they're not connected
+	
+	center := NewRoom("Center", "Center room", []string{"north", "south", "west"})
+	north := NewRoom("North", "North room", []string{"south"})
+	south := NewRoom("South", "South room", []string{"north"})
+	west := NewRoom("West", "West room", []string{"east"})
+
+	// Link rooms - NOTE: North and West are NOT connected
+	center.UpdateExit("north", north.ID)
+	center.UpdateExit("south", south.ID)
+	center.UpdateExit("west", west.ID)
+	north.UpdateExit("south", center.ID)
+	south.UpdateExit("north", center.ID)
+	west.UpdateExit("east", center.ID)
+
+	// Add rooms
+	m.AddOrUpdateRoom(center)
+	m.AddOrUpdateRoom(north)
+	m.AddOrUpdateRoom(south)
+	m.AddOrUpdateRoom(west)
+	m.CurrentRoomID = center.ID
+
+	// Render
+	content := m.FormatMapPanel(30, 10)
+	t.Logf("Current layout (W and N are adjacent but not connected):\n%s\n", content)
+}
