@@ -350,3 +350,55 @@ func TestWayfindCommandNumericSelection(t *testing.T) {
 		t.Error("Expected path message after numeric selection")
 	}
 }
+
+// TestWayfindOutputFormat tests that /wayfind shows step numbers and room names
+func TestWayfindOutputFormat(t *testing.T) {
+worldMap := mapper.NewMap()
+
+room1 := mapper.NewRoom("Temple Square", "A large temple square.", []string{"north"})
+room2 := mapper.NewRoom("Temple Hall", "The grand hall.", []string{"south", "north"})
+room3 := mapper.NewRoom("Inner Sanctum", "The innermost chamber.", []string{"south"})
+
+worldMap.AddOrUpdateRoom(room1)
+worldMap.AddOrUpdateRoom(room2)
+worldMap.AddOrUpdateRoom(room3)
+worldMap.CurrentRoomID = room1.ID
+
+// Link the rooms
+room1.Exits["north"] = room2.ID
+room2.Exits["south"] = room1.ID
+room2.Exits["north"] = room3.ID
+room3.Exits["south"] = room2.ID
+
+m := Model{
+output:    []string{},
+connected: true,
+worldMap:  worldMap,
+}
+
+// Search for the Inner Sanctum
+m.handleWayfindCommand([]string{"inner", "sanctum"})
+
+// Check that we got the right output format
+foundPath := false
+foundStepFormat := false
+for _, line := range m.output {
+if strings.Contains(line, "Path to") && strings.Contains(line, "2 steps") {
+foundPath = true
+}
+// Check for step number format: "1. direction -> Room Name"
+if strings.Contains(line, "1. north -> Temple Hall") {
+foundStepFormat = true
+}
+}
+
+if !foundPath {
+t.Error("Expected path message with step count")
+t.Logf("Output: %v", m.output)
+}
+
+if !foundStepFormat {
+t.Error("Expected step format: '1. direction -> Room Name'")
+t.Logf("Output: %v", m.output)
+}
+}

@@ -953,20 +953,22 @@ func (m *Model) handleWayfindCommand(args []string) {
 
 	// Find path to the room
 	targetRoom := rooms[0]
-	path := m.worldMap.FindPath(targetRoom.ID)
+	pathSteps := m.worldMap.FindPathWithRooms(targetRoom.ID)
 
-	if path == nil {
+	if pathSteps == nil {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mNo path found to '%s'\x1b[0m", targetRoom.Title))
 		return
 	}
 
-	if len(path) == 0 {
+	if len(pathSteps) == 0 {
 		m.output = append(m.output, "\x1b[92mYou are already at that location!\x1b[0m")
 		return
 	}
 
-	m.output = append(m.output, fmt.Sprintf("\x1b[92mPath to '%s' (%d steps):\x1b[0m", targetRoom.Title, len(path)))
-	m.output = append(m.output, fmt.Sprintf("  \x1b[96m%s\x1b[0m", strings.Join(path, " -> ")))
+	m.output = append(m.output, fmt.Sprintf("\x1b[92mPath to '%s' (%d steps):\x1b[0m", targetRoom.Title, len(pathSteps)))
+	for i, step := range pathSteps {
+		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. %s -> %s\x1b[0m", i+1, step.Direction, step.RoomTitle))
+	}
 }
 
 // handleMapCommand shows information about the current map
