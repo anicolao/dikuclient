@@ -223,6 +223,49 @@ func TestRenderMapWithUnexplored(t *testing.T) {
 	}
 }
 
+// TestRenderMapWithEmptyStringExits tests rendering with empty string exits
+func TestRenderMapWithEmptyStringExits(t *testing.T) {
+	m := NewMap()
+
+	// Create a room with empty string exits (common pattern in actual map data)
+	center := NewRoom("Center", "The center room.", []string{"north", "south", "east", "west"})
+	north := NewRoom("North", "The north room.", []string{"south"})
+	
+	// Link center to north (explored)
+	center.UpdateExit("north", north.ID)
+	north.UpdateExit("south", center.ID)
+	
+	// Create unexplored exits with empty strings (as seen in real map data)
+	center.UpdateExit("south", "")
+	center.UpdateExit("east", "")
+	center.UpdateExit("west", "")
+	
+	// Add rooms to map
+	m.AddOrUpdateRoom(center)
+	m.AddOrUpdateRoom(north)
+	m.CurrentRoomID = center.ID
+	
+	// Render the map
+	rendered, title := m.RenderMap(40, 15)
+	
+	t.Logf("Map with empty string exits:\n%s", rendered)
+	t.Logf("Current room title: %s", title)
+	
+	// Verify unexplored rooms are shown
+	unexploredCount := strings.Count(rendered, "▦")
+	if unexploredCount < 3 {
+		t.Errorf("Expected at least 3 unexplored room symbols, got %d", unexploredCount)
+	}
+	
+	// Verify current room and visited room
+	if !strings.Contains(rendered, "▣") {
+		t.Error("Expected current room symbol ▣")
+	}
+	if !strings.Contains(rendered, "▢") {
+		t.Error("Expected visited room symbol ▢")
+	}
+}
+
 // TestRenderMapLinear tests rendering of a linear path
 func TestRenderMapLinear(t *testing.T) {
 	m := NewMap()

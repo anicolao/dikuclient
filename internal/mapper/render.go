@@ -108,10 +108,7 @@ func (m *Map) buildRoomGrid(currentRoom *Room, width, height int) map[Coordinate
 
 		for _, direction := range directions {
 			destID := room.Exits[direction]
-			if destID == "" {
-				continue
-			}
-
+			
 			// Calculate new coordinate based on direction
 			newCoord := current.coord
 			switch direction {
@@ -137,16 +134,22 @@ func (m *Map) buildRoomGrid(currentRoom *Room, width, height int) map[Coordinate
 			}
 			exploredCoords[newCoord] = true
 
-			destRoom := m.Rooms[destID]
-			if destRoom == nil {
+			// Empty destID means there's an exit but it hasn't been explored yet
+			if destID == "" {
 				// This is an unexplored exit - mark it as unknown
 				grid[newCoord] = &RoomMarker{Room: nil, IsUnknown: true}
 			} else {
-				// This is an explored room
-				grid[newCoord] = &RoomMarker{Room: destRoom, IsUnknown: false}
-				if !visited[destID] {
-					visited[destID] = true
-					queue = append(queue, queueItem{roomID: destID, coord: newCoord})
+				destRoom := m.Rooms[destID]
+				if destRoom == nil {
+					// This is an unexplored exit - mark it as unknown
+					grid[newCoord] = &RoomMarker{Room: nil, IsUnknown: true}
+				} else {
+					// This is an explored room
+					grid[newCoord] = &RoomMarker{Room: destRoom, IsUnknown: false}
+					if !visited[destID] {
+						visited[destID] = true
+						queue = append(queue, queueItem{roomID: destID, coord: newCoord})
+					}
 				}
 			}
 		}
