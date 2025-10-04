@@ -164,51 +164,43 @@ func renderGrid(grid map[Coordinate]*RoomMarker, width, height int) string {
 	currentRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("226")) // Yellow/gold
 	visitedRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("255")) // White
 	unexploredRoomStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")) // Dark gray
-
-	// Calculate the grid bounds
-	minX, maxX := 0, 0
-	minY, maxY := 0, 0
-	for coord := range grid {
-		if coord.X < minX {
-			minX = coord.X
-		}
-		if coord.X > maxX {
-			maxX = coord.X
-		}
-		if coord.Y < minY {
-			minY = coord.Y
-		}
-		if coord.Y > maxY {
-			maxY = coord.Y
-		}
-	}
+	connectionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")) // Dark gray for connections
 
 	// Calculate how many characters we can fit
-	// Each room is 1 character, with 1 space between rooms
-	charsPerRoom := 2 // room + space
+	// Each room is 1 character, with 1 character connector between rooms (2 chars per room cell)
+	// We also need space between rows for vertical connectors (2 lines per room row)
+	charsPerRoom := 2 // room + connector space
+	linesPerRoom := 2 // room line + connector line
+
 	maxRoomsPerLine := width / charsPerRoom
+	maxRoomsPerHeight := height / linesPerRoom
 
 	// Calculate viewport bounds to center on (0,0)
 	viewHalfWidth := maxRoomsPerLine / 2
-	viewHalfHeight := height / 2
+	viewHalfHeight := maxRoomsPerHeight / 2
 
 	viewMinX := -viewHalfWidth
 	viewMaxX := viewHalfWidth
 	viewMinY := -viewHalfHeight
 	viewMaxY := viewHalfHeight
 
-	// Build the display line by line
+	// Build the display line by line, alternating between room lines and connector lines
 	var lines []string
 	for y := viewMinY; y <= viewMaxY; y++ {
-		var line strings.Builder
+		// Room line
+		var roomLine strings.Builder
+		// Connector line (vertical connections below this row)
+		var connLine strings.Builder
+
 		for x := viewMinX; x <= viewMaxX; x++ {
 			coord := Coordinate{X: x, Y: y}
 			marker := grid[coord]
 
+			// Render the room symbol
 			if marker != nil {
 				if marker.IsUnknown {
 					// Unexplored room - always show as gray ▦
-					line.WriteString(unexploredRoomStyle.Render("▦"))
+					roomLine.WriteString(unexploredRoomStyle.Render("▦"))
 				} else {
 					room := marker.Room
 					// Check for vertical exits
@@ -224,7 +216,6 @@ func renderGrid(grid map[Coordinate]*RoomMarker, width, height int) string {
 					}
 
 					// Determine the symbol based on vertical exits
-					// If room has vertical exits, they replace the room symbol
 					var symbol string
 					isCurrentRoom := (x == 0 && y == 0)
 					
@@ -245,21 +236,75 @@ func renderGrid(grid map[Coordinate]*RoomMarker, width, height int) string {
 					
 					// Apply color - current room is always yellow, others are white
 					if isCurrentRoom {
-						line.WriteString(currentRoomStyle.Render(symbol))
+						roomLine.WriteString(currentRoomStyle.Render(symbol))
 					} else {
-						line.WriteString(visitedRoomStyle.Render(symbol))
+						roomLine.WriteString(visitedRoomStyle.Render(symbol))
 					}
 				}
 			} else {
-				line.WriteString(" ") // Empty space
+				roomLine.WriteString(" ") // Empty space
 			}
 
-			// Add space between rooms (except last column)
+			// Render horizontal connector (to the right of this room)
 			if x < viewMaxX {
-				line.WriteString(" ")
+				// Check if there's a connection to the east
+				hasEastConnection := false
+				if marker != nil && !marker.IsUnknown && marker.Room != nil {
+					eastCoord := Coordinate{X: x + 1, Y: y}
+					eastMarker := grid[eastCoord]
+					if eastMarker != nil {
+						// Check if current room has east exit to the east room
+						for dir, destID := range marker.Room.Exits {
+							if (dir == "east" || dir == "e") && eastMarker.Room != nil && destID == eastMarker.Room.ID {
+								hasEastConnection = true
+								break
+							}
+						}
+					}
+				}
+				
+				if hasEastConnection {
+					roomLine.WriteString(connectionStyle.Render("─"))
+				} else {
+					roomLine.WriteString(" ")
+				}
+			}
+
+			// Render vertical connector (below this room)
+			if y < viewMaxY {
+				// Check if there's a connection to the south
+				hasSouthConnection := false
+				if marker != nil && !marker.IsUnknown && marker.Room != nil {
+					southCoord := Coordinate{X: x, Y: y + 1}
+					southMarker := grid[southCoord]
+					if southMarker != nil {
+						// Check if current room has south exit to the south room
+						for dir, destID := range marker.Room.Exits {
+							if (dir == "south" || dir == "s") && southMarker.Room != nil && destID == southMarker.Room.ID {
+								hasSouthConnection = true
+								break
+							}
+						}
+					}
+				}
+				
+				if hasSouthConnection {
+					connLine.WriteString(connectionStyle.Render("│"))
+				} else {
+					connLine.WriteString(" ")
+				}
+			}
+
+			// Add spacing for connector column in connector line
+			if x < viewMaxX && y < viewMaxY {
+				connLine.WriteString(" ")
 			}
 		}
-		lines = append(lines, line.String())
+
+		lines = append(lines, roomLine.String())
+		if y < viewMaxY {
+			lines = append(lines, connLine.String())
+		}
 	}
 
 	return strings.Join(lines, "\n")
