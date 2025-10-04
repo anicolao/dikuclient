@@ -678,12 +678,12 @@ func createBorderWithTitle(title string, panelWidth int, position string) lipglo
 			border.Top = titleWithSpaces[:availableWidth]
 		}
 	}
-	
+
 	// Set appropriate corners based on position in stack
 	switch position {
 	case "top":
-		// Top panel: use ┬ for top-right to weld with main panel
-		border.TopRight = "┬"
+		// Top panel: use ┬ for top-left to weld with main panel
+		border.TopLeft = "┬"
 	case "middle":
 		// Middle panels: use ├ and ┤ for vertical welding
 		border.TopLeft = "├"
@@ -694,7 +694,7 @@ func createBorderWithTitle(title string, panelWidth int, position string) lipglo
 		border.TopRight = "┤"
 		border.BottomLeft = "┴"
 	}
-	
+
 	return border
 }
 
