@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -75,6 +76,18 @@ func LoadFromPath(mapPath string) (*Map, error) {
 		return nil, fmt.Errorf("failed to parse map file: %w", err)
 	}
 	m.mapPath = mapPath
+
+	// Migrate: populate RoomNumbering if it's empty (for existing map files)
+	if len(m.RoomNumbering) == 0 && len(m.Rooms) > 0 {
+		// Add all existing rooms to numbering in a deterministic order
+		roomIDs := make([]string, 0, len(m.Rooms))
+		for id := range m.Rooms {
+			roomIDs = append(roomIDs, id)
+		}
+		// Sort by room ID for consistency
+		sort.Strings(roomIDs)
+		m.RoomNumbering = roomIDs
+	}
 
 	return &m, nil
 }
