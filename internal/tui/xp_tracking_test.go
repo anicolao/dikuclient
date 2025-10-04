@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 )
@@ -254,6 +255,58 @@ func TestDeathCryWithANSICodes(t *testing.T) {
 	// Check that XP stat was recorded
 	if len(m.xpTracking) != 1 {
 		t.Errorf("Expected 1 XP tracking entry, got %d", len(m.xpTracking))
+	}
+}
+
+// TestXPStatsPersistence verifies that XP stats are persisted and averaged
+func TestXPStatsPersistence(t *testing.T) {
+	// Create temporary directory for test
+	tmpDir := t.TempDir()
+	os.Setenv("DIKUCLIENT_CONFIG_DIR", tmpDir)
+	defer os.Unsetenv("DIKUCLIENT_CONFIG_DIR")
+
+	m := NewModel("test", 4000, nil, nil)
+	
+	// First kill - goblin with 20.0 XP/s
+	m.detectCombatPrompt("101H 132V 54710X 49.60% 570C [Hero:Good] [goblin:Excellent] T:24 Exits:NS>")
+	m.killTime = time.Now().Add(-5 * time.Second)
+	m.detectXPEvents("The goblin is dead! R.I.P.")
+	m.detectXPEvents("You receive 100 experience.")
+	
+	// Verify it's in persistent storage
+	stat, exists := m.xpStatsManager.GetStat("goblin")
+	if !exists {
+		t.Fatal("Expected goblin stat to exist in persistent storage")
+	}
+	
+	// Use approximate comparison for floating point
+	if stat.XPPerSecond < 19.9 || stat.XPPerSecond > 20.1 {
+		t.Errorf("Expected first sample to be approximately 20.0, got %f", stat.XPPerSecond)
+	}
+	
+	if stat.SampleCount != 1 {
+		t.Errorf("Expected sample count to be 1, got %d", stat.SampleCount)
+	}
+	
+	// Second kill - goblin with 30.0 XP/s (should use EMA)
+	m.detectCombatPrompt("101H 132V 54710X 49.60% 570C [Hero:Good] [goblin:Excellent] T:24 Exits:NS>")
+	m.killTime = time.Now().Add(-10 * time.Second)
+	m.detectXPEvents("The goblin is dead! R.I.P.")
+	m.detectXPEvents("You receive 300 experience.")
+	
+	stat, exists = m.xpStatsManager.GetStat("goblin")
+	if !exists {
+		t.Fatal("Expected goblin stat to still exist")
+	}
+	
+	// EMA with alpha=0.25: 0.25*30 + 0.75*20 = 7.5 + 15 = 22.5
+	// Use approximate comparison for floating point
+	if stat.XPPerSecond < 22.4 || stat.XPPerSecond > 22.6 {
+		t.Errorf("Expected EMA to be approximately 22.5, got %f", stat.XPPerSecond)
+	}
+	
+	if stat.SampleCount != 2 {
+		t.Errorf("Expected sample count to be 2, got %d", stat.SampleCount)
 	}
 }
 

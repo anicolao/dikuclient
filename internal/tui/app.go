@@ -11,6 +11,7 @@ import (
 	"github.com/anicolao/dikuclient/internal/client"
 	"github.com/anicolao/dikuclient/internal/mapper"
 	"github.com/anicolao/dikuclient/internal/triggers"
+	"github.com/anicolao/dikuclient/internal/xpstats"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -51,12 +52,13 @@ type Model struct {
 	inventoryViewport viewport.Model    // Viewport for scrollable inventory
 	tells             []string          // Recent tells received
 	tellsViewport     viewport.Model    // Viewport for scrollable tells
-	skipNextRoomDetection bool          // Skip next room detection (e.g., after recall teleport)
-	autoWalkTarget    string            // Target room title for auto-walk (for recovery)
-	xpTracking        map[string]*XPStat // XP/s tracking per creature
-	pendingKill       string            // Last kill command target
-	killTime          time.Time         // Time when kill command was sent
-	xpViewport        viewport.Model    // Viewport for scrollable XP stats
+	skipNextRoomDetection bool                // Skip next room detection (e.g., after recall teleport)
+	autoWalkTarget        string              // Target room title for auto-walk (for recovery)
+	xpTracking            map[string]*XPStat  // XP/s tracking per creature (current session)
+	pendingKill           string              // Last kill command target
+	killTime              time.Time           // Time when kill command was sent
+	xpViewport            viewport.Model      // Viewport for scrollable XP stats
+	xpStatsManager        *xpstats.Manager    // Persistent XP stats manager
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -116,6 +118,13 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		triggerManager = triggers.NewManager()
 	}
 
+	// Load or create XP stats manager
+	xpStatsManager, err := xpstats.Load()
+	if err != nil {
+		// If we can't load XP stats, create a new manager
+		xpStatsManager = xpstats.NewManager()
+	}
+
 	inventoryVp := viewport.New(0, 0)
 	tellsVp := viewport.New(0, 0)
 	xpVp := viewport.New(0, 0)
@@ -142,6 +151,7 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		tellsViewport:     tellsVp,
 		xpTracking:        make(map[string]*XPStat),
 		xpViewport:        xpVp,
+		xpStatsManager:    xpStatsManager,
 	}
 }
 
@@ -637,30 +647,31 @@ func (m *Model) renderSidebar(width, height int) string {
 			),
 		)
 
-	// XP/s panel with scrollable viewport
+	// XP/s panel with scrollable viewport - shows persistent averaged stats
 	var xpHeader string
 	var xpContent string
-	if len(m.xpTracking) > 0 {
-		xpHeader = lipgloss.NewStyle().Bold(true).Render("XP/s")
+	if m.xpStatsManager != nil && len(m.xpStatsManager.GetAllStats()) > 0 {
+		xpHeader = lipgloss.NewStyle().Bold(true).Render("XP/s (avg)")
 		
 		// Convert map to slice and sort by XP/s (best to worst)
-		stats := make([]*XPStat, 0, len(m.xpTracking))
-		for _, stat := range m.xpTracking {
+		allStats := m.xpStatsManager.GetAllStats()
+		stats := make([]*xpstats.XPStat, 0, len(allStats))
+		for _, stat := range allStats {
 			stats = append(stats, stat)
 		}
 		sort.Slice(stats, func(i, j int) bool {
 			return stats[i].XPPerSecond > stats[j].XPPerSecond
 		})
 		
-		// Format each entry
+		// Format each entry with sample count
 		lines := make([]string, 0, len(stats))
 		for _, stat := range stats {
-			line := fmt.Sprintf("%s: %.1f", stat.CreatureName, stat.XPPerSecond)
+			line := fmt.Sprintf("%s: %.1f (%d)", stat.CreatureName, stat.XPPerSecond, stat.SampleCount)
 			lines = append(lines, line)
 		}
 		xpContent = strings.Join(lines, "\n")
 	} else {
-		xpHeader = lipgloss.NewStyle().Bold(true).Render("XP/s")
+		xpHeader = lipgloss.NewStyle().Bold(true).Render("XP/s (avg)")
 		xpContent = emptyPanelStyle.Render("(no kills yet)")
 	}
 
@@ -929,12 +940,19 @@ func (m *Model) detectXPEvents(line string) {
 				xpPerSecond = float64(xp) / seconds
 			}
 			
-			// Store or update the XP stat for this creature
+			// Store in current session tracking
 			m.xpTracking[m.pendingKill] = &XPStat{
 				CreatureName: m.pendingKill,
 				XP:           xp,
 				Seconds:      seconds,
 				XPPerSecond:  xpPerSecond,
+			}
+			
+			// Update persistent stats with EMA
+			if m.xpStatsManager != nil {
+				m.xpStatsManager.UpdateStat(m.pendingKill, xpPerSecond)
+				// Save to disk (ignore errors to not disrupt gameplay)
+				_ = m.xpStatsManager.Save()
 			}
 			
 			// Clear pending kill
