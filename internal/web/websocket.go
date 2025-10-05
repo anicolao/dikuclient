@@ -304,6 +304,8 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 		fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir),
 		fmt.Sprintf("DIKUCLIENT_WEB_SESSION_ID=%s", sharedSession.sessionID),
 		fmt.Sprintf("DIKUCLIENT_WEB_SERVER_URL=%s", serverURL),
+		"TERM=xterm-kitty",        // Ensure consistent color support regardless of server terminal
+		"COLORTERM=truecolor",      // Enable 24-bit true color support
 	)
 
 	// Start the command with a PTY
@@ -380,6 +382,8 @@ func (h *WebSocketHandler) autoStartTUIWithSize(session *Session, initialSize *R
 		fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir),
 		fmt.Sprintf("DIKUCLIENT_WEB_SESSION_ID=%s", session.sessionID),
 		fmt.Sprintf("DIKUCLIENT_WEB_SERVER_URL=%s", serverURL),
+		"TERM=xterm-kitty",        // Ensure consistent color support regardless of server terminal
+		"COLORTERM=truecolor",      // Enable 24-bit true color support
 	)
 
 	// Start the command with a PTY
@@ -467,6 +471,8 @@ func (h *WebSocketHandler) handleConnect(session *Session, message []byte) {
 		fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir),
 		fmt.Sprintf("DIKUCLIENT_WEB_SESSION_ID=%s", session.sessionID),
 		fmt.Sprintf("DIKUCLIENT_WEB_SERVER_URL=%s", serverURL),
+		"TERM=xterm-kitty",        // Ensure consistent color support regardless of server terminal
+		"COLORTERM=truecolor",      // Enable 24-bit true color support
 	)
 
 	// Start the command with a PTY
