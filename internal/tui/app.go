@@ -334,7 +334,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Don't modify m.output here - let the server echo if it wants to
 				// Or we can store the command for display purposes
-				if !m.echoSuppressed && command != "" {
+				// Don't echo if it's a password prompt
+				if !m.echoSuppressed && !m.isPasswordPrompt() && command != "" {
 					// Add the command as a new line in output (it will show on the prompt line)
 					// This preserves it even when new output arrives
 					if len(m.output) > 0 {
@@ -2348,7 +2349,8 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 				// Don't modify m.output here - let the server echo if it wants to
 				// Or we can store the command for display purposes
-				if !m.echoSuppressed && command != "" {
+				// Don't echo if it's a password prompt
+				if !m.echoSuppressed && !m.isPasswordPrompt() && command != "" {
 					// Add the command as a new line in output (it will show on the prompt line)
 					// This preserves it even when new output arrives
 					if len(m.output) > 0 {
