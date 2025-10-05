@@ -99,6 +99,11 @@ func main() {
 				os.Exit(1)
 			}
 			fmt.Printf("Account '%s' saved successfully.\n", account.Name)
+
+			// Flush output and give terminal a moment to settle before TUI initialization
+			// This prevents escape codes from being displayed literally
+			os.Stdout.Sync()
+			time.Sleep(100 * time.Millisecond)
 		}
 	} else {
 		// No host or account specified - show interactive menu
