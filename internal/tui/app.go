@@ -167,26 +167,26 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 	webServerURL := os.Getenv("DIKUCLIENT_WEB_SERVER_URL")
 
 	return Model{
-		viewport:          vp,
-		output:            []string{},
-		currentInput:      "",
-		cursorPos:         0,
-		host:              host,
-		port:              port,
-		sidebarWidth:      60, // Doubled from 30 to 60
-		mudLogFile:        mudLogFile,
-		tuiLogFile:        tuiLogFile,
-		telnetDebugLog:    telnetDebugLog,
-		username:          username,
-		password:          password,
-		autoLoginState:    0,
-		worldMap:          worldMap,
-		recentOutput:      []string{},
-		mapDebug:          mapDebug,
-		triggerManager:    triggerManager,
-		aliasManager:      aliasManager,
-		inventoryViewport: inventoryVp,
-		tellsViewport:     tellsVp,
+		viewport:             vp,
+		output:               []string{},
+		currentInput:         "",
+		cursorPos:            0,
+		host:                 host,
+		port:                 port,
+		sidebarWidth:         60, // Doubled from 30 to 60
+		mudLogFile:           mudLogFile,
+		tuiLogFile:           tuiLogFile,
+		telnetDebugLog:       telnetDebugLog,
+		username:             username,
+		password:             password,
+		autoLoginState:       0,
+		worldMap:             worldMap,
+		recentOutput:         []string{},
+		mapDebug:             mapDebug,
+		triggerManager:       triggerManager,
+		aliasManager:         aliasManager,
+		inventoryViewport:    inventoryVp,
+		tellsViewport:        tellsVp,
 		xpTracking:           make(map[string]*XPStat),
 		xpViewport:           xpVp,
 		xpStatsManager:       xpStatsManager,
@@ -200,13 +200,8 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		historySearchQuery:   "",
 		historySearchResults: []int{},
 		historySearchIndex:   0,
-		xpTracking:        make(map[string]*XPStat),
-		xpViewport:        xpVp,
-		xpStatsManager:    xpStatsManager,
-		webSessionID:      webSessionID,
-		webServerURL:      webServerURL,
-		isSplit:           false,
-		splitViewport:     splitVp,
+		isSplit:              false,
+		splitViewport:        splitVp,
 	}
 }
 
@@ -352,7 +347,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Exit history navigation mode when user edits
 				m.historyIndex = -1
 				m.historySavedInput = ""
-				
+
 				m.currentInput = m.currentInput[:m.cursorPos-1] + m.currentInput[m.cursorPos:]
 				m.cursorPos--
 				m.updateViewport()
@@ -394,7 +389,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.historySavedInput = m.currentInput
 					m.historyIndex = len(m.commandHistory)
 				}
-				
+
 				// Move to previous command in history
 				if m.historyIndex > 0 {
 					m.historyIndex--
@@ -409,7 +404,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Navigate forward through command history
 			if m.historyIndex != -1 {
 				m.historyIndex++
-				
+
 				// If we've gone past the end of history, restore saved input
 				if m.historyIndex >= len(m.commandHistory) {
 					m.currentInput = m.historySavedInput
@@ -418,7 +413,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.currentInput = m.commandHistory[m.historyIndex]
 				}
-				
+
 				m.cursorPos = len(m.currentInput)
 				m.updateViewport()
 			}
@@ -430,7 +425,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Exit history navigation mode when user types
 				m.historyIndex = -1
 				m.historySavedInput = ""
-				
+
 				// Insert character at cursor position
 				m.currentInput = m.currentInput[:m.cursorPos] + string(msg.Runes) + m.currentInput[m.cursorPos:]
 				m.cursorPos += len(msg.Runes)
@@ -674,10 +669,10 @@ func (m *Model) updateViewport() {
 		if m.historySearchMode {
 			lines := make([]string, len(m.output)-1)
 			copy(lines, m.output[:len(m.output)-1])
-			
+
 			// Add search prompt
 			searchPrompt := fmt.Sprintf("(reverse-i-search)`%s': ", m.historySearchQuery)
-			
+
 			// Add current match if any
 			if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults) {
 				resultIdx := m.historySearchResults[m.historySearchIndex]
@@ -686,18 +681,18 @@ func (m *Model) updateViewport() {
 			} else {
 				lines = append(lines, lastLine+"\x1b[96m"+searchPrompt+"█\x1b[0m")
 			}
-			
+
 			// Add search results summary
 			if len(m.historySearchResults) > 0 {
-				lines = append(lines, fmt.Sprintf("\x1b[90m[%d/%d matches - Up/Down to navigate, Enter to select, Esc to cancel]\x1b[0m", 
+				lines = append(lines, fmt.Sprintf("\x1b[90m[%d/%d matches - Up/Down to navigate, Enter to select, Esc to cancel]\x1b[0m",
 					m.historySearchIndex+1, len(m.historySearchResults)))
 			} else if m.historySearchQuery != "" {
 				lines = append(lines, "\x1b[90m[No matches found]\x1b[0m")
 			} else {
-				lines = append(lines, fmt.Sprintf("\x1b[90m[%d commands - Type to search, Enter to select, Esc to cancel]\x1b[0m", 
+				lines = append(lines, fmt.Sprintf("\x1b[90m[%d commands - Type to search, Enter to select, Esc to cancel]\x1b[0m",
 					len(m.commandHistory)))
 			}
-			
+
 			content = strings.Join(lines, "\n")
 		} else if (m.currentInput != "" || m.connected) && !m.echoSuppressed {
 			// Build input line with cursor (only if echo is not suppressed)
@@ -747,9 +742,9 @@ func (m *Model) updateViewport() {
 
 	// Check if viewport is at bottom BEFORE setting new content
 	wasAtBottom := m.viewport.AtBottom()
-	
+
 	m.viewport.SetContent(content)
-	
+
 	// If not in split mode or if viewport is already at bottom, go to bottom
 	// This preserves scroll position when in split mode
 	if !m.isSplit {
@@ -865,13 +860,13 @@ func (m *Model) renderMainContent() string {
 		// When stacking two boxes vertically, we need to account for the extra border line
 		// where they meet (the separator between them)
 		topHeight := (contentHeight * 2) / 3
-		bottomHeight := contentHeight - topHeight - 1  // -1 for separator border
-		
+		bottomHeight := contentHeight - topHeight - 1 // -1 for separator border
+
 		// Adjust viewport heights to match the split heights
 		// Subtract border heights: topHeight has 1 border (top), bottomHeight has 2 borders (top+bottom)
 		m.viewport.Height = topHeight - 1
 		m.splitViewport.Height = bottomHeight - 2
-		
+
 		// Top viewport (user's scrolled position)
 		topBorderStyle := lipgloss.NewStyle().
 			BorderStyle(customBorder).
@@ -889,7 +884,7 @@ func (m *Model) renderMainContent() string {
 		// Bottom viewport (live output - always at bottom)
 		bottomBorder := lipgloss.RoundedBorder()
 		bottomBorder.Top = strings.Repeat("─", mainWidth+10)
-		bottomBorder.TopLeft = "├"  // T-corner to connect with left border
+		bottomBorder.TopLeft = "├" // T-corner to connect with left border
 
 		bottomBorderStyle := lipgloss.NewStyle().
 			BorderStyle(bottomBorder).
@@ -908,8 +903,8 @@ func (m *Model) renderMainContent() string {
 	} else {
 		// Normal mode: single viewport
 		// Restore viewport to full height
-		m.viewport.Height = contentHeight - 2  // Subtract 2 for top and bottom borders
-		
+		m.viewport.Height = contentHeight - 2 // Subtract 2 for top and bottom borders
+
 		mainBorderStyle := lipgloss.NewStyle().
 			BorderStyle(customBorder).
 			BorderForeground(lipgloss.Color("62")).
@@ -2213,18 +2208,18 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults) {
 			resultIdx := m.historySearchResults[m.historySearchIndex]
 			command := m.commandHistory[resultIdx]
-			
+
 			// Exit search mode
 			m.historySearchMode = false
 			m.historySearchQuery = ""
 			m.historySearchResults = []int{}
 			m.historySearchIndex = 0
-			
+
 			// Set the command as current input
 			m.currentInput = command
 			m.cursorPos = len(m.currentInput)
 			m.updateViewport()
-			
+
 			// Send the command immediately (simulate pressing Enter)
 			if m.conn != nil && m.connected {
 				// Add non-empty command to history (it's already there, but this handles the duplicate logic)
@@ -2297,7 +2292,7 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		
+
 		// No results, just exit search mode
 		m.historySearchMode = false
 		m.historySearchQuery = ""
@@ -2359,14 +2354,14 @@ func (m *Model) updateHistorySearch() {
 	}
 
 	query := strings.ToLower(m.historySearchQuery)
-	
+
 	// Split query into individual words
 	words := strings.Fields(query)
 
 	// Search through history in reverse order (most recent first)
 	for i := len(m.commandHistory) - 1; i >= 0; i-- {
 		cmd := strings.ToLower(m.commandHistory[i])
-		
+
 		// Multi-word search: all words must be present (in any order)
 		if len(words) == 0 {
 			// Empty query matches all commands
@@ -2385,7 +2380,8 @@ func (m *Model) updateHistorySearch() {
 			}
 		}
 	}
-=======
+}
+
 // handleAliasCommand adds a new alias
 func (m *Model) handleAliasCommand(command string) {
 	// Parse the command to extract name and template
