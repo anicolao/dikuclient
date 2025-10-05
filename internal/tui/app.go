@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/anicolao/dikuclient/internal/client"
+	"github.com/anicolao/dikuclient/internal/history"
 	"github.com/anicolao/dikuclient/internal/mapper"
 	"github.com/anicolao/dikuclient/internal/triggers"
 	"github.com/anicolao/dikuclient/internal/xpstats"
@@ -64,7 +65,8 @@ type Model struct {
 	xpStatsManager        *xpstats.Manager   // Persistent XP stats manager
 	webSessionID          string             // Web session ID for sharing (empty if not in web mode)
 	webServerURL          string             // Web server URL for sharing (empty if not in web mode)
-	commandHistory        []string           // Command history for readline-style navigation
+	historyManager        *history.Manager   // Persistent command history manager
+	commandHistory        []string           // Command history for readline-style navigation (in-memory cache)
 	historyIndex          int                // Current position in command history (-1 = not navigating)
 	historySavedInput     string             // Saved current input when starting history navigation
 	historySearchMode     bool               // True when in Ctrl+R search mode
@@ -137,6 +139,13 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		xpStatsManager = xpstats.NewManager()
 	}
 
+	// Load or create history manager
+	historyManager, err := history.Load()
+	if err != nil {
+		// If we can't load history, create a new manager
+		historyManager = history.NewManager()
+	}
+
 	inventoryVp := viewport.New(0, 0)
 	tellsVp := viewport.New(0, 0)
 	xpVp := viewport.New(0, 0)
@@ -165,12 +174,13 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		triggerManager:    triggerManager,
 		inventoryViewport: inventoryVp,
 		tellsViewport:     tellsVp,
-		xpTracking:        make(map[string]*XPStat),
-		xpViewport:        xpVp,
-		xpStatsManager:    xpStatsManager,
-		webSessionID:      webSessionID,
-		webServerURL:      webServerURL,
-		commandHistory:       []string{},
+		xpTracking:           make(map[string]*XPStat),
+		xpViewport:           xpVp,
+		xpStatsManager:       xpStatsManager,
+		webSessionID:         webSessionID,
+		webServerURL:         webServerURL,
+		historyManager:       historyManager,
+		commandHistory:       historyManager.GetCommands(),
 		historyIndex:         -1,
 		historySavedInput:    "",
 		historySearchMode:    false,
@@ -237,6 +247,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Don't add duplicate consecutive commands
 					if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != command {
 						m.commandHistory = append(m.commandHistory, command)
+						// Save to persistent history
+						if m.historyManager != nil {
+							m.historyManager.Add(command)
+							// Save asynchronously to avoid blocking
+							go m.historyManager.Save()
+						}
 					}
 					// Reset history navigation state
 					m.historyIndex = -1
@@ -2079,6 +2095,12 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					// Don't add duplicate consecutive commands
 					if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != command {
 						m.commandHistory = append(m.commandHistory, command)
+						// Save to persistent history
+						if m.historyManager != nil {
+							m.historyManager.Add(command)
+							// Save asynchronously to avoid blocking
+							go m.historyManager.Save()
+						}
 					}
 					// Reset history navigation state
 					m.historyIndex = -1
