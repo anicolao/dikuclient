@@ -66,6 +66,8 @@ type Model struct {
 	xpStatsManager        *xpstats.Manager   // Persistent XP stats manager
 	webSessionID          string             // Web session ID for sharing (empty if not in web mode)
 	webServerURL          string             // Web server URL for sharing (empty if not in web mode)
+	isSplit               bool               // Whether the main viewport is split
+	splitViewport         viewport.Model     // Second viewport for tracking live output when split
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -142,6 +144,7 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 	inventoryVp := viewport.New(0, 0)
 	tellsVp := viewport.New(0, 0)
 	xpVp := viewport.New(0, 0)
+	splitVp := viewport.New(0, 0)
 
 	// Read web session information from environment variables
 	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
@@ -173,6 +176,8 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		xpStatsManager:    xpStatsManager,
 		webSessionID:      webSessionID,
 		webServerURL:      webServerURL,
+		isSplit:           false,
+		splitViewport:     splitVp,
 	}
 }
 
@@ -205,6 +210,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.conn.Close()
 			}
 			return m, tea.Quit
+
+		case tea.KeyPgUp:
+			// Enable split mode when scrolling up (unless already at top)
+			if !m.isSplit {
+				m.isSplit = true
+			}
+			// Continue to viewport update at end of function
+
+		case tea.KeyPgDown:
+			// Continue to viewport update at end of function
+			// Split mode exit check happens after viewport updates
 
 		case tea.KeyEnter:
 			if m.conn != nil && m.connected {
@@ -325,6 +341,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Height = m.height - headerHeight - 2
 		// Don't apply viewport style - let ANSI codes pass through
 
+		// Set up split viewport dimensions (1/3 of main viewport height)
+		m.splitViewport.Width = mainWidth
+		m.splitViewport.Height = (m.height - headerHeight - 2) / 3
+
 		// Update viewport sizes for 4 panels
 		panelHeight := (m.height - headerHeight - 2 - 8) / 4
 		m.inventoryViewport.Width = sidebarWidth - 4 // Account for borders and padding
@@ -340,6 +360,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.updateViewport()
 		return m, nil
+
+	case tea.MouseMsg:
+		// Handle mouse wheel scrolling on main viewport
+		if msg.Action == tea.MouseActionPress {
+			if msg.Button == tea.MouseButtonWheelUp {
+				// Enable split mode when scrolling up
+				if !m.isSplit {
+					m.isSplit = true
+				}
+				// Continue to viewport update at end of function
+			} else if msg.Button == tea.MouseButtonWheelDown {
+				// Continue to viewport update at end of function
+				// We'll check split mode after viewport updates
+			}
+		}
 
 	case *client.Connection:
 		m.conn = msg
@@ -507,6 +542,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 
+	// Check if we should exit split mode after viewport update
+	if m.isSplit && m.viewport.AtBottom() {
+		m.isSplit = false
+	}
+
 	// Update inventory viewport for mouse wheel scrolling
 	m.inventoryViewport, cmd = m.inventoryViewport.Update(msg)
 	cmds = append(cmds, cmd)
@@ -567,8 +607,24 @@ func (m *Model) updateViewport() {
 		}
 	}
 
+	// Check if viewport is at bottom BEFORE setting new content
+	wasAtBottom := m.viewport.AtBottom()
+	
 	m.viewport.SetContent(content)
-	m.viewport.GotoBottom()
+	
+	// If not in split mode or if viewport is already at bottom, go to bottom
+	// This preserves scroll position when in split mode
+	if !m.isSplit {
+		m.viewport.GotoBottom()
+	} else if wasAtBottom {
+		// If user was already at bottom and new content arrived, exit split mode
+		m.isSplit = false
+		m.viewport.GotoBottom()
+	}
+
+	// Update split viewport content (always stays at bottom for live tracking)
+	m.splitViewport.SetContent(content)
+	m.splitViewport.GotoBottom()
 
 	// Log TUI content if logging enabled
 	if m.tuiLogFile != nil {
@@ -664,19 +720,71 @@ func (m *Model) renderMainContent() string {
 		}
 	}
 
-	// Game output viewport with custom border (no right border to weld with sidebar)
-	mainBorderStyle := lipgloss.NewStyle().
-		BorderStyle(customBorder).
-		BorderForeground(lipgloss.Color("62")).
-		BorderTop(true).
-		BorderLeft(true).
-		BorderRight(false).
-		BorderBottom(true)
+	var gameOutput string
 
-	gameOutput := mainBorderStyle.
-		Width(mainWidth).
-		Height(contentHeight).
-		Render(m.viewport.View())
+	if m.isSplit {
+		// Split mode: 2/3 for user scrolled position, 1/3 for live output at bottom
+		// When stacking two boxes vertically, we need to account for the extra border line
+		// where they meet (the separator between them)
+		topHeight := (contentHeight * 2) / 3
+		bottomHeight := contentHeight - topHeight - 1  // -1 for separator border
+		
+		// Adjust viewport heights to match the split heights
+		// Subtract border heights: topHeight has 1 border (top), bottomHeight has 2 borders (top+bottom)
+		m.viewport.Height = topHeight - 1
+		m.splitViewport.Height = bottomHeight - 2
+		
+		// Top viewport (user's scrolled position)
+		topBorderStyle := lipgloss.NewStyle().
+			BorderStyle(customBorder).
+			BorderForeground(lipgloss.Color("62")).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderBottom(false)
+
+		topView := topBorderStyle.
+			Width(mainWidth).
+			Height(topHeight).
+			Render(m.viewport.View())
+
+		// Bottom viewport (live output - always at bottom)
+		bottomBorder := lipgloss.RoundedBorder()
+		bottomBorder.Top = strings.Repeat("─", mainWidth+10)
+		bottomBorder.TopLeft = "├"  // T-corner to connect with left border
+
+		bottomBorderStyle := lipgloss.NewStyle().
+			BorderStyle(bottomBorder).
+			BorderForeground(lipgloss.Color("62")).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderBottom(true)
+
+		bottomView := bottomBorderStyle.
+			Width(mainWidth).
+			Height(bottomHeight).
+			Render(m.splitViewport.View())
+
+		gameOutput = lipgloss.JoinVertical(lipgloss.Left, topView, bottomView)
+	} else {
+		// Normal mode: single viewport
+		// Restore viewport to full height
+		m.viewport.Height = contentHeight - 2  // Subtract 2 for top and bottom borders
+		
+		mainBorderStyle := lipgloss.NewStyle().
+			BorderStyle(customBorder).
+			BorderForeground(lipgloss.Color("62")).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderBottom(true)
+
+		gameOutput = mainBorderStyle.
+			Width(mainWidth).
+			Height(contentHeight).
+			Render(m.viewport.View())
+	}
 
 	// Sidebar with panels
 	sidebar := m.renderSidebar(sidebarWidth, contentHeight)
