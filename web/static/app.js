@@ -17,11 +17,13 @@ window.addEventListener('load', () => {
             console.error('xterm.js failed to load');
             useFallback = true;
             initFallbackTerminal();
+            // Connect after fallback terminal is ready
+            connectToServer();
         } else {
+            // Initialize terminal first, then connect
+            // The connectToServer() call is now inside initTerminal()
             initTerminal();
         }
-        // Auto-connect on page load
-        connectToServer();
     }, 100);
 });
 
@@ -61,15 +63,12 @@ function initTerminal() {
             }
         });
 
-        if (window.fitAddonLoaded && typeof FitAddon !== 'undefined') {
+        if (typeof FitAddon !== 'undefined') {
             fitAddon = new FitAddon.FitAddon();
             term.loadAddon(fitAddon);
         }
         
         term.open(terminalDiv);
-        if (fitAddon) {
-            fitAddon.fit();
-        }
         
         // Handle terminal input
         term.onData(data => {
@@ -92,10 +91,23 @@ function initTerminal() {
                 }
             });
         }
+        
+        // Wait for terminal to be rendered in the DOM, then fit and connect
+        // Use requestAnimationFrame to ensure the DOM has been updated
+        requestAnimationFrame(() => {
+            if (fitAddon) {
+                fitAddon.fit();
+                console.log('Terminal fitted to viewport:', term.cols, 'x', term.rows);
+            }
+            // Now that terminal is properly sized, establish WebSocket connection
+            connectToServer();
+        });
     } catch (e) {
         console.error('Failed to initialize xterm.js:', e);
         useFallback = true;
         initFallbackTerminal();
+        // Connect after fallback terminal is ready
+        connectToServer();
     }
 }
 
