@@ -642,7 +642,7 @@ func (m *Model) renderMainContent() string {
 		if len(titleWithSpaces) < availableWidth {
 			// Fill remaining space with border characters
 			remainingChars := availableWidth - len(titleWithSpaces)
-			customBorder.Top = titleWithSpaces + strings.Repeat("─", remainingChars)
+			customBorder.Top = titleWithSpaces + strings.Repeat("─", remainingChars+10)
 		} else {
 			// Title is too long, truncate it
 			customBorder.Top = titleWithSpaces[:availableWidth]
