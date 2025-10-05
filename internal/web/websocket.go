@@ -785,7 +785,7 @@ func (s *Session) sendError(message string) {
 
 // DataMessage represents file synchronization messages
 type DataMessage struct {
-	Type      string `json:"type"`       // "file_update", "file_request", "file_not_found", "merge_complete"
+	Type      string `json:"type"`       // "file_update", "file_request", "file_not_found", "merge_complete", "password_hint"
 	Path      string `json:"path"`       // File path relative to config directory
 	Content   string `json:"content"`    // File content (JSON string)
 	Timestamp int64  `json:"timestamp"`  // Unix timestamp in milliseconds
@@ -978,9 +978,54 @@ func (h *WebSocketHandler) watchSessionFiles(conn *DataConnection) {
 		}
 	}
 
+	// Watch for password hint file
+	go h.watchPasswordHints(conn, sessionDir)
+
 	// Note: Full file watching implementation would require fsnotify or polling
 	// For now, we rely on the initial sync and client-initiated updates
 	log.Printf("Initial file sync complete for session %s", conn.sessionID)
+}
+
+// watchPasswordHints watches for password hint files and sends them to client
+func (h *WebSocketHandler) watchPasswordHints(conn *DataConnection, sessionDir string) {
+	passwordHintPath := filepath.Join(sessionDir, "password_hint.json")
+	var lastModTime time.Time
+
+	// Poll for password hint file every second
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		fileInfo, err := os.Stat(passwordHintPath)
+		if err != nil {
+			// File doesn't exist yet
+			continue
+		}
+
+		// Check if file was modified since last check
+		if fileInfo.ModTime().After(lastModTime) {
+			lastModTime = fileInfo.ModTime()
+			
+			// Read and send the hint
+			data, err := os.ReadFile(passwordHintPath)
+			if err != nil {
+				continue
+			}
+
+			// Send to client
+			conn.sendMessage(&DataMessage{
+				Type:      "password_hint",
+				Path:      "password_hint.json",
+				Content:   string(data),
+				Timestamp: fileInfo.ModTime().UnixMilli(),
+			})
+
+			log.Printf("Sent password hint to client for session %s", conn.sessionID)
+
+			// Delete the hint file after sending
+			os.Remove(passwordHintPath)
+		}
+	}
 }
 
 // sendMessage sends a data message to the client

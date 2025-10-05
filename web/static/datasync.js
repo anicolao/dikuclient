@@ -56,11 +56,30 @@ async function handleDataMessage(message) {
             // Server requests a file
             await handleFileRequest(message);
             break;
+        case 'password_hint':
+            // Server sent a password hint
+            await handlePasswordHint(message);
+            break;
         case 'merge_complete':
             console.log('Data merge complete:', message.files);
             break;
         default:
             console.log('Unknown data message type:', message.type);
+    }
+}
+
+// Handle password hint from server
+async function handlePasswordHint(message) {
+    try {
+        const hint = JSON.parse(message.content);
+        const { account, password } = hint;
+        
+        if (account && password) {
+            await savePasswordToClientAccount(account, password);
+            console.log(`Received and saved password hint for account: ${account}`);
+        }
+    } catch (e) {
+        console.error('Error handling password hint:', e);
     }
 }
 

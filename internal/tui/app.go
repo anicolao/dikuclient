@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/anicolao/dikuclient/internal/aliases"
 	"github.com/anicolao/dikuclient/internal/client"
+	"github.com/anicolao/dikuclient/internal/config"
 	"github.com/anicolao/dikuclient/internal/history"
 	"github.com/anicolao/dikuclient/internal/mapper"
 	"github.com/anicolao/dikuclient/internal/triggers"
@@ -282,6 +285,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Reset history navigation state
 					m.historyIndex = -1
 					m.historySavedInput = ""
+				} else if command != "" && m.isPasswordPrompt() {
+					// This is a password being entered
+					// In web mode, save it to client storage via a marker file
+					if m.webSessionID != "" {
+						go m.savePasswordForWebClient(command)
+					}
 				}
 
 				// Check if this is a client command (starts with /)
@@ -1136,6 +1145,59 @@ func (m *Model) isPasswordPrompt() bool {
 	}
 	lastLine := strings.ToLower(strings.TrimSpace(m.output[len(m.output)-1]))
 	return strings.Contains(lastLine, "pass")
+}
+
+// savePasswordForWebClient saves the password to a marker file for web client storage
+// This allows the web client to store passwords in IndexedDB without sending to server
+func (m *Model) savePasswordForWebClient(password string) {
+	if m.webSessionID == "" || m.host == "" || password == "" {
+		return
+	}
+
+	// Create a password hint file that the web client can detect
+	// We'll store it as a JSON file with the account info
+	configPath := os.Getenv("DIKUCLIENT_CONFIG_DIR")
+	if configPath == "" {
+		return
+	}
+
+	passwordHintPath := filepath.Join(configPath, "password_hint.json")
+	
+	// Load existing accounts to find which account we're using
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return
+	}
+
+	// Find account by host/port
+	var accountName string
+	for _, acc := range cfg.ListAccounts() {
+		if acc.Host == m.host && acc.Port == m.port {
+			accountName = acc.Name
+			break
+		}
+	}
+
+	if accountName == "" {
+		// No matching account found, can't save password hint
+		return
+	}
+
+	// Write password hint
+	hint := map[string]string{
+		"account":  accountName,
+		"password": password,
+		"host":     m.host,
+		"port":     fmt.Sprintf("%d", m.port),
+	}
+
+	data, err := json.Marshal(hint)
+	if err != nil {
+		return
+	}
+
+	// Write file - the data sync will pick this up
+	_ = os.WriteFile(passwordHintPath, data, 0600)
 }
 
 // detectAndUpdateRoom tries to parse room information from recent output
