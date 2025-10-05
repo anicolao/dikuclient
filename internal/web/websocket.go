@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/creack/pty"
@@ -780,4 +781,221 @@ func (s *Session) sendError(message string) {
 	if err != nil {
 		log.Printf("Error sending error message: %v", err)
 	}
+}
+
+// DataMessage represents file synchronization messages
+type DataMessage struct {
+	Type      string `json:"type"`       // "file_update", "file_request", "file_not_found", "merge_complete"
+	Path      string `json:"path"`       // File path relative to config directory
+	Content   string `json:"content"`    // File content (JSON string)
+	Timestamp int64  `json:"timestamp"`  // Unix timestamp in milliseconds
+	Files     []string `json:"files,omitempty"` // List of files (for merge_complete)
+}
+
+// DataConnection represents a data synchronization WebSocket connection
+type DataConnection struct {
+	ws        *websocket.Conn
+	sessionID string
+	mu        sync.Mutex
+}
+
+// HandleDataWebSocket handles data synchronization WebSocket connections
+func (h *WebSocketHandler) HandleDataWebSocket(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("id")
+	if sessionID == "" {
+		log.Printf("Data WebSocket connection rejected: no session ID")
+		http.Error(w, "Session ID required", http.StatusBadRequest)
+		return
+	}
+
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("Failed to upgrade data WebSocket: %v", err)
+		return
+	}
+
+	conn := &DataConnection{
+		ws:        ws,
+		sessionID: sessionID,
+	}
+
+	log.Printf("Data WebSocket connected for session %s", sessionID)
+
+	// Start file watcher for this session
+	go h.watchSessionFiles(conn)
+
+	// Handle incoming messages
+	for {
+		messageType, message, err := ws.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("Data WebSocket error: %v", err)
+			}
+			break
+		}
+
+		if messageType == websocket.TextMessage {
+			var msg DataMessage
+			if err := json.Unmarshal(message, &msg); err != nil {
+				log.Printf("Invalid data message: %v", err)
+				continue
+			}
+
+			h.handleDataMessage(conn, &msg)
+		}
+	}
+
+	log.Printf("Data WebSocket closed for session %s", sessionID)
+}
+
+// handleDataMessage processes incoming data synchronization messages
+func (h *WebSocketHandler) handleDataMessage(conn *DataConnection, msg *DataMessage) {
+	sessionDir := filepath.Join(".websessions", conn.sessionID, ".config", "dikuclient")
+
+	switch msg.Type {
+	case "file_update":
+		// Client sent a file update
+		h.handleClientFileUpdate(conn, sessionDir, msg)
+	case "file_request":
+		// Client requests a file
+		h.handleClientFileRequest(conn, sessionDir, msg)
+	case "file_not_found":
+		log.Printf("Client doesn't have file: %s", msg.Path)
+	default:
+		log.Printf("Unknown data message type: %s", msg.Type)
+	}
+}
+
+// handleClientFileUpdate processes file updates from client
+func (h *WebSocketHandler) handleClientFileUpdate(conn *DataConnection, sessionDir string, msg *DataMessage) {
+	filePath := filepath.Join(sessionDir, msg.Path)
+	
+	// Special handling for accounts.json - strip passwords before saving to server
+	if msg.Path == "accounts.json" {
+		var accounts map[string]interface{}
+		if err := json.Unmarshal([]byte(msg.Content), &accounts); err == nil {
+			if accountsList, ok := accounts["accounts"].([]interface{}); ok {
+				// Strip passwords from all accounts
+				for _, account := range accountsList {
+					if accMap, ok := account.(map[string]interface{}); ok {
+						delete(accMap, "password")
+					}
+				}
+				// Convert back to JSON
+				if strippedJSON, err := json.Marshal(accounts); err == nil {
+					msg.Content = string(strippedJSON)
+					log.Printf("Stripped passwords from accounts.json for server storage")
+				}
+			}
+		}
+	}
+
+	// Check if file exists and its modification time
+	fileInfo, err := os.Stat(filePath)
+	if err == nil {
+		// File exists, check if client version is newer
+		serverTime := fileInfo.ModTime().UnixMilli()
+		if msg.Timestamp <= serverTime {
+			// Server version is newer or same, don't overwrite
+			log.Printf("Skipping server update for %s (server version is newer)", msg.Path)
+			return
+		}
+	}
+
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
+		log.Printf("Failed to create directory for %s: %v", msg.Path, err)
+		return
+	}
+
+	// Write file
+	if err := os.WriteFile(filePath, []byte(msg.Content), 0600); err != nil {
+		log.Printf("Failed to write file %s: %v", msg.Path, err)
+		return
+	}
+
+	// Set modification time
+	modTime := time.UnixMilli(msg.Timestamp)
+	if err := os.Chtimes(filePath, modTime, modTime); err != nil {
+		log.Printf("Failed to set file time for %s: %v", msg.Path, err)
+	}
+
+	log.Printf("Updated server file from client: %s", msg.Path)
+}
+
+// handleClientFileRequest processes file requests from client
+func (h *WebSocketHandler) handleClientFileRequest(conn *DataConnection, sessionDir string, msg *DataMessage) {
+	filePath := filepath.Join(sessionDir, msg.Path)
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		// File doesn't exist, send not found
+		conn.sendMessage(&DataMessage{
+			Type: "file_not_found",
+			Path: msg.Path,
+		})
+		return
+	}
+
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		log.Printf("Failed to stat file %s: %v", msg.Path, err)
+		return
+	}
+
+	// Send file to client
+	conn.sendMessage(&DataMessage{
+		Type:      "file_update",
+		Path:      msg.Path,
+		Content:   string(data),
+		Timestamp: fileInfo.ModTime().UnixMilli(),
+	})
+}
+
+// watchSessionFiles watches for changes in session files and syncs to client
+func (h *WebSocketHandler) watchSessionFiles(conn *DataConnection) {
+	sessionDir := filepath.Join(".websessions", conn.sessionID, ".config", "dikuclient")
+	
+	// Files to watch
+	filesToWatch := []string{
+		"accounts.json",
+		"history.json",
+		"map.json",
+		"xps.json",
+	}
+
+	// Initial sync - send all existing files to client
+	for _, fileName := range filesToWatch {
+		filePath := filepath.Join(sessionDir, fileName)
+		if data, err := os.ReadFile(filePath); err == nil {
+			fileInfo, _ := os.Stat(filePath)
+			conn.sendMessage(&DataMessage{
+				Type:      "file_update",
+				Path:      fileName,
+				Content:   string(data),
+				Timestamp: fileInfo.ModTime().UnixMilli(),
+			})
+		}
+	}
+
+	// Note: Full file watching implementation would require fsnotify or polling
+	// For now, we rely on the initial sync and client-initiated updates
+	log.Printf("Initial file sync complete for session %s", conn.sessionID)
+}
+
+// sendMessage sends a data message to the client
+func (conn *DataConnection) sendMessage(msg *DataMessage) error {
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	if err := conn.ws.WriteMessage(websocket.TextMessage, data); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	return nil
 }

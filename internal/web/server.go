@@ -45,12 +45,15 @@ func StartWithLogging(port int, enableLogs bool) error {
 	// Serve static files (CSS, JS)
 	http.Handle("/styles.css", http.FileServer(http.Dir("web/static")))
 	http.Handle("/app.js", http.FileServer(http.Dir("web/static")))
+	http.Handle("/storage.js", http.FileServer(http.Dir("web/static")))
+	http.Handle("/datasync.js", http.FileServer(http.Dir("web/static")))
 	http.Handle("/xterm.min.js", http.FileServer(http.Dir("web/static")))
 	http.Handle("/xterm.min.css", http.FileServer(http.Dir("web/static")))
 	http.Handle("/addon-fit.min.js", http.FileServer(http.Dir("web/static")))
 
-	// WebSocket endpoint
+	// WebSocket endpoints
 	http.HandleFunc("/ws", server.handler.HandleWebSocket)
+	http.HandleFunc("/data-ws", server.handler.HandleDataWebSocket)
 
 	addr := fmt.Sprintf(":%d", port)
 	log.Printf("Starting web server on %s", addr)
