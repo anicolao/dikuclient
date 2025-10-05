@@ -267,8 +267,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.conn != nil && m.connected {
 				command := m.currentInput
 
-				// Add non-empty command to history
-				if command != "" {
+				// Add non-empty command to history (unless it's a password prompt)
+				if command != "" && !m.isPasswordPrompt() {
 					// Don't add duplicate consecutive commands
 					if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != command {
 						m.commandHistory = append(m.commandHistory, command)
@@ -1126,6 +1126,16 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// isPasswordPrompt checks if the last output line contains "pass" (case-insensitive)
+// indicating that the user is being prompted for a password
+func (m *Model) isPasswordPrompt() bool {
+	if len(m.output) == 0 {
+		return false
+	}
+	lastLine := strings.ToLower(strings.TrimSpace(m.output[len(m.output)-1]))
+	return strings.Contains(lastLine, "pass")
 }
 
 // detectAndUpdateRoom tries to parse room information from recent output
@@ -2222,8 +2232,8 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 			// Send the command immediately (simulate pressing Enter)
 			if m.conn != nil && m.connected {
-				// Add non-empty command to history (it's already there, but this handles the duplicate logic)
-				if command != "" {
+				// Add non-empty command to history (unless it's a password prompt)
+				if command != "" && !m.isPasswordPrompt() {
 					// Don't add duplicate consecutive commands
 					if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != command {
 						m.commandHistory = append(m.commandHistory, command)

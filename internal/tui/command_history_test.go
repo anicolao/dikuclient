@@ -640,3 +640,157 @@ func TestCommandHistoryFullWorkflow(t *testing.T) {
 		t.Fatalf("Expected 4 commands (no duplicate), got %d", len(m.commandHistory))
 	}
 }
+
+// TestPasswordPromptDetection verifies password prompt detection
+func TestPasswordPromptDetection(t *testing.T) {
+	tests := []struct {
+		name      string
+		lastLine  string
+		expected  bool
+	}{
+		{"password lowercase", "password:", true},
+		{"Password uppercase", "Password:", true},
+		{"PASSWORD all caps", "PASSWORD:", true},
+		{"pass lowercase", "pass:", true},
+		{"Pass uppercase", "Pass:", true},
+		{"PASS all caps", "PASS:", true},
+		{"passphrase", "Enter your passphrase:", true},
+		{"Password with spaces", "Please enter your password:", true},
+		{"pass in middle", "Enter pass code:", true},
+		{"regular prompt", "Name:", false},
+		{"look command", "look", false},
+		{"north command", "north", false},
+		{"passage (contains pass)", "You see a passage to the north", true}, // Contains "pass"
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := Model{
+				output: []string{tt.lastLine},
+			}
+			result := m.isPasswordPrompt()
+			if result != tt.expected {
+				t.Errorf("isPasswordPrompt() for '%s' = %v, want %v", tt.lastLine, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestPasswordPromptNoHistory verifies passwords are not added to history
+func TestPasswordPromptNoHistory(t *testing.T) {
+	m := Model{
+		connected:      true,
+		worldMap:       mapper.NewMap(),
+		commandHistory: []string{},
+		historyIndex:   -1,
+		output:         []string{"Enter your password:"},
+	}
+
+	// Simulate entering a password
+	command := "mySecretPassword123"
+	
+	// This simulates the logic from KeyEnter handler
+	if command != "" && !m.isPasswordPrompt() {
+		if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != command {
+			m.commandHistory = append(m.commandHistory, command)
+		}
+		m.historyIndex = -1
+		m.historySavedInput = ""
+	}
+
+	// Verify password was NOT added to history
+	if len(m.commandHistory) != 0 {
+		t.Fatalf("Expected 0 commands in history (password should not be saved), got %d", len(m.commandHistory))
+	}
+}
+
+// TestPasswordPromptVariations verifies various password prompt formats
+func TestPasswordPromptVariations(t *testing.T) {
+	prompts := []string{
+		"password:",
+		"Password:",
+		"PASSWORD:",
+		"Enter password:",
+		"Please enter your password:",
+		"pass:",
+		"Pass:",
+		"PASS:",
+		"Passphrase:",
+		"Enter pass code:",
+	}
+
+	for _, prompt := range prompts {
+		t.Run(prompt, func(t *testing.T) {
+			m := Model{
+				connected:      true,
+				worldMap:       mapper.NewMap(),
+				commandHistory: []string{},
+				historyIndex:   -1,
+				output:         []string{prompt},
+			}
+
+			// Simulate entering a password
+			command := "secret123"
+			
+			// This simulates the logic from KeyEnter handler
+			if command != "" && !m.isPasswordPrompt() {
+				if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != command {
+					m.commandHistory = append(m.commandHistory, command)
+				}
+				m.historyIndex = -1
+				m.historySavedInput = ""
+			}
+
+			// Verify password was NOT added to history
+			if len(m.commandHistory) != 0 {
+				t.Fatalf("Expected 0 commands for prompt '%s', got %d", prompt, len(m.commandHistory))
+			}
+		})
+	}
+}
+
+// TestNormalCommandAfterPasswordPrompt verifies normal commands are still saved
+func TestNormalCommandAfterPasswordPrompt(t *testing.T) {
+	m := Model{
+		connected:      true,
+		worldMap:       mapper.NewMap(),
+		commandHistory: []string{},
+		historyIndex:   -1,
+		output:         []string{"password:"},
+	}
+
+	// First, enter a password (should not be saved)
+	command := "myPassword"
+	if command != "" && !m.isPasswordPrompt() {
+		if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != command {
+			m.commandHistory = append(m.commandHistory, command)
+		}
+		m.historyIndex = -1
+		m.historySavedInput = ""
+	}
+
+	if len(m.commandHistory) != 0 {
+		t.Fatalf("Expected 0 commands after password, got %d", len(m.commandHistory))
+	}
+
+	// Now change prompt to a normal prompt
+	m.output = []string{"> "}
+
+	// Enter a normal command
+	command = "north"
+	if command != "" && !m.isPasswordPrompt() {
+		if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != command {
+			m.commandHistory = append(m.commandHistory, command)
+		}
+		m.historyIndex = -1
+		m.historySavedInput = ""
+	}
+
+	// Normal command should be saved
+	if len(m.commandHistory) != 1 {
+		t.Fatalf("Expected 1 command after normal prompt, got %d", len(m.commandHistory))
+	}
+	if m.commandHistory[0] != "north" {
+		t.Errorf("Expected 'north' in history, got '%s'", m.commandHistory[0])
+	}
+}
