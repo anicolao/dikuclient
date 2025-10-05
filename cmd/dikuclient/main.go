@@ -222,7 +222,7 @@ func handleDeleteAccount(cfg *config.Config, name string) {
 	fmt.Printf("Account '%s' deleted successfully.\n", name)
 }
 
-func promptForAccountDetails(host string, port int) (*config.Account, error) {
+func promptForAccountDetails(host string, port int, passwordStore *config.PasswordStore) (*config.Account, error) {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Print("Enter account name: ")
@@ -239,12 +239,17 @@ func promptForAccountDetails(host string, port int) (*config.Account, error) {
 	}
 	username = strings.TrimSpace(username)
 
-	fmt.Print("Enter password (optional): ")
-	password, err := reader.ReadString('\n')
-	if err != nil {
-		return nil, err
+	var password string
+	// Only prompt for password in non-web mode
+	// In web mode, password will be captured during login automatically
+	if !passwordStore.IsReadOnly() {
+		fmt.Print("Enter password (optional): ")
+		passwordInput, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		password = strings.TrimSpace(passwordInput)
 	}
-	password = strings.TrimSpace(password)
 
 	return &config.Account{
 		Name:     name,
@@ -356,19 +361,24 @@ func createNewAccount(cfg *config.Config, passwordStore *config.PasswordStore, r
 		}
 		username = strings.TrimSpace(username)
 
-		fmt.Print("Enter password (optional): ")
-		password, err := reader.ReadString('\n')
-		if err != nil {
-			return nil, err
+		var password string
+		// Only prompt for password in non-web mode
+		// In web mode, password will be captured during login automatically
+		if !passwordStore.IsReadOnly() {
+			fmt.Print("Enter password (optional): ")
+			passwordInput, err := reader.ReadString('\n')
+			if err != nil {
+				return nil, err
+			}
+			password = strings.TrimSpace(passwordInput)
 		}
-		password = strings.TrimSpace(password)
 
 		account = config.Account{
 			Name:     name,
 			Host:     host,
 			Port:     port,
 			Username: username,
-			Password: password, // Will be saved separately
+			Password: password, // Will be saved separately (not in JSON)
 		}
 
 		// Save account (without password in JSON)
@@ -376,15 +386,19 @@ func createNewAccount(cfg *config.Config, passwordStore *config.PasswordStore, r
 			return nil, fmt.Errorf("failed to save account: %w", err)
 		}
 		
-		// Save password separately
-		if password != "" {
+		// Save password separately (only in non-web mode)
+		if password != "" && !passwordStore.IsReadOnly() {
 			passwordStore.SetPassword(host, port, username, password)
 			if err := passwordStore.Save(); err != nil {
 				return nil, fmt.Errorf("failed to save password: %w", err)
 			}
 		}
 		
-		fmt.Printf("Account '%s' saved.\n", name)
+		if passwordStore.IsReadOnly() {
+			fmt.Printf("Account '%s' saved. Password will be captured automatically during login.\n", name)
+		} else {
+			fmt.Printf("Account '%s' saved.\n", name)
+		}
 	} else {
 		account = config.Account{
 			Host: host,

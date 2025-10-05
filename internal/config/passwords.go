@@ -154,3 +154,8 @@ func (ps *PasswordStore) LoadFromMap(passwords map[string]string) {
 		ps.passwords[k] = v
 	}
 }
+
+// IsReadOnly returns true if the password store is in read-only mode (web mode)
+func (ps *PasswordStore) IsReadOnly() bool {
+	return ps.readOnly
+}
