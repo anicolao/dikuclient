@@ -51,12 +51,14 @@ When connecting with both client and server data present:
 
 ### Client-Side Components
 
-**storage.js**: IndexedDB wrapper
-- `initDB()`: Initialize database
-- `saveFile(path, content, timestamp)`: Save file to IndexedDB
-- `loadFile(path)`: Load file from IndexedDB
-- `listFiles()`: List all stored files
-- `deleteFile(path)`: Remove file from storage
+**storage.js**: IndexedDB wrapper (per-session storage)
+- `initDB()`: Initialize database for current session ID
+- `saveFile(path, content, timestamp)`: Save file to IndexedDB (scoped to session)
+- `loadFile(path)`: Load file from IndexedDB (scoped to session)
+- `listFiles()`: List all stored files (scoped to session)
+- `deleteFile(path)`: Remove file from storage (scoped to session)
+- `saveLastSessionId(sessionId)`: Save session ID to cookie
+- `getLastSessionId()`: Retrieve last used session ID from cookie
 
 **datasync.js**: WebSocket synchronization
 - Connects to `/data-ws` endpoint
@@ -89,13 +91,29 @@ When connecting with both client and server data present:
    ```
 
 2. **Access in browser**: http://localhost:8080
+   - First visit: A new session ID (GUID) is generated
+   - Subsequent visits: Last used session ID is remembered via cookie
+   - Each session ID has its own isolated storage
 
 3. **Automatic storage**:
-   - All game data automatically saved to browser
+   - All game data automatically saved to browser per session ID
    - Passwords stored securely in client-side IndexedDB
    - Data persists across browser sessions
+   - Each session ID maintains separate configuration
 
-4. **Data synchronization**:
+4. **Multi-window support**:
+   - Open multiple browser windows with different session IDs
+   - Example: `http://localhost:8080/?id=session-1` and `http://localhost:8080/?id=session-2`
+   - Each window has its own independent configuration and data
+   - Useful for observing another player while playing yourself
+
+5. **Moving between devices**:
+   - Copy the session ID from URL: `http://localhost:8080/?id=<your-session-id>`
+   - Open the same URL on a new device
+   - You'll get that session's configuration, not the new device's previous config
+   - Server-side data persists and syncs to the new client
+
+6. **Data synchronization**:
    - Works transparently in the background
    - No user action required
    - Console logs show sync activity (check browser DevTools)
@@ -126,7 +144,7 @@ Password prompts are detected by checking if output contains "pass" (case-insens
 
 ## File Locations
 
-**Server (temporary)**:
+**Server (persistent per session ID)**:
 ```
 .websessions/<session-id>/.config/dikuclient/
   ├── accounts.json (no passwords)
@@ -136,14 +154,22 @@ Password prompts are detected by checking if output contains "pass" (case-insens
   └── password_hint.json (temporary, deleted after sending)
 ```
 
-**Client (persistent)**:
+**Client (persistent per session ID in IndexedDB)**:
 ```
 IndexedDB: dikuclient-storage
-  Store: files
-    ├── accounts.json (with passwords)
-    ├── history.json
-    ├── map.json
-    └── xps.json
+  Store: files (compound key: [sessionId, path])
+    Session <id-1>:
+      ├── accounts.json (with passwords)
+      ├── history.json
+      ├── map.json
+      └── xps.json
+    Session <id-2>:
+      ├── accounts.json (with passwords)
+      ├── history.json
+      ├── map.json
+      └── xps.json
+
+Cookie: dikuclient_last_session=<session-id> (30 day expiry)
 ```
 
 ## Troubleshooting
@@ -155,11 +181,17 @@ Open browser DevTools console and run:
 // Check if IndexedDB is initialized
 indexedDB.databases().then(dbs => console.log(dbs));
 
-// Check stored files
+// Check current session ID
+console.log('Current session:', getSessionId());
+
+// Check stored files for current session
 listFiles().then(files => console.log(files));
 
-// Load a specific file
+// Load a specific file for current session
 loadFile('accounts.json').then(file => console.log(file));
+
+// Check last used session ID
+console.log('Last session:', getLastSessionId());
 ```
 
 ### Data sync not working

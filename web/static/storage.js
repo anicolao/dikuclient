@@ -1,13 +1,48 @@
-// IndexedDB wrapper for client-side file storage
+// IndexedDB wrapper for client-side file storage (per-session)
 
 const DB_NAME = 'dikuclient-storage';
 const DB_VERSION = 1;
 const STORE_NAME = 'files';
 
 let db = null;
+let currentSessionId = null;
+
+// Get session ID from URL
+function getSessionId() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('id') || '';
+}
+
+// Save last used session ID to cookie
+function saveLastSessionId(sessionId) {
+    // Cookie expires in 30 days
+    const expires = new Date();
+    expires.setDate(expires.getDate() + 30);
+    document.cookie = `dikuclient_last_session=${sessionId}; expires=${expires.toUTCString()}; path=/; SameSite=Strict`;
+}
+
+// Get last used session ID from cookie
+function getLastSessionId() {
+    const cookies = document.cookie.split(';');
+    for (let cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === 'dikuclient_last_session') {
+            return value;
+        }
+    }
+    return null;
+}
 
 // Initialize IndexedDB
 async function initDB() {
+    currentSessionId = getSessionId();
+    if (!currentSessionId) {
+        throw new Error('No session ID found');
+    }
+    
+    // Save this session ID as the last used
+    saveLastSessionId(currentSessionId);
+    
     return new Promise((resolve, reject) => {
         const request = indexedDB.open(DB_NAME, DB_VERSION);
         
@@ -20,20 +55,22 @@ async function initDB() {
         request.onupgradeneeded = (event) => {
             const db = event.target.result;
             if (!db.objectStoreNames.contains(STORE_NAME)) {
-                db.createObjectStore(STORE_NAME, { keyPath: 'path' });
+                // Store format: { sessionId, path, content, timestamp }
+                const store = db.createObjectStore(STORE_NAME, { keyPath: ['sessionId', 'path'] });
+                store.createIndex('sessionId', 'sessionId', { unique: false });
             }
         };
     });
 }
 
-// Save file to IndexedDB
+// Save file to IndexedDB (scoped to current session)
 async function saveFile(path, content, timestamp) {
     if (!db) await initDB();
     
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([STORE_NAME], 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
-        const data = { path, content, timestamp };
+        const data = { sessionId: currentSessionId, path, content, timestamp };
         
         const request = store.put(data);
         request.onsuccess = () => resolve();
@@ -41,42 +78,47 @@ async function saveFile(path, content, timestamp) {
     });
 }
 
-// Load file from IndexedDB
+// Load file from IndexedDB (scoped to current session)
 async function loadFile(path) {
     if (!db) await initDB();
     
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([STORE_NAME], 'readonly');
         const store = transaction.objectStore(STORE_NAME);
-        const request = store.get(path);
+        const request = store.get([currentSessionId, path]);
         
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
     });
 }
 
-// List all files in IndexedDB
+// List all files in IndexedDB (scoped to current session)
 async function listFiles() {
     if (!db) await initDB();
     
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([STORE_NAME], 'readonly');
         const store = transaction.objectStore(STORE_NAME);
-        const request = store.getAllKeys();
+        const index = store.index('sessionId');
+        const request = index.getAllKeys(currentSessionId);
         
-        request.onsuccess = () => resolve(request.result);
+        request.onsuccess = () => {
+            // Keys are [sessionId, path] tuples, extract just the paths
+            const keys = request.result.map(key => key[1]);
+            resolve(keys);
+        };
         request.onerror = () => reject(request.error);
     });
 }
 
-// Delete file from IndexedDB
+// Delete file from IndexedDB (scoped to current session)
 async function deleteFile(path) {
     if (!db) await initDB();
     
     return new Promise((resolve, reject) => {
         const transaction = db.transaction([STORE_NAME], 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
-        const request = store.delete(path);
+        const request = store.delete([currentSessionId, path]);
         
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);

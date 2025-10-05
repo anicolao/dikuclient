@@ -20,10 +20,12 @@ Implemented a dual-storage architecture with:
 
 ### Files Created
 
-1. **web/static/storage.js** (91 lines)
-   - IndexedDB wrapper for client-side file storage
+1. **web/static/storage.js** (133 lines)
+   - IndexedDB wrapper for per-session client-side file storage
    - Functions: initDB, saveFile, loadFile, listFiles, deleteFile
-   - Automatic initialization on page load
+   - Session ID management: getSessionId, saveLastSessionId, getLastSessionId
+   - Cookie-based last session ID persistence (30 day expiry)
+   - Automatic initialization on page load with session scoping
 
 2. **web/static/datasync.js** (170 lines)
    - Data synchronization via WebSocket
@@ -130,10 +132,12 @@ Implemented a dual-storage architecture with:
 - File permissions: 0600
 
 ### Web Mode (New)
-- Server: Passwords stripped from accounts.json
-- Client: Passwords stored in IndexedDB
-- Session isolation: Each session has separate config dir
+- Server: Passwords stripped from accounts.json, stored in `.websessions/<session-id>/`
+- Client: Passwords stored in IndexedDB per session ID
+- Session isolation: Each session ID has separate config dir on server and storage in client
 - WebSocket: Same-origin policy enforced
+- Cookie: Last session ID stored (30 day expiry, Strict SameSite)
+- Multi-window: Different session IDs = different configurations
 
 ## Testing
 
