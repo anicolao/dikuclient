@@ -41,3 +41,7 @@ telnet-debug-*.log
 
 # Web session directories
 .websessions/
+
+# Node modules
+node_modules/
+package-lock.json

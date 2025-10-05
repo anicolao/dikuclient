@@ -45,6 +45,9 @@ func StartWithLogging(port int, enableLogs bool) error {
 	// Serve static files (CSS, JS)
 	http.Handle("/styles.css", http.FileServer(http.Dir("web/static")))
 	http.Handle("/app.js", http.FileServer(http.Dir("web/static")))
+	http.Handle("/xterm.min.js", http.FileServer(http.Dir("web/static")))
+	http.Handle("/xterm.min.css", http.FileServer(http.Dir("web/static")))
+	http.Handle("/addon-fit.min.js", http.FileServer(http.Dir("web/static")))
 
 	// WebSocket endpoint
 	http.HandleFunc("/ws", server.handler.HandleWebSocket)
