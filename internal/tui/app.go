@@ -709,18 +709,12 @@ func (m *Model) renderMainContent() string {
 
 	if m.isSplit {
 		// Split mode: 2/3 for user scrolled position, 1/3 for live output at bottom
-		// lipgloss Height(X) creates X content lines + borders
-		// Total rendered height = top_border + top_content + separator + bottom_content + bottom_border
-		// = 1 + top_content + 1 + bottom_content + 1 = top_content + bottom_content + 3
-		// We need: top_content + bottom_content + 3 = contentHeight
-		// So: top_content + bottom_content = contentHeight - 3
-		
-		availableForContent := contentHeight - 3
-		topContentHeight := (availableForContent * 2) / 3
-		bottomContentHeight := availableForContent - topContentHeight
+		// When stacking two boxes vertically, we need to account for the extra border line
+		// where they meet (the separator between them)
+		topHeight := (contentHeight * 2) / 3
+		bottomHeight := contentHeight - topHeight - 1  // -1 for separator border
 		
 		// Top viewport (user's scrolled position)
-		// With top border only, rendered height = 1 + topContentHeight
 		topBorderStyle := lipgloss.NewStyle().
 			BorderStyle(customBorder).
 			BorderForeground(lipgloss.Color("62")).
@@ -731,11 +725,10 @@ func (m *Model) renderMainContent() string {
 
 		topView := topBorderStyle.
 			Width(mainWidth).
-			Height(topContentHeight).
+			Height(topHeight).
 			Render(m.viewport.View())
 
 		// Bottom viewport (live output - always at bottom)
-		// With top and bottom borders, rendered height = 1 + bottomContentHeight + 1
 		bottomBorder := lipgloss.RoundedBorder()
 		bottomBorder.Top = strings.Repeat("─", mainWidth+10)
 
@@ -749,14 +742,12 @@ func (m *Model) renderMainContent() string {
 
 		bottomView := bottomBorderStyle.
 			Width(mainWidth).
-			Height(bottomContentHeight).
+			Height(bottomHeight).
 			Render(m.splitViewport.View())
 
 		gameOutput = lipgloss.JoinVertical(lipgloss.Left, topView, bottomView)
 	} else {
 		// Normal mode: single viewport
-		// With top and bottom borders, rendered height = 1 + content + 1
-		// We need: 1 + content + 1 = contentHeight, so content = contentHeight - 2
 		mainBorderStyle := lipgloss.NewStyle().
 			BorderStyle(customBorder).
 			BorderForeground(lipgloss.Color("62")).
@@ -767,7 +758,7 @@ func (m *Model) renderMainContent() string {
 
 		gameOutput = mainBorderStyle.
 			Width(mainWidth).
-			Height(contentHeight - 2).
+			Height(contentHeight).
 			Render(m.viewport.View())
 	}
 
