@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anicolao/dikuclient/internal/aliases"
 	"github.com/anicolao/dikuclient/internal/client"
 	"github.com/anicolao/dikuclient/internal/history"
 	"github.com/anicolao/dikuclient/internal/mapper"
@@ -49,6 +50,7 @@ type Model struct {
 	autoWalkIndex         int                // Current step in auto-walk
 	lastRoomSearch        []*mapper.Room     // Last room search results for disambiguation
 	triggerManager        *triggers.Manager  // Trigger manager
+	aliasManager          *aliases.Manager   // Alias manager
 	inventory             []string           // Current inventory items
 	inventoryTime         time.Time          // Time when inventory was last updated
 	inventoryViewport     viewport.Model     // Viewport for scrollable inventory
@@ -73,6 +75,8 @@ type Model struct {
 	historySearchQuery    string             // Current search query in search mode
 	historySearchResults  []int              // Indices of matching commands in history
 	historySearchIndex    int                // Current position in search results
+	isSplit               bool               // Whether the main viewport is split
+	splitViewport         viewport.Model     // Second viewport for tracking live output when split
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -132,6 +136,13 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		triggerManager = triggers.NewManager()
 	}
 
+	// Load or create alias manager
+	aliasManager, err := aliases.Load()
+	if err != nil {
+		// If we can't load aliases, create a new manager
+		aliasManager = aliases.NewManager()
+	}
+
 	// Load or create XP stats manager
 	xpStatsManager, err := xpstats.Load()
 	if err != nil {
@@ -149,6 +160,7 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 	inventoryVp := viewport.New(0, 0)
 	tellsVp := viewport.New(0, 0)
 	xpVp := viewport.New(0, 0)
+	splitVp := viewport.New(0, 0)
 
 	// Read web session information from environment variables
 	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
@@ -172,6 +184,7 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		recentOutput:      []string{},
 		mapDebug:          mapDebug,
 		triggerManager:    triggerManager,
+		aliasManager:      aliasManager,
 		inventoryViewport: inventoryVp,
 		tellsViewport:     tellsVp,
 		xpTracking:           make(map[string]*XPStat),
@@ -187,6 +200,13 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		historySearchQuery:   "",
 		historySearchResults: []int{},
 		historySearchIndex:   0,
+		xpTracking:        make(map[string]*XPStat),
+		xpViewport:        xpVp,
+		xpStatsManager:    xpStatsManager,
+		webSessionID:      webSessionID,
+		webServerURL:      webServerURL,
+		isSplit:           false,
+		splitViewport:     splitVp,
 	}
 }
 
@@ -237,6 +257,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.updateViewport()
 			}
 			return m, nil
+		case tea.KeyPgUp:
+			// Enable split mode when scrolling up (unless already at top)
+			if !m.isSplit {
+				m.isSplit = true
+			}
+			// Continue to viewport update at end of function
+
+		case tea.KeyPgDown:
+			// Continue to viewport update at end of function
+			// Split mode exit check happens after viewport updates
 
 		case tea.KeyEnter:
 			if m.conn != nil && m.connected {
@@ -280,6 +310,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursorPos = 0
 					m.updateViewport()
 					return m, clientCmd
+				}
+
+				// Try to expand alias
+				if expandedCommand, expanded := m.aliasManager.Expand(command); expanded {
+					command = expandedCommand
 				}
 
 				// Check if this is a movement command
@@ -409,11 +444,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		headerHeight := 3
 		sidebarWidth := m.sidebarWidth
-		mainWidth := m.width - sidebarWidth - 6
+		mainWidth := m.width - sidebarWidth - 1
 
 		m.viewport.Width = mainWidth
 		m.viewport.Height = m.height - headerHeight - 2
 		// Don't apply viewport style - let ANSI codes pass through
+
+		// Set up split viewport dimensions (1/3 of main viewport height)
+		m.splitViewport.Width = mainWidth
+		m.splitViewport.Height = (m.height - headerHeight - 2) / 3
 
 		// Update viewport sizes for 4 panels
 		panelHeight := (m.height - headerHeight - 2 - 8) / 4
@@ -430,6 +469,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.updateViewport()
 		return m, nil
+
+	case tea.MouseMsg:
+		// Handle mouse wheel scrolling on main viewport
+		if msg.Action == tea.MouseActionPress {
+			if msg.Button == tea.MouseButtonWheelUp {
+				// Enable split mode when scrolling up
+				if !m.isSplit {
+					m.isSplit = true
+				}
+				// Continue to viewport update at end of function
+			} else if msg.Button == tea.MouseButtonWheelDown {
+				// Continue to viewport update at end of function
+				// We'll check split mode after viewport updates
+			}
+		}
 
 	case *client.Connection:
 		m.conn = msg
@@ -597,6 +651,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
 
+	// Check if we should exit split mode after viewport update
+	if m.isSplit && m.viewport.AtBottom() {
+		m.isSplit = false
+	}
+
 	// Update inventory viewport for mouse wheel scrolling
 	m.inventoryViewport, cmd = m.inventoryViewport.Update(msg)
 	cmds = append(cmds, cmd)
@@ -686,8 +745,24 @@ func (m *Model) updateViewport() {
 		}
 	}
 
+	// Check if viewport is at bottom BEFORE setting new content
+	wasAtBottom := m.viewport.AtBottom()
+	
 	m.viewport.SetContent(content)
-	m.viewport.GotoBottom()
+	
+	// If not in split mode or if viewport is already at bottom, go to bottom
+	// This preserves scroll position when in split mode
+	if !m.isSplit {
+		m.viewport.GotoBottom()
+	} else if wasAtBottom {
+		// If user was already at bottom and new content arrived, exit split mode
+		m.isSplit = false
+		m.viewport.GotoBottom()
+	}
+
+	// Update split viewport content (always stays at bottom for live tracking)
+	m.splitViewport.SetContent(content)
+	m.splitViewport.GotoBottom()
 
 	// Log TUI content if logging enabled
 	if m.tuiLogFile != nil {
@@ -745,7 +820,7 @@ func (m *Model) renderStatusBar() string {
 func (m *Model) renderMainContent() string {
 	headerHeight := 3
 	sidebarWidth := m.sidebarWidth
-	mainWidth := m.width - sidebarWidth - 4
+	mainWidth := m.width - sidebarWidth - 1
 	contentHeight := m.height - headerHeight
 
 	// Build title for main window with current room and exits
@@ -783,19 +858,71 @@ func (m *Model) renderMainContent() string {
 		}
 	}
 
-	// Game output viewport with custom border (no right border to weld with sidebar)
-	mainBorderStyle := lipgloss.NewStyle().
-		BorderStyle(customBorder).
-		BorderForeground(lipgloss.Color("62")).
-		BorderTop(true).
-		BorderLeft(true).
-		BorderRight(false).
-		BorderBottom(true)
+	var gameOutput string
 
-	gameOutput := mainBorderStyle.
-		Width(mainWidth).
-		Height(contentHeight).
-		Render(m.viewport.View())
+	if m.isSplit {
+		// Split mode: 2/3 for user scrolled position, 1/3 for live output at bottom
+		// When stacking two boxes vertically, we need to account for the extra border line
+		// where they meet (the separator between them)
+		topHeight := (contentHeight * 2) / 3
+		bottomHeight := contentHeight - topHeight - 1  // -1 for separator border
+		
+		// Adjust viewport heights to match the split heights
+		// Subtract border heights: topHeight has 1 border (top), bottomHeight has 2 borders (top+bottom)
+		m.viewport.Height = topHeight - 1
+		m.splitViewport.Height = bottomHeight - 2
+		
+		// Top viewport (user's scrolled position)
+		topBorderStyle := lipgloss.NewStyle().
+			BorderStyle(customBorder).
+			BorderForeground(lipgloss.Color("62")).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderBottom(false)
+
+		topView := topBorderStyle.
+			Width(mainWidth).
+			Height(topHeight).
+			Render(m.viewport.View())
+
+		// Bottom viewport (live output - always at bottom)
+		bottomBorder := lipgloss.RoundedBorder()
+		bottomBorder.Top = strings.Repeat("─", mainWidth+10)
+		bottomBorder.TopLeft = "├"  // T-corner to connect with left border
+
+		bottomBorderStyle := lipgloss.NewStyle().
+			BorderStyle(bottomBorder).
+			BorderForeground(lipgloss.Color("62")).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderBottom(true)
+
+		bottomView := bottomBorderStyle.
+			Width(mainWidth).
+			Height(bottomHeight).
+			Render(m.splitViewport.View())
+
+		gameOutput = lipgloss.JoinVertical(lipgloss.Left, topView, bottomView)
+	} else {
+		// Normal mode: single viewport
+		// Restore viewport to full height
+		m.viewport.Height = contentHeight - 2  // Subtract 2 for top and bottom borders
+		
+		mainBorderStyle := lipgloss.NewStyle().
+			BorderStyle(customBorder).
+			BorderForeground(lipgloss.Color("62")).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderBottom(true)
+
+		gameOutput = mainBorderStyle.
+			Width(mainWidth).
+			Height(contentHeight).
+			Render(m.viewport.View())
+	}
 
 	// Sidebar with panels
 	sidebar := m.renderSidebar(sidebarWidth, contentHeight)
@@ -1245,6 +1372,12 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 	case "triggers":
 		m.handleTriggersCommand(args)
 		return nil
+	case "alias":
+		m.handleAliasCommand(command)
+		return nil
+	case "aliases":
+		m.handleAliasesCommand(args)
+		return nil
 	case "share":
 		m.handleShareCommand()
 		return nil
@@ -1485,6 +1618,9 @@ func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "  \x1b[96m/trigger \"pat\" \"act\"\x1b[0m - Add a trigger (pattern can use <var>)")
 	m.output = append(m.output, "  \x1b[96m/triggers list\x1b[0m          - List all triggers")
 	m.output = append(m.output, "  \x1b[96m/triggers remove <n>\x1b[0m    - Remove trigger by number")
+	m.output = append(m.output, "  \x1b[96m/alias \"name\" \"tmpl\"\x1b[0m  - Add an alias (template can use <var>)")
+	m.output = append(m.output, "  \x1b[96m/aliases list\x1b[0m           - List all aliases")
+	m.output = append(m.output, "  \x1b[96m/aliases remove <n>\x1b[0m     - Remove alias by number")
 	m.output = append(m.output, "  \x1b[96m/share\x1b[0m                  - Get shareable URL (web mode only)")
 	m.output = append(m.output, "  \x1b[96m/help\x1b[0m                   - Show this help message")
 	m.output = append(m.output, "")
@@ -1494,6 +1630,7 @@ func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "")
 	m.output = append(m.output, "\x1b[90mRoom search matches all terms in room title, description, or exits\x1b[0m")
 	m.output = append(m.output, "\x1b[90mTriggers match output lines and execute actions (supports <variable> capture)\x1b[0m")
+	m.output = append(m.output, "\x1b[90mAliases expand commands with parameters (e.g., /alias \"gat\" \"give all <target>\")\x1b[0m")
 }
 
 // handleRoomsCommand lists all known rooms or filters by search terms
@@ -2248,4 +2385,107 @@ func (m *Model) updateHistorySearch() {
 			}
 		}
 	}
+=======
+// handleAliasCommand adds a new alias
+func (m *Model) handleAliasCommand(command string) {
+	// Parse the command to extract name and template
+	// Expected format: /alias "name" "template"
+
+	// Remove "/alias " prefix
+	command = strings.TrimPrefix(command, "alias ")
+	command = strings.TrimSpace(command)
+
+	// Parse quoted strings
+	name, template, err := parseQuotedArgs(command)
+	if err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError: %v\x1b[0m", err))
+		m.output = append(m.output, "\x1b[93mUsage: /alias \"name\" \"template\"\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExample: /alias \"gat\" \"give all <target>\"\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExample: /alias \"gt\" \"give <object> <target>\"\x1b[0m")
+		return
+	}
+
+	// Add the alias
+	alias, err := m.aliasManager.Add(name, template)
+	if err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError adding alias: %v\x1b[0m", err))
+		return
+	}
+
+	// Save aliases
+	if err := m.aliasManager.Save(); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving aliases: %v\x1b[0m", err))
+		return
+	}
+
+	m.output = append(m.output, fmt.Sprintf("\x1b[92mAlias added: \"%s\" -> \"%s\"\x1b[0m", alias.Name, alias.Template))
+}
+
+// handleAliasesCommand handles /aliases list and /aliases remove
+func (m *Model) handleAliasesCommand(args []string) {
+	if len(args) == 0 {
+		// Default to list
+		m.handleAliasesListCommand()
+		return
+	}
+
+	subCmd := strings.ToLower(args[0])
+	switch subCmd {
+	case "list":
+		m.handleAliasesListCommand()
+	case "remove":
+		if len(args) < 2 {
+			m.output = append(m.output, "\x1b[91mUsage: /aliases remove <index>\x1b[0m")
+			return
+		}
+		var index int
+		_, err := fmt.Sscanf(args[1], "%d", &index)
+		if err != nil {
+			m.output = append(m.output, "\x1b[91mError: Invalid index\x1b[0m")
+			return
+		}
+		m.handleAliasesRemoveCommand(index)
+	default:
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError: Unknown subcommand '%s'\x1b[0m", subCmd))
+		m.output = append(m.output, "\x1b[93mUsage: /aliases [list|remove <index>]\x1b[0m")
+	}
+}
+
+// handleAliasesListCommand lists all aliases
+func (m *Model) handleAliasesListCommand() {
+	if len(m.aliasManager.Aliases) == 0 {
+		m.output = append(m.output, "\x1b[93mNo aliases defined.\x1b[0m")
+		m.output = append(m.output, "\x1b[93mUse /alias \"name\" \"template\" to add an alias.\x1b[0m")
+		return
+	}
+
+	m.output = append(m.output, "\x1b[92m=== Active Aliases ===\x1b[0m")
+	for i, alias := range m.aliasManager.Aliases {
+		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. \"%s\" -> \"%s\"\x1b[0m", i+1, alias.Name, alias.Template))
+	}
+}
+
+// handleAliasesRemoveCommand removes an alias by index
+func (m *Model) handleAliasesRemoveCommand(index int) {
+	// Convert from 1-based to 0-based index
+	index--
+
+	if index < 0 || index >= len(m.aliasManager.Aliases) {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError: Invalid alias index. Use /aliases list to see available aliases.\x1b[0m"))
+		return
+	}
+
+	alias := m.aliasManager.Aliases[index]
+	if err := m.aliasManager.Remove(index); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError removing alias: %v\x1b[0m", err))
+		return
+	}
+
+	// Save aliases
+	if err := m.aliasManager.Save(); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving aliases: %v\x1b[0m", err))
+		return
+	}
+
+	m.output = append(m.output, fmt.Sprintf("\x1b[92mRemoved alias: \"%s\" -> \"%s\"\x1b[0m", alias.Name, alias.Template))
 }
