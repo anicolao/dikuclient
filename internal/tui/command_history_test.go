@@ -298,3 +298,126 @@ func TestCommandHistoryUpWithNoHistory(t *testing.T) {
 		t.Errorf("Expected historyIndex to remain -1, got %d", m.historyIndex)
 	}
 }
+
+// TestCommandHistoryFullWorkflow simulates a complete user workflow
+func TestCommandHistoryFullWorkflow(t *testing.T) {
+	m := Model{
+		connected:         true,
+		worldMap:          mapper.NewMap(),
+		commandHistory:    []string{},
+		historyIndex:      -1,
+		currentInput:      "",
+		historySavedInput: "",
+	}
+
+	// Helper to add command to history (simulates Enter key)
+	addCommand := func(cmd string) {
+		m.currentInput = cmd
+		if cmd != "" {
+			if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != cmd {
+				m.commandHistory = append(m.commandHistory, cmd)
+			}
+			m.historyIndex = -1
+			m.historySavedInput = ""
+		}
+		m.currentInput = ""
+	}
+
+	// Helper to navigate up (simulates Up arrow)
+	navigateUp := func() {
+		if len(m.commandHistory) > 0 {
+			if m.historyIndex == -1 {
+				m.historySavedInput = m.currentInput
+				m.historyIndex = len(m.commandHistory)
+			}
+			
+			if m.historyIndex > 0 {
+				m.historyIndex--
+				m.currentInput = m.commandHistory[m.historyIndex]
+			}
+		}
+	}
+
+	// Helper to navigate down (simulates Down arrow)
+	navigateDown := func() {
+		if m.historyIndex != -1 {
+			m.historyIndex++
+			
+			if m.historyIndex >= len(m.commandHistory) {
+				m.currentInput = m.historySavedInput
+				m.historyIndex = -1
+				m.historySavedInput = ""
+			} else {
+				m.currentInput = m.commandHistory[m.historyIndex]
+			}
+		}
+	}
+
+	// Scenario: User enters three commands
+	addCommand("north")
+	addCommand("look")
+	addCommand("south")
+
+	if len(m.commandHistory) != 3 {
+		t.Fatalf("Expected 3 commands in history, got %d", len(m.commandHistory))
+	}
+
+	// Start typing a new command
+	m.currentInput = "ea"
+
+	// User presses Up to get previous command
+	navigateUp()
+	if m.currentInput != "south" {
+		t.Errorf("Expected 'south' after first Up, got '%s'", m.currentInput)
+	}
+	if m.historySavedInput != "ea" {
+		t.Errorf("Expected saved input 'ea', got '%s'", m.historySavedInput)
+	}
+
+	// User presses Up again
+	navigateUp()
+	if m.currentInput != "look" {
+		t.Errorf("Expected 'look' after second Up, got '%s'", m.currentInput)
+	}
+
+	// User presses Down to go forward
+	navigateDown()
+	if m.currentInput != "south" {
+		t.Errorf("Expected 'south' after Down, got '%s'", m.currentInput)
+	}
+
+	// User presses Down again to restore what they were typing
+	navigateDown()
+	if m.currentInput != "ea" {
+		t.Errorf("Expected restored input 'ea', got '%s'", m.currentInput)
+	}
+	if m.historyIndex != -1 {
+		t.Errorf("Expected historyIndex -1 after restoration, got %d", m.historyIndex)
+	}
+
+	// User finishes typing and executes
+	m.currentInput = "east"
+	addCommand(m.currentInput)
+
+	if len(m.commandHistory) != 4 {
+		t.Fatalf("Expected 4 commands in history, got %d", len(m.commandHistory))
+	}
+	if m.commandHistory[3] != "east" {
+		t.Errorf("Expected 'east' as last command, got '%s'", m.commandHistory[3])
+	}
+
+	// User presses Up to repeat the last command
+	navigateUp()
+	if m.currentInput != "east" {
+		t.Errorf("Expected 'east' after Up, got '%s'", m.currentInput)
+	}
+
+	// User executes the repeated command
+	cmd := m.currentInput
+	addCommand(cmd)
+
+	// Should not add duplicate
+	if len(m.commandHistory) != 4 {
+		t.Fatalf("Expected 4 commands (no duplicate), got %d", len(m.commandHistory))
+	}
+}
