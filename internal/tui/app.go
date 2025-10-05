@@ -10,6 +10,7 @@ import (
 
 	"github.com/anicolao/dikuclient/internal/aliases"
 	"github.com/anicolao/dikuclient/internal/client"
+	"github.com/anicolao/dikuclient/internal/history"
 	"github.com/anicolao/dikuclient/internal/mapper"
 	"github.com/anicolao/dikuclient/internal/triggers"
 	"github.com/anicolao/dikuclient/internal/xpstats"
@@ -66,6 +67,14 @@ type Model struct {
 	xpStatsManager        *xpstats.Manager   // Persistent XP stats manager
 	webSessionID          string             // Web session ID for sharing (empty if not in web mode)
 	webServerURL          string             // Web server URL for sharing (empty if not in web mode)
+	historyManager        *history.Manager   // Persistent command history manager
+	commandHistory        []string           // Command history for readline-style navigation (in-memory cache)
+	historyIndex          int                // Current position in command history (-1 = not navigating)
+	historySavedInput     string             // Saved current input when starting history navigation
+	historySearchMode     bool               // True when in Ctrl+R search mode
+	historySearchQuery    string             // Current search query in search mode
+	historySearchResults  []int              // Indices of matching commands in history
+	historySearchIndex    int                // Current position in search results
 	isSplit               bool               // Whether the main viewport is split
 	splitViewport         viewport.Model     // Second viewport for tracking live output when split
 }
@@ -141,6 +150,13 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		xpStatsManager = xpstats.NewManager()
 	}
 
+	// Load or create history manager
+	historyManager, err := history.Load()
+	if err != nil {
+		// If we can't load history, create a new manager
+		historyManager = history.NewManager()
+	}
+
 	inventoryVp := viewport.New(0, 0)
 	tellsVp := viewport.New(0, 0)
 	xpVp := viewport.New(0, 0)
@@ -151,33 +167,41 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 	webServerURL := os.Getenv("DIKUCLIENT_WEB_SERVER_URL")
 
 	return Model{
-		viewport:          vp,
-		output:            []string{},
-		currentInput:      "",
-		cursorPos:         0,
-		host:              host,
-		port:              port,
-		sidebarWidth:      60, // Doubled from 30 to 60
-		mudLogFile:        mudLogFile,
-		tuiLogFile:        tuiLogFile,
-		telnetDebugLog:    telnetDebugLog,
-		username:          username,
-		password:          password,
-		autoLoginState:    0,
-		worldMap:          worldMap,
-		recentOutput:      []string{},
-		mapDebug:          mapDebug,
-		triggerManager:    triggerManager,
-		aliasManager:      aliasManager,
-		inventoryViewport: inventoryVp,
-		tellsViewport:     tellsVp,
-		xpTracking:        make(map[string]*XPStat),
-		xpViewport:        xpVp,
-		xpStatsManager:    xpStatsManager,
-		webSessionID:      webSessionID,
-		webServerURL:      webServerURL,
-		isSplit:           false,
-		splitViewport:     splitVp,
+		viewport:             vp,
+		output:               []string{},
+		currentInput:         "",
+		cursorPos:            0,
+		host:                 host,
+		port:                 port,
+		sidebarWidth:         60, // Doubled from 30 to 60
+		mudLogFile:           mudLogFile,
+		tuiLogFile:           tuiLogFile,
+		telnetDebugLog:       telnetDebugLog,
+		username:             username,
+		password:             password,
+		autoLoginState:       0,
+		worldMap:             worldMap,
+		recentOutput:         []string{},
+		mapDebug:             mapDebug,
+		triggerManager:       triggerManager,
+		aliasManager:         aliasManager,
+		inventoryViewport:    inventoryVp,
+		tellsViewport:        tellsVp,
+		xpTracking:           make(map[string]*XPStat),
+		xpViewport:           xpVp,
+		xpStatsManager:       xpStatsManager,
+		webSessionID:         webSessionID,
+		webServerURL:         webServerURL,
+		historyManager:       historyManager,
+		commandHistory:       historyManager.GetCommands(),
+		historyIndex:         -1,
+		historySavedInput:    "",
+		historySearchMode:    false,
+		historySearchQuery:   "",
+		historySearchResults: []int{},
+		historySearchIndex:   0,
+		isSplit:              false,
+		splitViewport:        splitVp,
 	}
 }
 
@@ -204,6 +228,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Handle history search mode separately
+		if m.historySearchMode {
+			return m.handleHistorySearchKey(msg)
+		}
+
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			if m.conn != nil {
@@ -211,6 +240,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 
+		case tea.KeyCtrlR:
+			// Enter history search mode
+			if len(m.commandHistory) > 0 {
+				m.historySearchMode = true
+				m.historySearchQuery = ""
+				m.historySearchResults = []int{}
+				m.historySearchIndex = 0
+				// Search with empty query returns all commands
+				m.updateHistorySearch()
+				m.updateViewport()
+			}
+			return m, nil
 		case tea.KeyPgUp:
 			// Enable split mode when scrolling up (unless already at top)
 			if !m.isSplit {
@@ -225,6 +266,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter:
 			if m.conn != nil && m.connected {
 				command := m.currentInput
+
+				// Add non-empty command to history
+				if command != "" {
+					// Don't add duplicate consecutive commands
+					if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != command {
+						m.commandHistory = append(m.commandHistory, command)
+						// Save to persistent history
+						if m.historyManager != nil {
+							m.historyManager.Add(command)
+							// Save asynchronously to avoid blocking
+							go m.historyManager.Save()
+						}
+					}
+					// Reset history navigation state
+					m.historyIndex = -1
+					m.historySavedInput = ""
+				}
 
 				// Check if this is a client command (starts with /)
 				if strings.HasPrefix(command, "/") {
@@ -286,6 +344,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case tea.KeyBackspace:
 			if m.cursorPos > 0 {
+				// Exit history navigation mode when user edits
+				m.historyIndex = -1
+				m.historySavedInput = ""
+
 				m.currentInput = m.currentInput[:m.cursorPos-1] + m.currentInput[m.cursorPos:]
 				m.cursorPos--
 				m.updateViewport()
@@ -319,9 +381,51 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateViewport()
 			return m, nil
 
+		case tea.KeyUp:
+			// Navigate backward through command history
+			if len(m.commandHistory) > 0 {
+				// If not currently navigating history, save the current input
+				if m.historyIndex == -1 {
+					m.historySavedInput = m.currentInput
+					m.historyIndex = len(m.commandHistory)
+				}
+
+				// Move to previous command in history
+				if m.historyIndex > 0 {
+					m.historyIndex--
+					m.currentInput = m.commandHistory[m.historyIndex]
+					m.cursorPos = len(m.currentInput)
+					m.updateViewport()
+				}
+			}
+			return m, nil
+
+		case tea.KeyDown:
+			// Navigate forward through command history
+			if m.historyIndex != -1 {
+				m.historyIndex++
+
+				// If we've gone past the end of history, restore saved input
+				if m.historyIndex >= len(m.commandHistory) {
+					m.currentInput = m.historySavedInput
+					m.historyIndex = -1
+					m.historySavedInput = ""
+				} else {
+					m.currentInput = m.commandHistory[m.historyIndex]
+				}
+
+				m.cursorPos = len(m.currentInput)
+				m.updateViewport()
+			}
+			return m, nil
+
 		default:
 			// Handle regular character input
 			if msg.Type == tea.KeyRunes {
+				// Exit history navigation mode when user types
+				m.historyIndex = -1
+				m.historySavedInput = ""
+
 				// Insert character at cursor position
 				m.currentInput = m.currentInput[:m.cursorPos] + string(msg.Runes) + m.currentInput[m.cursorPos:]
 				m.cursorPos += len(msg.Runes)
@@ -561,7 +665,36 @@ func (m *Model) updateViewport() {
 	if len(m.output) > 0 {
 		lastLine := m.output[len(m.output)-1]
 
-		if (m.currentInput != "" || m.connected) && !m.echoSuppressed {
+		// Handle history search mode display
+		if m.historySearchMode {
+			lines := make([]string, len(m.output)-1)
+			copy(lines, m.output[:len(m.output)-1])
+
+			// Add search prompt
+			searchPrompt := fmt.Sprintf("(reverse-i-search)`%s': ", m.historySearchQuery)
+
+			// Add current match if any
+			if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults) {
+				resultIdx := m.historySearchResults[m.historySearchIndex]
+				matchedCmd := m.commandHistory[resultIdx]
+				lines = append(lines, lastLine+"\x1b[96m"+searchPrompt+"\x1b[93m"+matchedCmd+"█\x1b[0m")
+			} else {
+				lines = append(lines, lastLine+"\x1b[96m"+searchPrompt+"█\x1b[0m")
+			}
+
+			// Add search results summary
+			if len(m.historySearchResults) > 0 {
+				lines = append(lines, fmt.Sprintf("\x1b[90m[%d/%d matches - Up/Down to navigate, Enter to select, Esc to cancel]\x1b[0m",
+					m.historySearchIndex+1, len(m.historySearchResults)))
+			} else if m.historySearchQuery != "" {
+				lines = append(lines, "\x1b[90m[No matches found]\x1b[0m")
+			} else {
+				lines = append(lines, fmt.Sprintf("\x1b[90m[%d commands - Type to search, Enter to select, Esc to cancel]\x1b[0m",
+					len(m.commandHistory)))
+			}
+
+			content = strings.Join(lines, "\n")
+		} else if (m.currentInput != "" || m.connected) && !m.echoSuppressed {
 			// Build input line with cursor (only if echo is not suppressed)
 			inputLine := m.currentInput
 			if m.cursorPos < len(m.currentInput) {
@@ -609,9 +742,9 @@ func (m *Model) updateViewport() {
 
 	// Check if viewport is at bottom BEFORE setting new content
 	wasAtBottom := m.viewport.AtBottom()
-	
+
 	m.viewport.SetContent(content)
-	
+
 	// If not in split mode or if viewport is already at bottom, go to bottom
 	// This preserves scroll position when in split mode
 	if !m.isSplit {
@@ -727,13 +860,13 @@ func (m *Model) renderMainContent() string {
 		// When stacking two boxes vertically, we need to account for the extra border line
 		// where they meet (the separator between them)
 		topHeight := (contentHeight * 2) / 3
-		bottomHeight := contentHeight - topHeight - 1  // -1 for separator border
-		
+		bottomHeight := contentHeight - topHeight - 1 // -1 for separator border
+
 		// Adjust viewport heights to match the split heights
 		// Subtract border heights: topHeight has 1 border (top), bottomHeight has 2 borders (top+bottom)
 		m.viewport.Height = topHeight - 1
 		m.splitViewport.Height = bottomHeight - 2
-		
+
 		// Top viewport (user's scrolled position)
 		topBorderStyle := lipgloss.NewStyle().
 			BorderStyle(customBorder).
@@ -751,7 +884,7 @@ func (m *Model) renderMainContent() string {
 		// Bottom viewport (live output - always at bottom)
 		bottomBorder := lipgloss.RoundedBorder()
 		bottomBorder.Top = strings.Repeat("─", mainWidth+10)
-		bottomBorder.TopLeft = "├"  // T-corner to connect with left border
+		bottomBorder.TopLeft = "├" // T-corner to connect with left border
 
 		bottomBorderStyle := lipgloss.NewStyle().
 			BorderStyle(bottomBorder).
@@ -770,8 +903,8 @@ func (m *Model) renderMainContent() string {
 	} else {
 		// Normal mode: single viewport
 		// Restore viewport to full height
-		m.viewport.Height = contentHeight - 2  // Subtract 2 for top and bottom borders
-		
+		m.viewport.Height = contentHeight - 2 // Subtract 2 for top and bottom borders
+
 		mainBorderStyle := lipgloss.NewStyle().
 			BorderStyle(customBorder).
 			BorderForeground(lipgloss.Color("62")).
@@ -1486,6 +1619,10 @@ func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "  \x1b[96m/share\x1b[0m                  - Get shareable URL (web mode only)")
 	m.output = append(m.output, "  \x1b[96m/help\x1b[0m                   - Show this help message")
 	m.output = append(m.output, "")
+	m.output = append(m.output, "\x1b[92m=== Keyboard Shortcuts ===\x1b[0m")
+	m.output = append(m.output, "  \x1b[96mUp/Down Arrow\x1b[0m           - Navigate command history")
+	m.output = append(m.output, "  \x1b[96mCtrl+R\x1b[0m                  - Search command history (type to filter)")
+	m.output = append(m.output, "")
 	m.output = append(m.output, "\x1b[90mRoom search matches all terms in room title, description, or exits\x1b[0m")
 	m.output = append(m.output, "\x1b[90mTriggers match output lines and execute actions (supports <variable> capture)\x1b[0m")
 	m.output = append(m.output, "\x1b[90mAliases expand commands with parameters (e.g., /alias \"gat\" \"give all <target>\")\x1b[0m")
@@ -2052,6 +2189,197 @@ func parseQuotedArgs(input string) (string, string, error) {
 	action := rest[1:endQuote]
 
 	return pattern, action, nil
+}
+
+// handleHistorySearchKey handles key inputs when in history search mode
+func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc, tea.KeyCtrlC:
+		// Exit search mode without selecting
+		m.historySearchMode = false
+		m.historySearchQuery = ""
+		m.historySearchResults = []int{}
+		m.historySearchIndex = 0
+		m.updateViewport()
+		return m, nil
+
+	case tea.KeyEnter:
+		// Select current result, exit search mode, and send command immediately
+		if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults) {
+			resultIdx := m.historySearchResults[m.historySearchIndex]
+			command := m.commandHistory[resultIdx]
+
+			// Exit search mode
+			m.historySearchMode = false
+			m.historySearchQuery = ""
+			m.historySearchResults = []int{}
+			m.historySearchIndex = 0
+
+			// Set the command as current input
+			m.currentInput = command
+			m.cursorPos = len(m.currentInput)
+			m.updateViewport()
+
+			// Send the command immediately (simulate pressing Enter)
+			if m.conn != nil && m.connected {
+				// Add non-empty command to history (it's already there, but this handles the duplicate logic)
+				if command != "" {
+					// Don't add duplicate consecutive commands
+					if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != command {
+						m.commandHistory = append(m.commandHistory, command)
+						// Save to persistent history
+						if m.historyManager != nil {
+							m.historyManager.Add(command)
+							// Save asynchronously to avoid blocking
+							go m.historyManager.Save()
+						}
+					}
+					// Reset history navigation state
+					m.historyIndex = -1
+					m.historySavedInput = ""
+				}
+
+				// Check if this is a client command (starts with /)
+				if strings.HasPrefix(command, "/") {
+					// Save the current prompt line before executing command
+					var savedPrompt string
+					if len(m.output) > 0 {
+						savedPrompt = m.output[len(m.output)-1]
+						// Replace the prompt line with the command
+						m.output[len(m.output)-1] = savedPrompt + "\x1b[93m" + command + "\x1b[0m"
+					}
+
+					clientCmd := m.handleClientCommand(command)
+
+					// Add two newlines (empty lines) and restore prompt after command output
+					m.output = append(m.output, "")
+					m.output = append(m.output, "")
+					m.output = append(m.output, savedPrompt)
+
+					m.currentInput = ""
+					m.cursorPos = 0
+					m.updateViewport()
+					return m, clientCmd
+				}
+
+				// Check if this is a movement command
+				if movement := mapper.DetectMovement(command); movement != "" {
+					m.pendingMovement = movement
+					// Clear map legend on movement
+					m.mapLegend = nil
+					m.mapLegendRooms = nil
+				}
+
+				// Send command to MUD server
+				m.conn.Send(command)
+
+				// Don't modify m.output here - let the server echo if it wants to
+				// Or we can store the command for display purposes
+				if !m.echoSuppressed && command != "" {
+					// Add the command as a new line in output (it will show on the prompt line)
+					// This preserves it even when new output arrives
+					if len(m.output) > 0 {
+						// Modify the last line to include the command
+						m.output[len(m.output)-1] = m.output[len(m.output)-1] + "\x1b[93m" + command + "\x1b[0m"
+					}
+				}
+
+				// Reset input
+				m.currentInput = ""
+				m.cursorPos = 0
+				// Update display immediately
+				m.updateViewport()
+			}
+			return m, nil
+		}
+
+		// No results, just exit search mode
+		m.historySearchMode = false
+		m.historySearchQuery = ""
+		m.historySearchResults = []int{}
+		m.historySearchIndex = 0
+		m.updateViewport()
+		return m, nil
+
+	case tea.KeyUp:
+		// Navigate to previous search result
+		if len(m.historySearchResults) > 0 && m.historySearchIndex > 0 {
+			m.historySearchIndex--
+			m.updateViewport()
+		}
+		return m, nil
+
+	case tea.KeyDown:
+		// Navigate to next search result
+		if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults)-1 {
+			m.historySearchIndex++
+			m.updateViewport()
+		}
+		return m, nil
+
+	case tea.KeyBackspace:
+		// Remove last character from search query
+		if len(m.historySearchQuery) > 0 {
+			m.historySearchQuery = m.historySearchQuery[:len(m.historySearchQuery)-1]
+			m.updateHistorySearch()
+			m.updateViewport()
+		}
+		return m, nil
+
+	case tea.KeySpace:
+		// Add space to search query for multi-word search
+		m.historySearchQuery += " "
+		m.updateHistorySearch()
+		m.updateViewport()
+		return m, nil
+
+	case tea.KeyRunes:
+		// Add typed characters to search query
+		m.historySearchQuery += string(msg.Runes)
+		m.updateHistorySearch()
+		m.updateViewport()
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// updateHistorySearch updates the search results based on the current query
+func (m *Model) updateHistorySearch() {
+	m.historySearchResults = []int{}
+	m.historySearchIndex = 0
+
+	if len(m.commandHistory) == 0 {
+		return
+	}
+
+	query := strings.ToLower(m.historySearchQuery)
+
+	// Split query into individual words
+	words := strings.Fields(query)
+
+	// Search through history in reverse order (most recent first)
+	for i := len(m.commandHistory) - 1; i >= 0; i-- {
+		cmd := strings.ToLower(m.commandHistory[i])
+
+		// Multi-word search: all words must be present (in any order)
+		if len(words) == 0 {
+			// Empty query matches all commands
+			m.historySearchResults = append(m.historySearchResults, i)
+		} else {
+			// Check if all words are present in the command
+			allWordsMatch := true
+			for _, word := range words {
+				if !strings.Contains(cmd, word) {
+					allWordsMatch = false
+					break
+				}
+			}
+			if allWordsMatch {
+				m.historySearchResults = append(m.historySearchResults, i)
+			}
+		}
+	}
 }
 
 // handleAliasCommand adds a new alias
