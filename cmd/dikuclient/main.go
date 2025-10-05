@@ -115,6 +115,11 @@ func main() {
 		finalPort = account.Port
 		username = account.Username
 		password = account.Password
+
+		// Flush output and give terminal a moment to settle before TUI initialization
+		// This prevents escape codes from being displayed literally
+		os.Stdout.Sync()
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	var mudLogFile, tuiLogFile, telnetDebugLog *os.File
