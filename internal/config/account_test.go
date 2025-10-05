@@ -45,10 +45,15 @@ func TestAddAndGetAccount(t *testing.T) {
 		t.Fatalf("Failed to get account: %v", err)
 	}
 
+	// Note: Password is not stored in accounts.json anymore, it's in separate .passwords file
 	if retrieved.Name != account.Name || retrieved.Host != account.Host ||
-		retrieved.Port != account.Port || retrieved.Username != account.Username ||
-		retrieved.Password != account.Password {
+		retrieved.Port != account.Port || retrieved.Username != account.Username {
 		t.Errorf("Retrieved account doesn't match: %+v", retrieved)
+	}
+	
+	// Password should be empty since it's not serialized
+	if retrieved.Password != "" {
+		t.Errorf("Password should not be stored in accounts.json, got: %s", retrieved.Password)
 	}
 }
 
@@ -131,8 +136,14 @@ func TestUpdateAccount(t *testing.T) {
 		t.Fatalf("Failed to get account: %v", err)
 	}
 
-	if retrieved.Username != "user2" || retrieved.Password != "newpass" {
+	// Note: Password is not stored in accounts.json anymore
+	if retrieved.Username != "user2" {
 		t.Errorf("Account not updated correctly: %+v", retrieved)
+	}
+	
+	// Password should be empty since it's not serialized
+	if retrieved.Password != "" {
+		t.Errorf("Password should not be stored in accounts.json, got: %s", retrieved.Password)
 	}
 }
 

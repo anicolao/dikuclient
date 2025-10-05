@@ -72,11 +72,12 @@ async function handleDataMessage(message) {
 async function handlePasswordHint(message) {
     try {
         const hint = JSON.parse(message.content);
-        const { account, password } = hint;
         
-        if (account && password) {
-            await savePasswordToClientAccount(account, password);
-            console.log(`Received and saved password hint for account: ${account}`);
+        if (hint.account && hint.password && hint.host && hint.port && hint.username) {
+            await savePasswordToClientAccount(hint);
+            console.log(`Received and saved password hint for account: ${hint.account}`);
+        } else {
+            console.error('Incomplete password hint received');
         }
     } catch (e) {
         console.error('Error handling password hint:', e);
@@ -118,26 +119,12 @@ async function handleFileUpdate(message) {
     }
     
     if (path === 'accounts.json') {
-        // Special handling for accounts - merge passwords from client with server data
-        if (localFile && content) {
-            const serverData = JSON.parse(content);
-            const clientData = JSON.parse(localFile.content);
-            
-            // Merge: keep server account list but restore passwords from client
-            if (serverData.accounts && clientData.accounts) {
-                for (let serverAcc of serverData.accounts) {
-                    for (let clientAcc of clientData.accounts) {
-                        if (serverAcc.name === clientAcc.name && clientAcc.password) {
-                            serverAcc.password = clientAcc.password;
-                        }
-                    }
-                }
-            }
-            
-            const mergedContent = JSON.stringify(serverData, null, 2);
-            const mergedTimestamp = Math.max(timestamp, localFile.timestamp);
-            await saveFile(path, mergedContent, mergedTimestamp);
-            console.log('Merged accounts with client passwords');
+        // Accounts file doesn't contain passwords anymore, so just normal merge
+        // Passwords are stored separately in IndexedDB passwords table
+        // Use server version if both exist (server is authoritative for account list)
+        if (content) {
+            await saveFile(path, content, timestamp);
+            console.log('Updated accounts from server (passwords stored separately)');
             return;
         }
     }
@@ -174,23 +161,7 @@ async function handleFileRequest(message) {
 // Send file to server
 function sendFileToServer(path, content, timestamp) {
     if (dataWs && dataConnected) {
-        // Strip passwords from accounts.json before sending to server
-        if (path === 'accounts.json') {
-            try {
-                const accounts = JSON.parse(content);
-                if (accounts.accounts) {
-                    // Remove passwords from all accounts
-                    for (let account of accounts.accounts) {
-                        delete account.password;
-                    }
-                    content = JSON.stringify(accounts, null, 2);
-                    console.log('Stripped passwords from accounts.json before sending to server');
-                }
-            } catch (e) {
-                console.error('Error stripping passwords from accounts.json:', e);
-            }
-        }
-        
+        // No password stripping needed - passwords are never in accounts.json anymore
         dataWs.send(JSON.stringify({
             type: 'file_update',
             path: path,
@@ -224,40 +195,18 @@ window.addEventListener('storage-update', async (event) => {
     sendFileToServer(path, content, timestamp);
 });
 
-// Save password to client-side accounts.json
-async function savePasswordToClientAccount(accountName, password) {
-    const accountsFile = await loadFile('accounts.json');
+// Save password to client-side password storage (separate from accounts.json)
+async function savePasswordToClientAccount(hint) {
+    // Hint contains: account, password, host, port, username
+    const accountKey = `${hint.host}:${hint.port}:${hint.username}`;
     
-    let accounts;
-    if (accountsFile) {
-        accounts = JSON.parse(accountsFile.content);
+    // Check if password already exists
+    const existingPassword = await loadPassword(accountKey);
+    if (!existingPassword || existingPassword === '') {
+        await savePassword(accountKey, hint.password);
+        console.log(`Saved password for account ${hint.account} (${accountKey}) in separate password storage`);
     } else {
-        accounts = { accounts: [] };
-    }
-    
-    // Find the account and add/update password
-    let found = false;
-    if (accounts.accounts) {
-        for (let account of accounts.accounts) {
-            if (account.name === accountName) {
-                // Only save password if it's not already there
-                if (!account.password || account.password === '') {
-                    account.password = password;
-                    found = true;
-                    console.log(`Saved password for account ${accountName} on client`);
-                }
-                break;
-            }
-        }
-    }
-    
-    if (found) {
-        const content = JSON.stringify(accounts, null, 2);
-        const timestamp = Date.now();
-        await saveFile('accounts.json', content, timestamp);
-        
-        // Note: Don't send to server - passwords stay on client only
-        console.log('Password saved to client storage only (not sent to server)');
+        console.log(`Password already exists for account ${hint.account}`);
     }
 }
 

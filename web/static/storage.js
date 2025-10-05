@@ -1,8 +1,9 @@
 // IndexedDB wrapper for client-side file storage (per-session)
 
 const DB_NAME = 'dikuclient-storage';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented to add passwords store
 const STORE_NAME = 'files';
+const PASSWORDS_STORE_NAME = 'passwords';
 
 let db = null;
 let currentSessionId = null;
@@ -54,10 +55,21 @@ async function initDB() {
         
         request.onupgradeneeded = (event) => {
             const db = event.target.result;
+            const oldVersion = event.oldVersion;
+            
+            // Create files store if it doesn't exist
             if (!db.objectStoreNames.contains(STORE_NAME)) {
                 // Store format: { sessionId, path, content, timestamp }
                 const store = db.createObjectStore(STORE_NAME, { keyPath: ['sessionId', 'path'] });
                 store.createIndex('sessionId', 'sessionId', { unique: false });
+            }
+            
+            // Create passwords store (added in version 2)
+            if (oldVersion < 2 && !db.objectStoreNames.contains(PASSWORDS_STORE_NAME)) {
+                // Store format: { sessionId, account, password }
+                // account is "host:port:username"
+                const passwordStore = db.createObjectStore(PASSWORDS_STORE_NAME, { keyPath: ['sessionId', 'account'] });
+                passwordStore.createIndex('sessionId', 'sessionId', { unique: false });
             }
         };
     });
@@ -119,6 +131,73 @@ async function deleteFile(path) {
         const transaction = db.transaction([STORE_NAME], 'readwrite');
         const store = transaction.objectStore(STORE_NAME);
         const request = store.delete([currentSessionId, path]);
+        
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// Save password to IndexedDB (scoped to current session)
+async function savePassword(account, password) {
+    if (!db) await initDB();
+    
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([PASSWORDS_STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(PASSWORDS_STORE_NAME);
+        const data = { sessionId: currentSessionId, account, password };
+        
+        const request = store.put(data);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// Load password from IndexedDB (scoped to current session)
+async function loadPassword(account) {
+    if (!db) await initDB();
+    
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([PASSWORDS_STORE_NAME], 'readonly');
+        const store = transaction.objectStore(PASSWORDS_STORE_NAME);
+        const request = store.get([currentSessionId, account]);
+        
+        request.onsuccess = () => {
+            const result = request.result;
+            resolve(result ? result.password : null);
+        };
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// List all passwords for current session
+async function listPasswords() {
+    if (!db) await initDB();
+    
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([PASSWORDS_STORE_NAME], 'readonly');
+        const store = transaction.objectStore(PASSWORDS_STORE_NAME);
+        const index = store.index('sessionId');
+        const request = index.getAll(currentSessionId);
+        
+        request.onsuccess = () => {
+            const passwords = {};
+            for (const item of request.result) {
+                passwords[item.account] = item.password;
+            }
+            resolve(passwords);
+        };
+        request.onerror = () => reject(request.error);
+    });
+}
+
+// Delete password from IndexedDB (scoped to current session)
+async function deletePassword(account) {
+    if (!db) await initDB();
+    
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction([PASSWORDS_STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(PASSWORDS_STORE_NAME);
+        const request = store.delete([currentSessionId, account]);
         
         request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);

@@ -870,24 +870,10 @@ func (h *WebSocketHandler) handleDataMessage(conn *DataConnection, msg *DataMess
 func (h *WebSocketHandler) handleClientFileUpdate(conn *DataConnection, sessionDir string, msg *DataMessage) {
 	filePath := filepath.Join(sessionDir, msg.Path)
 	
-	// Special handling for accounts.json - strip passwords before saving to server
-	if msg.Path == "accounts.json" {
-		var accounts map[string]interface{}
-		if err := json.Unmarshal([]byte(msg.Content), &accounts); err == nil {
-			if accountsList, ok := accounts["accounts"].([]interface{}); ok {
-				// Strip passwords from all accounts
-				for _, account := range accountsList {
-					if accMap, ok := account.(map[string]interface{}); ok {
-						delete(accMap, "password")
-					}
-				}
-				// Convert back to JSON
-				if strippedJSON, err := json.Marshal(accounts); err == nil {
-					msg.Content = string(strippedJSON)
-					log.Printf("Stripped passwords from accounts.json for server storage")
-				}
-			}
-		}
+	// Prevent writing .passwords file in web mode (passwords should never reach server)
+	if msg.Path == ".passwords" {
+		log.Printf("Blocked attempt to write .passwords file in web mode")
+		return
 	}
 
 	// Check if file exists and its modification time

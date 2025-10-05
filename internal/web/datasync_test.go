@@ -8,16 +8,16 @@ import (
 	"time"
 )
 
-func TestPasswordStripping(t *testing.T) {
-	// Test that passwords are stripped from accounts.json
+func TestPasswordNotInAccounts(t *testing.T) {
+	// Test that accounts.json structure doesn't include passwords
+	// Passwords are now stored separately in .passwords file
 	accountsJSON := `{
 		"accounts": [
 			{
 				"name": "TestAccount",
 				"host": "test.mud.org",
 				"port": 4000,
-				"username": "testuser",
-				"password": "secret123"
+				"username": "testuser"
 			}
 		]
 	}`
@@ -27,21 +27,12 @@ func TestPasswordStripping(t *testing.T) {
 		t.Fatalf("Failed to unmarshal accounts: %v", err)
 	}
 
-	// Strip passwords
-	if accountsList, ok := accounts["accounts"].([]interface{}); ok {
-		for _, account := range accountsList {
-			if accMap, ok := account.(map[string]interface{}); ok {
-				delete(accMap, "password")
-			}
-		}
-	}
-
-	// Verify password is removed
+	// Verify password is not present
 	if accountsList, ok := accounts["accounts"].([]interface{}); ok {
 		if len(accountsList) > 0 {
 			if accMap, ok := accountsList[0].(map[string]interface{}); ok {
 				if _, hasPassword := accMap["password"]; hasPassword {
-					t.Error("Password should have been stripped")
+					t.Error("Password field should not be in accounts.json")
 				}
 			}
 		}

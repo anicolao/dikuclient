@@ -1183,12 +1183,13 @@ func (m *Model) savePasswordForWebClient(password string) {
 		return
 	}
 
-	// Write password hint
+	// Write password hint with account key (host:port:username format)
 	hint := map[string]string{
 		"account":  accountName,
 		"password": password,
 		"host":     m.host,
 		"port":     fmt.Sprintf("%d", m.port),
+		"username": m.username,
 	}
 
 	data, err := json.Marshal(hint)

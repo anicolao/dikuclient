@@ -37,6 +37,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Load password store (read-only in web mode to prevent writing)
+	isWebMode := os.Getenv("DIKUCLIENT_WEB_SESSION_ID") != ""
+	passwordStore := config.NewPasswordStore(isWebMode)
+	if err := passwordStore.Load(); err != nil {
+		fmt.Printf("Error loading passwords: %v\n", err)
+		// Continue anyway - passwords file might not exist yet
+	}
+
 	// Handle account management commands
 	if *listAccounts {
 		handleListAccounts(cfg)
@@ -77,7 +85,7 @@ func main() {
 		finalHost = account.Host
 		finalPort = account.Port
 		username = account.Username
-		password = account.Password
+		password = passwordStore.GetPassword(account.Host, account.Port, account.Username)
 		fmt.Printf("Using saved account: %s\n", *accountName)
 	} else if *host != "" {
 		// Use command line parameters
@@ -94,10 +102,21 @@ func main() {
 			username = account.Username
 			password = account.Password
 
+			// Save account (without password)
 			if err := cfg.AddAccount(*account); err != nil {
 				fmt.Printf("Error saving account: %v\n", err)
 				os.Exit(1)
 			}
+			
+			// Save password separately
+			if password != "" {
+				passwordStore.SetPassword(account.Host, account.Port, account.Username, password)
+				if err := passwordStore.Save(); err != nil {
+					fmt.Printf("Error saving password: %v\n", err)
+					os.Exit(1)
+				}
+			}
+			
 			fmt.Printf("Account '%s' saved successfully.\n", account.Name)
 
 			// Flush output before TUI initialization
@@ -106,7 +125,7 @@ func main() {
 		}
 	} else {
 		// No host or account specified - show interactive menu
-		account, err := selectOrCreateAccount(cfg)
+		account, err := selectOrCreateAccount(cfg, passwordStore)
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			os.Exit(1)
@@ -118,7 +137,7 @@ func main() {
 		finalHost = account.Host
 		finalPort = account.Port
 		username = account.Username
-		password = account.Password
+		password = passwordStore.GetPassword(account.Host, account.Port, account.Username)
 
 		// Flush output before TUI initialization
 		// This prevents escape codes from being displayed literally
@@ -236,7 +255,7 @@ func promptForAccountDetails(host string, port int) (*config.Account, error) {
 	}, nil
 }
 
-func selectOrCreateAccount(cfg *config.Config) (*config.Account, error) {
+func selectOrCreateAccount(cfg *config.Config, passwordStore *config.PasswordStore) (*config.Account, error) {
 	accounts := cfg.ListAccounts()
 
 	fmt.Println("\nDikuMUD Client - Account Selection")
@@ -274,7 +293,7 @@ func selectOrCreateAccount(cfg *config.Config) (*config.Account, error) {
 			return &accounts[choice-1], nil
 		} else if choice == len(accounts)+1 {
 			// Create new connection
-			return createNewAccount(cfg, reader)
+			return createNewAccount(cfg, passwordStore, reader)
 		} else if choice == len(accounts)+2 {
 			// Exit
 			return nil, nil
@@ -282,7 +301,7 @@ func selectOrCreateAccount(cfg *config.Config) (*config.Account, error) {
 	} else {
 		if choice == 1 {
 			// Create new connection
-			return createNewAccount(cfg, reader)
+			return createNewAccount(cfg, passwordStore, reader)
 		} else if choice == 2 {
 			// Exit
 			return nil, nil
@@ -292,7 +311,7 @@ func selectOrCreateAccount(cfg *config.Config) (*config.Account, error) {
 	return nil, fmt.Errorf("invalid choice")
 }
 
-func createNewAccount(cfg *config.Config, reader *bufio.Reader) (*config.Account, error) {
+func createNewAccount(cfg *config.Config, passwordStore *config.PasswordStore, reader *bufio.Reader) (*config.Account, error) {
 	fmt.Print("\nEnter hostname: ")
 	host, err := reader.ReadString('\n')
 	if err != nil {
@@ -349,12 +368,22 @@ func createNewAccount(cfg *config.Config, reader *bufio.Reader) (*config.Account
 			Host:     host,
 			Port:     port,
 			Username: username,
-			Password: password,
+			Password: password, // Will be saved separately
 		}
 
+		// Save account (without password in JSON)
 		if err := cfg.AddAccount(account); err != nil {
 			return nil, fmt.Errorf("failed to save account: %w", err)
 		}
+		
+		// Save password separately
+		if password != "" {
+			passwordStore.SetPassword(host, port, username, password)
+			if err := passwordStore.Save(); err != nil {
+				return nil, fmt.Errorf("failed to save password: %w", err)
+			}
+		}
+		
 		fmt.Printf("Account '%s' saved.\n", name)
 	} else {
 		account = config.Account{

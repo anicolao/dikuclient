@@ -8,12 +8,13 @@ import (
 )
 
 // Account represents a saved MUD account
+// Note: Password is NOT stored in accounts.json, it's stored separately in .passwords file
 type Account struct {
 	Name     string `json:"name"`
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	Username string `json:"username"`
-	Password string `json:"password"`
+	Password string `json:"-"` // Never serialize to JSON
 }
 
 // Config represents the application configuration
