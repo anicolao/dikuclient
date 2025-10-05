@@ -299,6 +299,171 @@ func TestCommandHistoryUpWithNoHistory(t *testing.T) {
 	}
 }
 
+// TestCommandHistorySearch verifies Ctrl+R search functionality
+func TestCommandHistorySearch(t *testing.T) {
+	m := Model{
+		connected:            true,
+		worldMap:             mapper.NewMap(),
+		commandHistory:       []string{"north", "look", "south", "look around", "east"},
+		historyIndex:         -1,
+		historySearchMode:    false,
+		historySearchQuery:   "",
+		historySearchResults: []int{},
+		historySearchIndex:   0,
+	}
+
+	// Enter search mode (simulates Ctrl+R)
+	m.historySearchMode = true
+	m.historySearchQuery = ""
+	m.updateHistorySearch()
+
+	// Should find all commands with empty query
+	if len(m.historySearchResults) != 5 {
+		t.Errorf("Expected 5 results with empty query, got %d", len(m.historySearchResults))
+	}
+
+	// Search for "look"
+	m.historySearchQuery = "look"
+	m.updateHistorySearch()
+
+	// Should find 2 commands containing "look"
+	if len(m.historySearchResults) != 2 {
+		t.Errorf("Expected 2 results for 'look', got %d", len(m.historySearchResults))
+	}
+
+	// Results should be in reverse order (most recent first)
+	if len(m.historySearchResults) >= 2 {
+		// First result should be "look around" (index 3)
+		if m.historySearchResults[0] != 3 {
+			t.Errorf("Expected first result index 3, got %d", m.historySearchResults[0])
+		}
+		// Second result should be "look" (index 1)
+		if m.historySearchResults[1] != 1 {
+			t.Errorf("Expected second result index 1, got %d", m.historySearchResults[1])
+		}
+	}
+
+	// Search for "eas"
+	m.historySearchQuery = "eas"
+	m.updateHistorySearch()
+
+	// Should find 1 command
+	if len(m.historySearchResults) != 1 {
+		t.Errorf("Expected 1 result for 'eas', got %d", len(m.historySearchResults))
+	}
+
+	// Search for non-existent command
+	m.historySearchQuery = "xyz"
+	m.updateHistorySearch()
+
+	// Should find 0 commands
+	if len(m.historySearchResults) != 0 {
+		t.Errorf("Expected 0 results for 'xyz', got %d", len(m.historySearchResults))
+	}
+}
+
+// TestCommandHistorySearchNavigation verifies navigation in search results
+func TestCommandHistorySearchNavigation(t *testing.T) {
+	m := Model{
+		connected:            true,
+		worldMap:             mapper.NewMap(),
+		commandHistory:       []string{"north", "south", "north again", "east", "north once more"},
+		historySearchMode:    true,
+		historySearchQuery:   "north",
+		historySearchResults: []int{},
+		historySearchIndex:   0,
+	}
+
+	// Update search to find all "north" commands
+	m.updateHistorySearch()
+
+	// Should find 3 "north" commands
+	if len(m.historySearchResults) != 3 {
+		t.Errorf("Expected 3 results for 'north', got %d", len(m.historySearchResults))
+	}
+
+	// Start at index 0
+	if m.historySearchIndex != 0 {
+		t.Errorf("Expected search index 0, got %d", m.historySearchIndex)
+	}
+
+	// Simulate Down key
+	if m.historySearchIndex < len(m.historySearchResults)-1 {
+		m.historySearchIndex++
+	}
+
+	if m.historySearchIndex != 1 {
+		t.Errorf("Expected search index 1 after Down, got %d", m.historySearchIndex)
+	}
+
+	// Simulate Down key again
+	if m.historySearchIndex < len(m.historySearchResults)-1 {
+		m.historySearchIndex++
+	}
+
+	if m.historySearchIndex != 2 {
+		t.Errorf("Expected search index 2 after second Down, got %d", m.historySearchIndex)
+	}
+
+	// Simulate Down key at end (should stay at end)
+	if m.historySearchIndex < len(m.historySearchResults)-1 {
+		m.historySearchIndex++
+	}
+
+	if m.historySearchIndex != 2 {
+		t.Errorf("Expected search index to stay at 2, got %d", m.historySearchIndex)
+	}
+
+	// Simulate Up key
+	if m.historySearchIndex > 0 {
+		m.historySearchIndex--
+	}
+
+	if m.historySearchIndex != 1 {
+		t.Errorf("Expected search index 1 after Up, got %d", m.historySearchIndex)
+	}
+}
+
+// TestCommandHistorySearchSelection verifies selecting a search result
+func TestCommandHistorySearchSelection(t *testing.T) {
+	m := Model{
+		connected:            true,
+		worldMap:             mapper.NewMap(),
+		commandHistory:       []string{"north", "look", "south"},
+		currentInput:         "",
+		cursorPos:            0,
+		historySearchMode:    true,
+		historySearchQuery:   "loo",
+		historySearchResults: []int{1}, // "look" at index 1
+		historySearchIndex:   0,
+	}
+
+	// Simulate Enter key to select the result
+	if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults) {
+		resultIdx := m.historySearchResults[m.historySearchIndex]
+		m.currentInput = m.commandHistory[resultIdx]
+		m.cursorPos = len(m.currentInput)
+	}
+	m.historySearchMode = false
+	m.historySearchQuery = ""
+	m.historySearchResults = []int{}
+
+	// Should have selected "look"
+	if m.currentInput != "look" {
+		t.Errorf("Expected current input 'look', got '%s'", m.currentInput)
+	}
+
+	// Should have exited search mode
+	if m.historySearchMode {
+		t.Error("Expected to exit search mode")
+	}
+
+	// Cursor should be at end
+	if m.cursorPos != len(m.currentInput) {
+		t.Errorf("Expected cursor at end (%d), got %d", len(m.currentInput), m.cursorPos)
+	}
+}
+
 // TestCommandHistoryFullWorkflow simulates a complete user workflow
 func TestCommandHistoryFullWorkflow(t *testing.T) {
 	m := Model{

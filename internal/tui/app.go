@@ -67,6 +67,10 @@ type Model struct {
 	commandHistory        []string           // Command history for readline-style navigation
 	historyIndex          int                // Current position in command history (-1 = not navigating)
 	historySavedInput     string             // Saved current input when starting history navigation
+	historySearchMode     bool               // True when in Ctrl+R search mode
+	historySearchQuery    string             // Current search query in search mode
+	historySearchResults  []int              // Indices of matching commands in history
+	historySearchIndex    int                // Current position in search results
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -166,9 +170,13 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		xpStatsManager:    xpStatsManager,
 		webSessionID:      webSessionID,
 		webServerURL:      webServerURL,
-		commandHistory:    []string{},
-		historyIndex:      -1,
-		historySavedInput: "",
+		commandHistory:       []string{},
+		historyIndex:         -1,
+		historySavedInput:    "",
+		historySearchMode:    false,
+		historySearchQuery:   "",
+		historySearchResults: []int{},
+		historySearchIndex:   0,
 	}
 }
 
@@ -195,12 +203,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Handle history search mode separately
+		if m.historySearchMode {
+			return m.handleHistorySearchKey(msg)
+		}
+
 		switch msg.Type {
 		case tea.KeyCtrlC, tea.KeyEsc:
 			if m.conn != nil {
 				m.conn.Close()
 			}
 			return m, tea.Quit
+
+		case tea.KeyCtrlR:
+			// Enter history search mode
+			if len(m.commandHistory) > 0 {
+				m.historySearchMode = true
+				m.historySearchQuery = ""
+				m.historySearchResults = []int{}
+				m.historySearchIndex = 0
+				// Search with empty query returns all commands
+				m.updateHistorySearch()
+				m.updateViewport()
+			}
+			return m, nil
 
 		case tea.KeyEnter:
 			if m.conn != nil && m.connected {
@@ -569,7 +595,36 @@ func (m *Model) updateViewport() {
 	if len(m.output) > 0 {
 		lastLine := m.output[len(m.output)-1]
 
-		if (m.currentInput != "" || m.connected) && !m.echoSuppressed {
+		// Handle history search mode display
+		if m.historySearchMode {
+			lines := make([]string, len(m.output)-1)
+			copy(lines, m.output[:len(m.output)-1])
+			
+			// Add search prompt
+			searchPrompt := fmt.Sprintf("(reverse-i-search)`%s': ", m.historySearchQuery)
+			
+			// Add current match if any
+			if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults) {
+				resultIdx := m.historySearchResults[m.historySearchIndex]
+				matchedCmd := m.commandHistory[resultIdx]
+				lines = append(lines, lastLine+"\x1b[96m"+searchPrompt+"\x1b[93m"+matchedCmd+"█\x1b[0m")
+			} else {
+				lines = append(lines, lastLine+"\x1b[96m"+searchPrompt+"█\x1b[0m")
+			}
+			
+			// Add search results summary
+			if len(m.historySearchResults) > 0 {
+				lines = append(lines, fmt.Sprintf("\x1b[90m[%d/%d matches - Up/Down to navigate, Enter to select, Esc to cancel]\x1b[0m", 
+					m.historySearchIndex+1, len(m.historySearchResults)))
+			} else if m.historySearchQuery != "" {
+				lines = append(lines, "\x1b[90m[No matches found]\x1b[0m")
+			} else {
+				lines = append(lines, fmt.Sprintf("\x1b[90m[%d commands - Type to search, Enter to select, Esc to cancel]\x1b[0m", 
+					len(m.commandHistory)))
+			}
+			
+			content = strings.Join(lines, "\n")
+		} else if (m.currentInput != "" || m.connected) && !m.echoSuppressed {
 			// Build input line with cursor (only if echo is not suppressed)
 			inputLine := m.currentInput
 			if m.cursorPos < len(m.currentInput) {
@@ -1417,6 +1472,10 @@ func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "  \x1b[96m/share\x1b[0m                  - Get shareable URL (web mode only)")
 	m.output = append(m.output, "  \x1b[96m/help\x1b[0m                   - Show this help message")
 	m.output = append(m.output, "")
+	m.output = append(m.output, "\x1b[92m=== Keyboard Shortcuts ===\x1b[0m")
+	m.output = append(m.output, "  \x1b[96mUp/Down Arrow\x1b[0m           - Navigate command history")
+	m.output = append(m.output, "  \x1b[96mCtrl+R\x1b[0m                  - Search command history (type to filter)")
+	m.output = append(m.output, "")
 	m.output = append(m.output, "\x1b[90mRoom search matches all terms in room title, description, or exits\x1b[0m")
 	m.output = append(m.output, "\x1b[90mTriggers match output lines and execute actions (supports <variable> capture)\x1b[0m")
 }
@@ -1982,4 +2041,88 @@ func parseQuotedArgs(input string) (string, string, error) {
 	action := rest[1:endQuote]
 
 	return pattern, action, nil
+}
+
+// handleHistorySearchKey handles key inputs when in history search mode
+func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyEsc, tea.KeyCtrlC:
+		// Exit search mode without selecting
+		m.historySearchMode = false
+		m.historySearchQuery = ""
+		m.historySearchResults = []int{}
+		m.historySearchIndex = 0
+		m.updateViewport()
+		return m, nil
+
+	case tea.KeyEnter:
+		// Select current result and exit search mode
+		if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults) {
+			resultIdx := m.historySearchResults[m.historySearchIndex]
+			m.currentInput = m.commandHistory[resultIdx]
+			m.cursorPos = len(m.currentInput)
+		}
+		m.historySearchMode = false
+		m.historySearchQuery = ""
+		m.historySearchResults = []int{}
+		m.historySearchIndex = 0
+		m.updateViewport()
+		return m, nil
+
+	case tea.KeyUp:
+		// Navigate to previous search result
+		if len(m.historySearchResults) > 0 && m.historySearchIndex > 0 {
+			m.historySearchIndex--
+			m.updateViewport()
+		}
+		return m, nil
+
+	case tea.KeyDown:
+		// Navigate to next search result
+		if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults)-1 {
+			m.historySearchIndex++
+			m.updateViewport()
+		}
+		return m, nil
+
+	case tea.KeyBackspace:
+		// Remove last character from search query
+		if len(m.historySearchQuery) > 0 {
+			m.historySearchQuery = m.historySearchQuery[:len(m.historySearchQuery)-1]
+			m.updateHistorySearch()
+			m.updateViewport()
+		}
+		return m, nil
+
+	case tea.KeyRunes:
+		// Add typed characters to search query
+		m.historySearchQuery += string(msg.Runes)
+		m.updateHistorySearch()
+		m.updateViewport()
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// updateHistorySearch updates the search results based on the current query
+func (m *Model) updateHistorySearch() {
+	m.historySearchResults = []int{}
+	m.historySearchIndex = 0
+
+	if len(m.commandHistory) == 0 {
+		return
+	}
+
+	query := strings.ToLower(m.historySearchQuery)
+
+	// Search through history in reverse order (most recent first)
+	for i := len(m.commandHistory) - 1; i >= 0; i-- {
+		cmd := strings.ToLower(m.commandHistory[i])
+		
+		// Simple substring match (can be enhanced to fuzzy match later)
+		if query == "" || strings.Contains(cmd, query) {
+			m.historySearchResults = append(m.historySearchResults, i)
+		}
+	}
 }
