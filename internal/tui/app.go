@@ -202,22 +202,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case tea.KeyPgUp:
-			// Scroll up in the main viewport
-			m.viewport.ViewUp()
-			// Check if we need to enable split mode
-			if !m.isSplit && !m.viewport.AtBottom() {
+			// Enable split mode when scrolling up (unless already at top)
+			if !m.isSplit {
 				m.isSplit = true
 			}
-			return m, nil
+			// Continue to viewport update at end of function
 
 		case tea.KeyPgDown:
-			// Scroll down in the main viewport
-			m.viewport.ViewDown()
-			// Check if we should disable split mode
-			if m.isSplit && m.viewport.AtBottom() {
-				m.isSplit = false
-			}
-			return m, nil
+			// Continue to viewport update at end of function
+			// Split mode exit check happens after viewport updates
 
 		case tea.KeyEnter:
 			if m.conn != nil && m.connected {
@@ -357,22 +350,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle mouse wheel scrolling on main viewport
 		if msg.Action == tea.MouseActionPress {
 			if msg.Button == tea.MouseButtonWheelUp {
-				m.viewport.ViewUp()
-				// Check if we need to enable split mode
-				if !m.isSplit && !m.viewport.AtBottom() {
+				// Enable split mode when scrolling up
+				if !m.isSplit {
 					m.isSplit = true
 				}
-				return m, nil
+				// Continue to viewport update at end of function
 			} else if msg.Button == tea.MouseButtonWheelDown {
-				m.viewport.ViewDown()
-				// Check if we should disable split mode
-				if m.isSplit && m.viewport.AtBottom() {
-					m.isSplit = false
-				}
-				return m, nil
+				// Continue to viewport update at end of function
+				// We'll check split mode after viewport updates
 			}
 		}
-		return m, nil
 
 	case *client.Connection:
 		m.conn = msg
@@ -539,6 +526,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	m.viewport, cmd = m.viewport.Update(msg)
 	cmds = append(cmds, cmd)
+
+	// Check if we should exit split mode after viewport update
+	if m.isSplit && m.viewport.AtBottom() {
+		m.isSplit = false
+	}
 
 	// Update inventory viewport for mouse wheel scrolling
 	m.inventoryViewport, cmd = m.inventoryViewport.Update(msg)
@@ -717,8 +709,10 @@ func (m *Model) renderMainContent() string {
 
 	if m.isSplit {
 		// Split mode: 2/3 for user scrolled position, 1/3 for live output at bottom
-		topHeight := (contentHeight * 2) / 3
-		bottomHeight := contentHeight - topHeight
+		// Account for borders: top border (1), separator (1), bottom border (1) = 3 lines total
+		availableHeight := contentHeight - 3
+		topHeight := (availableHeight * 2) / 3
+		bottomHeight := availableHeight - topHeight
 
 		// Top viewport (user's scrolled position)
 		topBorderStyle := lipgloss.NewStyle().
