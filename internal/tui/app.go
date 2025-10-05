@@ -64,6 +64,9 @@ type Model struct {
 	xpStatsManager        *xpstats.Manager   // Persistent XP stats manager
 	webSessionID          string             // Web session ID for sharing (empty if not in web mode)
 	webServerURL          string             // Web server URL for sharing (empty if not in web mode)
+	commandHistory        []string           // Command history for readline-style navigation
+	historyIndex          int                // Current position in command history (-1 = not navigating)
+	historySavedInput     string             // Saved current input when starting history navigation
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -163,6 +166,9 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		xpStatsManager:    xpStatsManager,
 		webSessionID:      webSessionID,
 		webServerURL:      webServerURL,
+		commandHistory:    []string{},
+		historyIndex:      -1,
+		historySavedInput: "",
 	}
 }
 
@@ -199,6 +205,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyEnter:
 			if m.conn != nil && m.connected {
 				command := m.currentInput
+
+				// Add non-empty command to history
+				if command != "" {
+					// Don't add duplicate consecutive commands
+					if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != command {
+						m.commandHistory = append(m.commandHistory, command)
+					}
+					// Reset history navigation state
+					m.historyIndex = -1
+					m.historySavedInput = ""
+				}
 
 				// Check if this is a client command (starts with /)
 				if strings.HasPrefix(command, "/") {
@@ -255,6 +272,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case tea.KeyBackspace:
 			if m.cursorPos > 0 {
+				// Exit history navigation mode when user edits
+				m.historyIndex = -1
+				m.historySavedInput = ""
+				
 				m.currentInput = m.currentInput[:m.cursorPos-1] + m.currentInput[m.cursorPos:]
 				m.cursorPos--
 				m.updateViewport()
@@ -288,9 +309,51 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateViewport()
 			return m, nil
 
+		case tea.KeyUp:
+			// Navigate backward through command history
+			if len(m.commandHistory) > 0 {
+				// If not currently navigating history, save the current input
+				if m.historyIndex == -1 {
+					m.historySavedInput = m.currentInput
+					m.historyIndex = len(m.commandHistory)
+				}
+				
+				// Move to previous command in history
+				if m.historyIndex > 0 {
+					m.historyIndex--
+					m.currentInput = m.commandHistory[m.historyIndex]
+					m.cursorPos = len(m.currentInput)
+					m.updateViewport()
+				}
+			}
+			return m, nil
+
+		case tea.KeyDown:
+			// Navigate forward through command history
+			if m.historyIndex != -1 {
+				m.historyIndex++
+				
+				// If we've gone past the end of history, restore saved input
+				if m.historyIndex >= len(m.commandHistory) {
+					m.currentInput = m.historySavedInput
+					m.historyIndex = -1
+					m.historySavedInput = ""
+				} else {
+					m.currentInput = m.commandHistory[m.historyIndex]
+				}
+				
+				m.cursorPos = len(m.currentInput)
+				m.updateViewport()
+			}
+			return m, nil
+
 		default:
 			// Handle regular character input
 			if msg.Type == tea.KeyRunes {
+				// Exit history navigation mode when user types
+				m.historyIndex = -1
+				m.historySavedInput = ""
+				
 				// Insert character at cursor position
 				m.currentInput = m.currentInput[:m.cursorPos] + string(msg.Runes) + m.currentInput[m.cursorPos:]
 				m.cursorPos += len(msg.Runes)
