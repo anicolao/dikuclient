@@ -2056,12 +2056,90 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyEnter:
-		// Select current result and exit search mode
+		// Select current result, exit search mode, and send command immediately
 		if len(m.historySearchResults) > 0 && m.historySearchIndex < len(m.historySearchResults) {
 			resultIdx := m.historySearchResults[m.historySearchIndex]
-			m.currentInput = m.commandHistory[resultIdx]
+			command := m.commandHistory[resultIdx]
+			
+			// Exit search mode
+			m.historySearchMode = false
+			m.historySearchQuery = ""
+			m.historySearchResults = []int{}
+			m.historySearchIndex = 0
+			
+			// Set the command as current input
+			m.currentInput = command
 			m.cursorPos = len(m.currentInput)
+			m.updateViewport()
+			
+			// Send the command immediately (simulate pressing Enter)
+			if m.conn != nil && m.connected {
+				// Add non-empty command to history (it's already there, but this handles the duplicate logic)
+				if command != "" {
+					// Don't add duplicate consecutive commands
+					if len(m.commandHistory) == 0 || m.commandHistory[len(m.commandHistory)-1] != command {
+						m.commandHistory = append(m.commandHistory, command)
+					}
+					// Reset history navigation state
+					m.historyIndex = -1
+					m.historySavedInput = ""
+				}
+
+				// Check if this is a client command (starts with /)
+				if strings.HasPrefix(command, "/") {
+					// Save the current prompt line before executing command
+					var savedPrompt string
+					if len(m.output) > 0 {
+						savedPrompt = m.output[len(m.output)-1]
+						// Replace the prompt line with the command
+						m.output[len(m.output)-1] = savedPrompt + "\x1b[93m" + command + "\x1b[0m"
+					}
+
+					clientCmd := m.handleClientCommand(command)
+
+					// Add two newlines (empty lines) and restore prompt after command output
+					m.output = append(m.output, "")
+					m.output = append(m.output, "")
+					m.output = append(m.output, savedPrompt)
+
+					m.currentInput = ""
+					m.cursorPos = 0
+					m.updateViewport()
+					return m, clientCmd
+				}
+
+				// Check if this is a movement command
+				if movement := mapper.DetectMovement(command); movement != "" {
+					m.pendingMovement = movement
+					// Clear map legend on movement
+					m.mapLegend = nil
+					m.mapLegendRooms = nil
+				}
+
+				// Send command to MUD server
+				m.conn.Send(command)
+
+				// Don't modify m.output here - let the server echo if it wants to
+				// Or we can store the command for display purposes
+				if !m.echoSuppressed && command != "" {
+					// Add the command as a new line in output (it will show on the prompt line)
+					// This preserves it even when new output arrives
+					if len(m.output) > 0 {
+						// Modify the last line to include the command
+						m.output[len(m.output)-1] = m.output[len(m.output)-1] + "\x1b[93m" + command + "\x1b[0m"
+					}
+				}
+
+				// Reset input
+				m.currentInput = ""
+				m.cursorPos = 0
+				// Update display immediately
+				m.updateViewport()
+			}
+			return m, nil
 		}
+		
+		// No results, just exit search mode
 		m.historySearchMode = false
 		m.historySearchQuery = ""
 		m.historySearchResults = []int{}
@@ -2115,14 +2193,30 @@ func (m *Model) updateHistorySearch() {
 	}
 
 	query := strings.ToLower(m.historySearchQuery)
+	
+	// Split query into individual words
+	words := strings.Fields(query)
 
 	// Search through history in reverse order (most recent first)
 	for i := len(m.commandHistory) - 1; i >= 0; i-- {
 		cmd := strings.ToLower(m.commandHistory[i])
 		
-		// Simple substring match (can be enhanced to fuzzy match later)
-		if query == "" || strings.Contains(cmd, query) {
+		// Multi-word search: all words must be present (in any order)
+		if len(words) == 0 {
+			// Empty query matches all commands
 			m.historySearchResults = append(m.historySearchResults, i)
+		} else {
+			// Check if all words are present in the command
+			allWordsMatch := true
+			for _, word := range words {
+				if !strings.Contains(cmd, word) {
+					allWordsMatch = false
+					break
+				}
+			}
+			if allWordsMatch {
+				m.historySearchResults = append(m.historySearchResults, i)
+			}
 		}
 	}
 }

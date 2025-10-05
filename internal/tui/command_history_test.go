@@ -304,7 +304,7 @@ func TestCommandHistorySearch(t *testing.T) {
 	m := Model{
 		connected:            true,
 		worldMap:             mapper.NewMap(),
-		commandHistory:       []string{"north", "look", "south", "look around", "east"},
+		commandHistory:       []string{"north", "look", "south", "look around", "east", "drink water", "eat bread"},
 		historyIndex:         -1,
 		historySearchMode:    false,
 		historySearchQuery:   "",
@@ -318,8 +318,8 @@ func TestCommandHistorySearch(t *testing.T) {
 	m.updateHistorySearch()
 
 	// Should find all commands with empty query
-	if len(m.historySearchResults) != 5 {
-		t.Errorf("Expected 5 results with empty query, got %d", len(m.historySearchResults))
+	if len(m.historySearchResults) != 7 {
+		t.Errorf("Expected 7 results with empty query, got %d", len(m.historySearchResults))
 	}
 
 	// Search for "look"
@@ -359,6 +359,45 @@ func TestCommandHistorySearch(t *testing.T) {
 	// Should find 0 commands
 	if len(m.historySearchResults) != 0 {
 		t.Errorf("Expected 0 results for 'xyz', got %d", len(m.historySearchResults))
+	}
+
+	// Multi-word search: "w d" should match "drink water"
+	m.historySearchQuery = "w d"
+	m.updateHistorySearch()
+
+	// Should find 1 command containing both "w" and "d"
+	if len(m.historySearchResults) != 1 {
+		t.Errorf("Expected 1 result for 'w d', got %d", len(m.historySearchResults))
+	}
+	if len(m.historySearchResults) > 0 {
+		resultIdx := m.historySearchResults[0]
+		if m.commandHistory[resultIdx] != "drink water" {
+			t.Errorf("Expected 'drink water' for 'w d', got '%s'", m.commandHistory[resultIdx])
+		}
+	}
+
+	// Multi-word search: order doesn't matter - "water drink" should also match "drink water"
+	m.historySearchQuery = "water drink"
+	m.updateHistorySearch()
+
+	// Should find 1 command containing both "water" and "drink"
+	if len(m.historySearchResults) != 1 {
+		t.Errorf("Expected 1 result for 'water drink', got %d", len(m.historySearchResults))
+	}
+	if len(m.historySearchResults) > 0 {
+		resultIdx := m.historySearchResults[0]
+		if m.commandHistory[resultIdx] != "drink water" {
+			t.Errorf("Expected 'drink water' for 'water drink', got '%s'", m.commandHistory[resultIdx])
+		}
+	}
+
+	// Multi-word search with no match
+	m.historySearchQuery = "drink north"
+	m.updateHistorySearch()
+
+	// Should find 0 commands containing both "drink" and "north"
+	if len(m.historySearchResults) != 0 {
+		t.Errorf("Expected 0 results for 'drink north', got %d", len(m.historySearchResults))
 	}
 }
 
