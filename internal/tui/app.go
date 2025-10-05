@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anicolao/dikuclient/internal/aliases"
 	"github.com/anicolao/dikuclient/internal/client"
 	"github.com/anicolao/dikuclient/internal/mapper"
 	"github.com/anicolao/dikuclient/internal/triggers"
@@ -48,6 +49,7 @@ type Model struct {
 	autoWalkIndex         int                // Current step in auto-walk
 	lastRoomSearch        []*mapper.Room     // Last room search results for disambiguation
 	triggerManager        *triggers.Manager  // Trigger manager
+	aliasManager          *aliases.Manager   // Alias manager
 	inventory             []string           // Current inventory items
 	inventoryTime         time.Time          // Time when inventory was last updated
 	inventoryViewport     viewport.Model     // Viewport for scrollable inventory
@@ -123,6 +125,13 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		triggerManager = triggers.NewManager()
 	}
 
+	// Load or create alias manager
+	aliasManager, err := aliases.Load()
+	if err != nil {
+		// If we can't load aliases, create a new manager
+		aliasManager = aliases.NewManager()
+	}
+
 	// Load or create XP stats manager
 	xpStatsManager, err := xpstats.Load()
 	if err != nil {
@@ -156,6 +165,7 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		recentOutput:      []string{},
 		mapDebug:          mapDebug,
 		triggerManager:    triggerManager,
+		aliasManager:      aliasManager,
 		inventoryViewport: inventoryVp,
 		tellsViewport:     tellsVp,
 		xpTracking:        make(map[string]*XPStat),
@@ -221,6 +231,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursorPos = 0
 					m.updateViewport()
 					return m, clientCmd
+				}
+
+				// Try to expand alias
+				if expandedCommand, expanded := m.aliasManager.Expand(command); expanded {
+					command = expandedCommand
 				}
 
 				// Check if this is a movement command
@@ -1111,6 +1126,12 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 	case "triggers":
 		m.handleTriggersCommand(args)
 		return nil
+	case "alias":
+		m.handleAliasCommand(command)
+		return nil
+	case "aliases":
+		m.handleAliasesCommand(args)
+		return nil
 	case "share":
 		m.handleShareCommand()
 		return nil
@@ -1351,11 +1372,15 @@ func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "  \x1b[96m/trigger \"pat\" \"act\"\x1b[0m - Add a trigger (pattern can use <var>)")
 	m.output = append(m.output, "  \x1b[96m/triggers list\x1b[0m          - List all triggers")
 	m.output = append(m.output, "  \x1b[96m/triggers remove <n>\x1b[0m    - Remove trigger by number")
+	m.output = append(m.output, "  \x1b[96m/alias \"name\" \"tmpl\"\x1b[0m  - Add an alias (template can use <var>)")
+	m.output = append(m.output, "  \x1b[96m/aliases list\x1b[0m           - List all aliases")
+	m.output = append(m.output, "  \x1b[96m/aliases remove <n>\x1b[0m     - Remove alias by number")
 	m.output = append(m.output, "  \x1b[96m/share\x1b[0m                  - Get shareable URL (web mode only)")
 	m.output = append(m.output, "  \x1b[96m/help\x1b[0m                   - Show this help message")
 	m.output = append(m.output, "")
 	m.output = append(m.output, "\x1b[90mRoom search matches all terms in room title, description, or exits\x1b[0m")
 	m.output = append(m.output, "\x1b[90mTriggers match output lines and execute actions (supports <variable> capture)\x1b[0m")
+	m.output = append(m.output, "\x1b[90mAliases expand commands with parameters (e.g., /alias \"gat\" \"give all <target>\")\x1b[0m")
 }
 
 // handleRoomsCommand lists all known rooms or filters by search terms
@@ -1919,4 +1944,108 @@ func parseQuotedArgs(input string) (string, string, error) {
 	action := rest[1:endQuote]
 
 	return pattern, action, nil
+}
+
+// handleAliasCommand adds a new alias
+func (m *Model) handleAliasCommand(command string) {
+	// Parse the command to extract name and template
+	// Expected format: /alias "name" "template"
+
+	// Remove "/alias " prefix
+	command = strings.TrimPrefix(command, "alias ")
+	command = strings.TrimSpace(command)
+
+	// Parse quoted strings
+	name, template, err := parseQuotedArgs(command)
+	if err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError: %v\x1b[0m", err))
+		m.output = append(m.output, "\x1b[93mUsage: /alias \"name\" \"template\"\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExample: /alias \"gat\" \"give all <target>\"\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExample: /alias \"gt\" \"give <object> <target>\"\x1b[0m")
+		return
+	}
+
+	// Add the alias
+	alias, err := m.aliasManager.Add(name, template)
+	if err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError adding alias: %v\x1b[0m", err))
+		return
+	}
+
+	// Save aliases
+	if err := m.aliasManager.Save(); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving aliases: %v\x1b[0m", err))
+		return
+	}
+
+	m.output = append(m.output, fmt.Sprintf("\x1b[92mAlias added: \"%s\" -> \"%s\"\x1b[0m", alias.Name, alias.Template))
+}
+
+// handleAliasesCommand handles /aliases list and /aliases remove
+func (m *Model) handleAliasesCommand(args []string) {
+	if len(args) == 0 {
+		// Default to list
+		m.handleAliasesListCommand()
+		return
+	}
+
+	subCmd := strings.ToLower(args[0])
+	switch subCmd {
+	case "list":
+		m.handleAliasesListCommand()
+	case "remove":
+		if len(args) < 2 {
+			m.output = append(m.output, "\x1b[91mUsage: /aliases remove <index>\x1b[0m")
+			return
+		}
+		var index int
+		_, err := fmt.Sscanf(args[1], "%d", &index)
+		if err != nil {
+			m.output = append(m.output, "\x1b[91mError: Invalid index\x1b[0m")
+			return
+		}
+		m.handleAliasesRemoveCommand(index)
+	default:
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError: Unknown subcommand '%s'\x1b[0m", subCmd))
+		m.output = append(m.output, "\x1b[93mUsage: /aliases [list|remove <index>]\x1b[0m")
+	}
+}
+
+// handleAliasesListCommand lists all aliases
+func (m *Model) handleAliasesListCommand() {
+	if len(m.aliasManager.Aliases) == 0 {
+		m.output = append(m.output, "\x1b[93mNo aliases defined.\x1b[0m")
+		m.output = append(m.output, "\x1b[93mUse /alias \"name\" \"template\" to add an alias.\x1b[0m")
+		return
+	}
+
+	m.output = append(m.output, "\x1b[92m=== Active Aliases ===\x1b[0m")
+	for i, alias := range m.aliasManager.Aliases {
+		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. \"%s\" -> \"%s\"\x1b[0m", i+1, alias.Name, alias.Template))
+	}
+}
+
+// handleAliasesRemoveCommand removes an alias by index
+func (m *Model) handleAliasesRemoveCommand(index int) {
+	// Convert from 1-based to 0-based index
+	index--
+
+	if index < 0 || index >= len(m.aliasManager.Aliases) {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError: Invalid alias index. Use /aliases list to see available aliases.\x1b[0m"))
+		return
+	}
+
+	alias := m.aliasManager.Aliases[index]
+	if err := m.aliasManager.Remove(index); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError removing alias: %v\x1b[0m", err))
+		return
+	}
+
+	// Save aliases
+	if err := m.aliasManager.Save(); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving aliases: %v\x1b[0m", err))
+		return
+	}
+
+	m.output = append(m.output, fmt.Sprintf("\x1b[92mRemoved alias: \"%s\" -> \"%s\"\x1b[0m", alias.Name, alias.Template))
 }
