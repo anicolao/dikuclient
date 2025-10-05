@@ -304,7 +304,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		headerHeight := 3
 		sidebarWidth := m.sidebarWidth
-		mainWidth := m.width - sidebarWidth - 6
+		mainWidth := m.width - sidebarWidth - 1
 
 		m.viewport.Width = mainWidth
 		m.viewport.Height = m.height - headerHeight - 2
@@ -611,7 +611,7 @@ func (m *Model) renderStatusBar() string {
 func (m *Model) renderMainContent() string {
 	headerHeight := 3
 	sidebarWidth := m.sidebarWidth
-	mainWidth := m.width - sidebarWidth - 4
+	mainWidth := m.width - sidebarWidth - 1
 	contentHeight := m.height - headerHeight
 
 	// Build title for main window with current room and exits
@@ -642,7 +642,7 @@ func (m *Model) renderMainContent() string {
 		if len(titleWithSpaces) < availableWidth {
 			// Fill remaining space with border characters
 			remainingChars := availableWidth - len(titleWithSpaces)
-			customBorder.Top = titleWithSpaces + strings.Repeat("─", remainingChars+10)
+			customBorder.Top = titleWithSpaces + strings.Repeat("─", remainingChars)
 		} else {
 			// Title is too long, truncate it
 			customBorder.Top = titleWithSpaces[:availableWidth]
