@@ -7,6 +7,8 @@ A modern, efficient DikuMUD client written in Go with a beautiful Text User Inte
 - **Clean TUI Interface**: Modern terminal UI with panels for game output, stats, inventory, and map
 - **Automatic Map Building**: Explores and builds a persistent map as you move through rooms
 - **Navigation Commands**: Find your way with `/point` and `/wayfind` commands
+- **Aliases**: Create command shortcuts with parameter substitution (e.g., `/alias "gat" "give all <target>"`)
+- **Triggers**: Automated responses to MUD output patterns
 - **Web Mode with Terminal Emulation**: Run the full TUI in a browser with identical experience to terminal mode
 - **MUD Connection**: Connect to any MUD server via telnet protocol
 - **Command Input/Output**: Interactive command line for sending commands to the MUD
@@ -98,10 +100,14 @@ The client automatically builds a map as you explore:
 - `/point <room>` - Show next direction to reach a room
 - `/wayfind <room>` - Show full path to reach a room
 - `/map` - Show map information
+- `/alias "name" "template"` - Create command aliases with parameter substitution
+- `/aliases list` - List all defined aliases
+- `/trigger "pattern" "action"` - Add triggers that fire on MUD output
+- `/triggers list` - List all defined triggers
 - `/share` - Get shareable URL (web mode only)
 - `/help` - Show available commands
 
-Example:
+**Navigation Examples:**
 ```
 > /point temple
 To reach 'Temple Square', go: north
@@ -111,7 +117,22 @@ Path to 'Market Street' (3 steps):
   north -> east -> south
 ```
 
-See [MAPPER.md](MAPPER.md) for detailed mapping documentation.
+**Alias Examples:**
+```
+> /alias "gat" "give all <target>"
+Alias added: "gat" -> "give all <target>"
+
+> gat mary
+(sends: give all mary)
+
+> /alias "k" "kill <target>"
+Alias added: "k" -> "kill <target>"
+
+> k goblin
+(sends: kill goblin)
+```
+
+See [MAPPER.md](MAPPER.md) for detailed mapping documentation and [ALIASES.md](ALIASES.md) for comprehensive alias usage.
 
 ### Logging
 
