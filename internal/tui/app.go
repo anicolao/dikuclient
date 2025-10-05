@@ -2172,6 +2172,13 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.KeySpace:
+		// Add space to search query for multi-word search
+		m.historySearchQuery += " "
+		m.updateHistorySearch()
+		m.updateViewport()
+		return m, nil
+
 	case tea.KeyRunes:
 		// Add typed characters to search query
 		m.historySearchQuery += string(msg.Runes)

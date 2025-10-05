@@ -399,6 +399,21 @@ func TestCommandHistorySearch(t *testing.T) {
 	if len(m.historySearchResults) != 0 {
 		t.Errorf("Expected 0 results for 'drink north', got %d", len(m.historySearchResults))
 	}
+
+	// Test that spaces in search queries work correctly
+	m.historySearchQuery = "look around"
+	m.updateHistorySearch()
+
+	// Should find 1 command containing both "look" and "around"
+	if len(m.historySearchResults) != 1 {
+		t.Errorf("Expected 1 result for 'look around', got %d", len(m.historySearchResults))
+	}
+	if len(m.historySearchResults) > 0 {
+		resultIdx := m.historySearchResults[0]
+		if m.commandHistory[resultIdx] != "look around" {
+			t.Errorf("Expected 'look around' for 'look around', got '%s'", m.commandHistory[resultIdx])
+		}
+	}
 }
 
 // TestCommandHistorySearchNavigation verifies navigation in search results
