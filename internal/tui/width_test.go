@@ -97,3 +97,34 @@ func TestSidebarPanelWidth(t *testing.T) {
 			testWidth, targetWidth, renderedWidth)
 	}
 }
+
+// TestFullLayoutRendering tests that a full layout renders to the expected width
+func TestFullLayoutRendering(t *testing.T) {
+	m := NewModel("test", 4000, nil, nil)
+	
+	// Test with 120x40 terminal
+	m.width = 120
+	m.height = 40
+	m.sidebarWidth = 60
+	
+	// Initialize viewports with window size
+	_, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	
+	// Get the full view
+	view := m.View()
+	
+	// Measure dimensions
+	viewWidth := lipgloss.Width(view)
+	viewHeight := lipgloss.Height(view)
+	
+	// Log for debugging
+	t.Logf("Terminal: 120x40")
+	t.Logf("Rendered view: %dx%d", viewWidth, viewHeight)
+	
+	// The view should match the terminal width exactly
+	if viewWidth != 120 {
+		t.Errorf("View width mismatch: expected 120, got %d (off by %d)", viewWidth, 120-viewWidth)
+	}
+	
+	// Note: Height may differ due to other layout factors, we only test width here
+}
