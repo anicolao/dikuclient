@@ -714,6 +714,11 @@ func (m *Model) renderMainContent() string {
 		topHeight := (contentHeight * 2) / 3
 		bottomHeight := contentHeight - topHeight - 1  // -1 for separator border
 		
+		// Adjust viewport heights to match the split heights
+		// Subtract border heights: topHeight has 1 border (top), bottomHeight has 2 borders (top+bottom)
+		m.viewport.Height = topHeight - 1
+		m.splitViewport.Height = bottomHeight - 2
+		
 		// Top viewport (user's scrolled position)
 		topBorderStyle := lipgloss.NewStyle().
 			BorderStyle(customBorder).
@@ -748,6 +753,9 @@ func (m *Model) renderMainContent() string {
 		gameOutput = lipgloss.JoinVertical(lipgloss.Left, topView, bottomView)
 	} else {
 		// Normal mode: single viewport
+		// Restore viewport to full height
+		m.viewport.Height = contentHeight - 2  // Subtract 2 for top and bottom borders
+		
 		mainBorderStyle := lipgloss.NewStyle().
 			BorderStyle(customBorder).
 			BorderForeground(lipgloss.Color("62")).
