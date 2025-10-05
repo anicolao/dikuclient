@@ -94,7 +94,7 @@ func main() {
 
 		// If save-account is set, prompt for account name and credentials
 		if *saveAccount {
-			account, err := promptForAccountDetails(finalHost, finalPort)
+			account, err := promptForAccountDetails(finalHost, finalPort, passwordStore)
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
 				os.Exit(1)
@@ -108,8 +108,8 @@ func main() {
 				os.Exit(1)
 			}
 			
-			// Save password separately
-			if password != "" {
+			// Save password separately (only in non-web mode)
+			if password != "" && !passwordStore.IsReadOnly() {
 				passwordStore.SetPassword(account.Host, account.Port, account.Username, password)
 				if err := passwordStore.Save(); err != nil {
 					fmt.Printf("Error saving password: %v\n", err)
@@ -117,7 +117,11 @@ func main() {
 				}
 			}
 			
-			fmt.Printf("Account '%s' saved successfully.\n", account.Name)
+			if passwordStore.IsReadOnly() {
+				fmt.Printf("Account '%s' saved. Password will be captured automatically during login.\n", account.Name)
+			} else {
+				fmt.Printf("Account '%s' saved successfully.\n", account.Name)
+			}
 
 			// Flush output before TUI initialization
 			// This prevents escape codes from being displayed literally

@@ -703,8 +703,8 @@ func (m *Model) updateViewport() {
 			}
 
 			content = strings.Join(lines, "\n")
-		} else if (m.currentInput != "" || m.connected) && !m.echoSuppressed {
-			// Build input line with cursor (only if echo is not suppressed)
+		} else if (m.currentInput != "" || m.connected) && !m.echoSuppressed && !m.isPasswordPrompt() {
+			// Build input line with cursor (only if echo is not suppressed and not a password prompt)
 			inputLine := m.currentInput
 			if m.cursorPos < len(m.currentInput) {
 				// Show cursor in the middle of text
@@ -720,7 +720,7 @@ func (m *Model) updateViewport() {
 			copy(lines, m.output[:len(m.output)-1])
 			lines = append(lines, lastLine+"\x1b[93m"+inputLine+"\x1b[0m")
 			content = strings.Join(lines, "\n")
-		} else if m.echoSuppressed && m.connected {
+		} else if (m.echoSuppressed || m.isPasswordPrompt()) && m.connected {
 			// In password mode, just show the prompt without the input
 			// Show a cursor to indicate user can type
 			lines := make([]string, len(m.output)-1)
@@ -733,7 +733,7 @@ func (m *Model) updateViewport() {
 	} else {
 		// No output yet, just show cursor if connected
 		if m.currentInput != "" || m.connected {
-			if !m.echoSuppressed {
+			if !m.echoSuppressed && !m.isPasswordPrompt() {
 				inputLine := m.currentInput
 				if m.cursorPos < len(m.currentInput) {
 					inputLine = m.currentInput[:m.cursorPos] + "█" + m.currentInput[m.cursorPos:]
