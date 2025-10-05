@@ -736,6 +736,7 @@ func (m *Model) renderMainContent() string {
 		// Bottom viewport (live output - always at bottom)
 		bottomBorder := lipgloss.RoundedBorder()
 		bottomBorder.Top = strings.Repeat("─", mainWidth+10)
+		bottomBorder.TopLeft = "├"  // T-corner to connect with left border
 
 		bottomBorderStyle := lipgloss.NewStyle().
 			BorderStyle(bottomBorder).
