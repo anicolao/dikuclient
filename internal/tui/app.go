@@ -600,11 +600,13 @@ func (m *Model) updateViewport() {
 		}
 	}
 
+	// Check if viewport is at bottom BEFORE setting new content
+	wasAtBottom := m.viewport.AtBottom()
+	
 	m.viewport.SetContent(content)
 	
 	// If not in split mode or if viewport is already at bottom, go to bottom
 	// This preserves scroll position when in split mode
-	wasAtBottom := m.viewport.AtBottom()
 	if !m.isSplit {
 		m.viewport.GotoBottom()
 	} else if wasAtBottom {
