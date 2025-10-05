@@ -99,6 +99,10 @@ func main() {
 				os.Exit(1)
 			}
 			fmt.Printf("Account '%s' saved successfully.\n", account.Name)
+
+			// Flush output before TUI initialization
+			// This prevents escape codes from being displayed literally
+			os.Stdout.Sync()
 		}
 	} else {
 		// No host or account specified - show interactive menu
@@ -115,6 +119,10 @@ func main() {
 		finalPort = account.Port
 		username = account.Username
 		password = account.Password
+
+		// Flush output before TUI initialization
+		// This prevents escape codes from being displayed literally
+		os.Stdout.Sync()
 	}
 
 	var mudLogFile, tuiLogFile, telnetDebugLog *os.File
@@ -155,10 +163,13 @@ func main() {
 	model := tui.NewModelWithAuth(finalHost, finalPort, username, password, mudLogFile, tuiLogFile, telnetDebugLog, *mapDebug)
 
 	// Create the Bubble Tea program
+	// Explicitly specify input/output to ensure proper terminal handling
 	p := tea.NewProgram(
 		&model,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
+		tea.WithInput(os.Stdin),
+		tea.WithOutput(os.Stdout),
 	)
 
 	// Run the program
