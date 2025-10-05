@@ -9,12 +9,12 @@ let fallbackContent = '';
 // DOM elements
 const terminalDiv = document.getElementById('terminal');
 
-// Wait for page load to check if xterm loaded
+// Wait for page load to initialize terminal
 window.addEventListener('load', () => {
     // Give scripts a moment to load
     setTimeout(() => {
-        if (!window.xtermLoaded || typeof Terminal === 'undefined') {
-            console.log('xterm.js not available, using fallback terminal');
+        if (typeof Terminal === 'undefined') {
+            console.error('xterm.js failed to load');
             useFallback = true;
             initFallbackTerminal();
         } else {
