@@ -27,10 +27,11 @@ Implemented a dual-storage architecture with:
    - Cookie-based last session ID persistence (30 day expiry)
    - Automatic initialization on page load with session scoping
 
-2. **web/static/datasync.js** (170 lines)
+2. **web/static/datasync.js** (195 lines)
    - Data synchronization via WebSocket
    - Handles file updates, merging, and password hints
    - Merge logic for accounts, history, and map data
+   - Client-side password stripping before sending accounts.json to server
 
 3. **WEB_STORAGE.md** (228 lines)
    - Comprehensive feature documentation

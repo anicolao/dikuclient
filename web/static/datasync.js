@@ -174,6 +174,23 @@ async function handleFileRequest(message) {
 // Send file to server
 function sendFileToServer(path, content, timestamp) {
     if (dataWs && dataConnected) {
+        // Strip passwords from accounts.json before sending to server
+        if (path === 'accounts.json') {
+            try {
+                const accounts = JSON.parse(content);
+                if (accounts.accounts) {
+                    // Remove passwords from all accounts
+                    for (let account of accounts.accounts) {
+                        delete account.password;
+                    }
+                    content = JSON.stringify(accounts, null, 2);
+                    console.log('Stripped passwords from accounts.json before sending to server');
+                }
+            } catch (e) {
+                console.error('Error stripping passwords from accounts.json:', e);
+            }
+        }
+        
         dataWs.send(JSON.stringify({
             type: 'file_update',
             path: path,

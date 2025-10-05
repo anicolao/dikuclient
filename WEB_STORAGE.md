@@ -63,7 +63,7 @@ When connecting with both client and server data present:
 **datasync.js**: WebSocket synchronization
 - Connects to `/data-ws` endpoint
 - Handles file updates from server
-- Sends client files to server
+- Sends client files to server (strips passwords from accounts.json)
 - Implements data merging logic
 - Processes password hints
 
