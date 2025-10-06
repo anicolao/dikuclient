@@ -366,7 +366,10 @@ func (c *Connection) readLoop() {
 					}
 					continue
 				}
-				if err != io.EOF {
+				// Send error to error channel (including EOF) so TUI can detect connection closure
+				if err == io.EOF {
+					c.errChan <- fmt.Errorf("connection closed by remote host")
+				} else {
 					c.errChan <- fmt.Errorf("read error: %w", err)
 				}
 				return
