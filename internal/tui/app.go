@@ -1,11 +1,9 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -13,7 +11,6 @@ import (
 
 	"github.com/anicolao/dikuclient/internal/aliases"
 	"github.com/anicolao/dikuclient/internal/client"
-	"github.com/anicolao/dikuclient/internal/config"
 	"github.com/anicolao/dikuclient/internal/history"
 	"github.com/anicolao/dikuclient/internal/mapper"
 	"github.com/anicolao/dikuclient/internal/triggers"
@@ -287,11 +284,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.historyIndex = -1
 					m.historySavedInput = ""
 				} else if command != "" && m.isPasswordPrompt() {
-					// This is a password being entered
-					// In web mode, save it to client storage via a marker file
-					if m.webSessionID != "" {
-						go m.savePasswordForWebClient(command)
-					}
+					// This is a password being entered (no special handling needed)
+					// Password is captured on client side for web mode
 				}
 
 				// Check if this is a client command (starts with /)
@@ -601,7 +595,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		if m.autoLoginState == 1 {
+		if m.password != "" && m.autoLoginState == 1 {
 			lastLine := ""
 			if len(m.output) > 0 {
 				lastLine = strings.ToLower(strings.TrimSpace(m.output[len(m.output)-1]))
@@ -609,22 +603,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Check for password prompt
 			if strings.Contains(lastLine, "password") || strings.Contains(lastLine, "pass") {
-				if m.password != "" {
-					// Send password automatically (CLI mode or already loaded)
-					m.conn.Send(m.password)
-					m.autoLoginState = 2
-					m.output = append(m.output, "\x1b[90m[Auto-login: sending password]\x1b[0m")
-				} else if m.webSessionID != "" {
-					// Web mode - request password from client
-					m.requestPasswordFromClient()
-					// Don't change auto-login state yet, will change when we get the password
-				}
+				// Send password automatically
+				m.conn.Send(m.password)
+				m.autoLoginState = 2
+				m.output = append(m.output, "\x1b[90m[Auto-login: sending password]\x1b[0m")
 			}
-		}
-		
-		// Check for password response from web client (if we requested one)
-		if m.webSessionID != "" && m.autoLoginState == 1 && m.password == "" {
-			m.checkPasswordResponse()
 		}
 
 		m.updateViewport()
@@ -1174,59 +1157,7 @@ func (m *Model) isPasswordPrompt() bool {
 	return strings.Contains(lastLine, "pass")
 }
 
-// savePasswordForWebClient saves the password to a marker file for web client storage
-// This allows the web client to store passwords in IndexedDB without sending to server
-func (m *Model) savePasswordForWebClient(password string) {
-	if m.webSessionID == "" || m.host == "" || password == "" {
-		return
-	}
 
-	// Create a password hint file that the web client can detect
-	// We'll store it as a JSON file with the account info
-	configPath := os.Getenv("DIKUCLIENT_CONFIG_DIR")
-	if configPath == "" {
-		return
-	}
-
-	passwordHintPath := filepath.Join(configPath, "password_hint.json")
-	
-	// Load existing accounts to find which account we're using
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return
-	}
-
-	// Find account by host/port
-	var accountName string
-	for _, acc := range cfg.ListAccounts() {
-		if acc.Host == m.host && acc.Port == m.port {
-			accountName = acc.Name
-			break
-		}
-	}
-
-	if accountName == "" {
-		// No matching account found, can't save password hint
-		return
-	}
-
-	// Write password hint with account key (host:port:username format)
-	hint := map[string]string{
-		"account":  accountName,
-		"password": password,
-		"host":     m.host,
-		"port":     fmt.Sprintf("%d", m.port),
-		"username": m.username,
-	}
-
-	data, err := json.Marshal(hint)
-	if err != nil {
-		return
-	}
-
-	// Write file - the data sync will pick this up
-	_ = os.WriteFile(passwordHintPath, data, 0600)
-}
 
 // detectAndUpdateRoom tries to parse room information from recent output
 func (m *Model) detectAndUpdateRoom() {
@@ -2598,75 +2529,4 @@ func (m *Model) handleAliasesRemoveCommand(index int) {
 	}
 
 	m.output = append(m.output, fmt.Sprintf("\x1b[92mRemoved alias: \"%s\" -> \"%s\"\x1b[0m", alias.Name, alias.Template))
-}
-
-// requestPasswordFromClient sends a password request to the web client via a hint file
-func (m *Model) requestPasswordFromClient() {
-	if m.webSessionID == "" || m.username == "" {
-		return
-	}
-
-	// Create a password request hint file
-	sessionDir := filepath.Join(".websessions", m.webSessionID, ".config", "dikuclient")
-	passwordRequestPath := filepath.Join(sessionDir, ".password_request")
-
-	// Ensure directory exists
-	if err := os.MkdirAll(sessionDir, 0700); err != nil {
-		return
-	}
-
-	// Write password request
-	requestData := map[string]string{
-		"host":     m.host,
-		"port":     fmt.Sprintf("%d", m.port),
-		"username": m.username,
-	}
-
-	data, err := json.Marshal(requestData)
-	if err != nil {
-		return
-	}
-
-	if err := os.WriteFile(passwordRequestPath, data, 0600); err != nil {
-		return
-	}
-
-	m.output = append(m.output, "\x1b[90m[Auto-login: requesting password from client]\x1b[0m")
-}
-
-// checkPasswordResponse checks if the web client has responded with a password
-func (m *Model) checkPasswordResponse() {
-	if m.webSessionID == "" {
-		return
-	}
-
-	sessionDir := filepath.Join(".websessions", m.webSessionID, ".config", "dikuclient")
-	passwordResponsePath := filepath.Join(sessionDir, ".password_response")
-
-	// Check if password response file exists
-	data, err := os.ReadFile(passwordResponsePath)
-	if err != nil {
-		// File doesn't exist yet
-		return
-	}
-
-	// Parse the password response
-	var response map[string]string
-	if err := json.Unmarshal(data, &response); err != nil {
-		return
-	}
-
-	password := response["password"]
-	if password != "" {
-		// Send password to MUD server
-		m.conn.Send(password)
-		m.autoLoginState = 2
-		m.output = append(m.output, "\x1b[90m[Auto-login: sending password]\x1b[0m")
-		
-		// Store password for future use in this session
-		m.password = password
-		
-		// Delete the response file
-		os.Remove(passwordResponsePath)
-	}
 }

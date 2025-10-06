@@ -2,7 +2,6 @@
 
 let dataWs = null;
 let dataConnected = false;
-let passwordSentForAccount = {}; // Track which accounts we've sent passwords for
 
 // Connect to data WebSocket for file synchronization
 function connectDataSync() {
@@ -57,14 +56,6 @@ async function handleDataMessage(message) {
             // Server requests a file
             await handleFileRequest(message);
             break;
-        case 'password_hint':
-            // Server sent a password hint
-            await handlePasswordHint(message);
-            break;
-        case 'password_request':
-            // Server requests password for auto-login
-            await handlePasswordRequest(message);
-            break;
         case 'merge_complete':
             console.log('Data merge complete:', message.files);
             break;
@@ -73,59 +64,7 @@ async function handleDataMessage(message) {
     }
 }
 
-// Handle password hint from server
-async function handlePasswordHint(message) {
-    try {
-        const hint = JSON.parse(message.content);
-        
-        if (hint.account && hint.password && hint.host && hint.port && hint.username) {
-            await savePasswordToClientAccount(hint);
-            console.log(`Received and saved password hint for account: ${hint.account}`);
-        } else {
-            console.error('Incomplete password hint received');
-        }
-    } catch (e) {
-        console.error('Error handling password hint:', e);
-    }
-}
 
-// Handle password request from server (for auto-login)
-async function handlePasswordRequest(message) {
-    try {
-        const request = JSON.parse(message.content);
-        const accountKey = `${request.host}:${request.port}:${request.username}`;
-        
-        // Check if we've already sent password for this account in this session
-        if (passwordSentForAccount[accountKey]) {
-            console.log(`Already sent password for ${accountKey}, skipping`);
-            return;
-        }
-        
-        // Load password from IndexedDB
-        const password = await loadPassword(accountKey);
-        
-        if (password) {
-            // Send password to server
-            if (dataWs && dataConnected) {
-                dataWs.send(JSON.stringify({
-                    type: 'password_response',
-                    content: JSON.stringify({
-                        account: accountKey,
-                        password: password
-                    })
-                }));
-                
-                // Mark that we've sent password for this account
-                passwordSentForAccount[accountKey] = true;
-                console.log(`Sent password for auto-login: ${accountKey}`);
-            }
-        } else {
-            console.log(`No password found for ${accountKey}`);
-        }
-    } catch (e) {
-        console.error('Error handling password request:', e);
-    }
-}
 
 // Handle file update from server
 async function handleFileUpdate(message) {
@@ -237,24 +176,6 @@ window.addEventListener('storage-update', async (event) => {
     await saveFile(path, content, timestamp);
     sendFileToServer(path, content, timestamp);
 });
-
-// Save password to client-side password storage (separate from accounts.json)
-async function savePasswordToClientAccount(hint) {
-    // Hint contains: account, password, host, port, username
-    const accountKey = `${hint.host}:${hint.port}:${hint.username}`;
-    
-    // Check if password already exists
-    const existingPassword = await loadPassword(accountKey);
-    if (!existingPassword || existingPassword === '') {
-        await savePassword(accountKey, hint.password);
-        console.log(`Saved password for account ${hint.account} (${accountKey}) in separate password storage`);
-    } else {
-        console.log(`Password already exists for account ${hint.account}`);
-    }
-}
-
-// Expose function for app.js to call when password is detected
-window.savePasswordToClientAccount = savePasswordToClientAccount;
 
 // Merge history data - keep the more recent one
 async function mergeHistory(clientHistory, serverHistory) {
