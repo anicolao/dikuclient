@@ -11,12 +11,8 @@ func TestVisualMapRender(t *testing.T) {
 		t.Skip("Skipping visual test in short mode")
 	}
 
-	// Load the test map if it exists, or create one
-	m, err := LoadFromPath("/tmp/test_map_data/test_map.json")
-	if err != nil {
-		t.Logf("Could not load test map from file, creating new one: %v", err)
-		m = createTestMap()
-	}
+	// Create a test map (don't rely on external files)
+	m := createTestMap()
 
 	t.Log("=== Test Map Rendering ===")
 	t.Logf("Total rooms: %d", len(m.Rooms))
