@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -35,6 +36,14 @@ func main() {
 	// Debug logging for TUI lifecycle
 	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
 	if webSessionID != "" {
+		// Create debug log file to capture all stderr output in web mode
+		timestamp := time.Now().Format("20060102-150405")
+		debugLogFile, err := os.OpenFile(fmt.Sprintf("tui-debug-%s.log", timestamp), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err == nil {
+			// Redirect log output to both stderr and the file
+			log.SetOutput(io.MultiWriter(os.Stderr, debugLogFile))
+			defer debugLogFile.Close()
+		}
 		log.Printf("[TUI-DEBUG] TUI starting, session=%s, PID=%d", webSessionID, os.Getpid())
 	}
 
