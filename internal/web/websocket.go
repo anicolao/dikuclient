@@ -51,6 +51,8 @@ type SharedSession struct {
 	mu         sync.RWMutex
 	closed     bool
 	utf8Buffer []byte // Buffer for incomplete UTF-8 sequences at PTY read boundaries
+	rows       uint16 // Current terminal height
+	cols       uint16 // Current terminal width
 }
 
 // ClientConnection represents a single WebSocket client connection to a shared session
@@ -344,13 +346,24 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 		return
 	}
 
-	// Set initial PTY size from client if available, otherwise use defaults
+	// Set initial PTY size from client if available, otherwise use stored size or defaults
 	rows := uint16(24)
 	cols := uint16(80)
+	
+	// First check if we have a stored size from previous connections
+	sharedSession.mu.RLock()
+	if sharedSession.rows > 0 && sharedSession.cols > 0 {
+		rows = sharedSession.rows
+		cols = sharedSession.cols
+	}
+	sharedSession.mu.RUnlock()
+	
+	// Override with initialSize if provided (new connection with explicit size)
 	if initialSize != nil && initialSize.Rows > 0 && initialSize.Cols > 0 {
 		rows = uint16(initialSize.Rows)
 		cols = uint16(initialSize.Cols)
 	}
+	
 	pty.Setsize(ptmx, &pty.Winsize{
 		Rows: rows,
 		Cols: cols,
@@ -360,6 +373,8 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 	sharedSession.ptmx = ptmx
 	sharedSession.cmd = cmd
 	sharedSession.closed = false // Reset closed flag for restarted TUI
+	sharedSession.rows = rows     // Store the terminal size
+	sharedSession.cols = cols     // Store the terminal size
 	sharedSession.mu.Unlock()
 
 	log.Printf("Started shared TUI session for %s with size %dx%d", sharedSession.sessionID, cols, rows)
@@ -548,6 +563,10 @@ func (h *WebSocketHandler) handleSharedResize(sharedSession *SharedSession, mess
 			Cols: uint16(resizeMsg.Cols),
 		})
 	}
+	
+	// Always store the size for future restarts
+	sharedSession.rows = uint16(resizeMsg.Rows)
+	sharedSession.cols = uint16(resizeMsg.Cols)
 }
 
 // handleResize handles terminal resize requests (deprecated)
@@ -686,12 +705,24 @@ func (h *WebSocketHandler) forwardSharedPTYOutput(sharedSession *SharedSession) 
 	// Restart TUI if there are still connected clients
 	sharedSession.mu.RLock()
 	hasClients := len(sharedSession.clients) > 0
+	rows := sharedSession.rows
+	cols := sharedSession.cols
 	sharedSession.mu.RUnlock()
 	
 	if hasClients {
 		// Brief delay before restart to avoid tight restart loop
 		time.Sleep(1 * time.Second)
-		h.startSharedTUI(sharedSession, nil)
+		
+		// Create ResizeMessage with stored terminal size
+		var sizeMsg *ResizeMessage
+		if rows > 0 && cols > 0 {
+			sizeMsg = &ResizeMessage{
+				Rows: int(rows),
+				Cols: int(cols),
+			}
+		}
+		
+		h.startSharedTUI(sharedSession, sizeMsg)
 		// Start forwarding output from restarted TUI
 		go h.forwardSharedPTYOutput(sharedSession)
 	}
