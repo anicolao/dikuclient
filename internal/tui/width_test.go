@@ -179,7 +179,7 @@ func TestMainPanelSidebarHeightMatch(t *testing.T) {
 			_, _ = m.Update(tea.WindowSizeMsg{Width: tc.width, Height: tc.height})
 
 			// Calculate what the expected heights are after the fix
-			headerHeight := 3
+			headerHeight := 5
 			contentHeight := tc.height - headerHeight
 			panelHeight := contentHeight / 4
 			// Both sidebar and main panel should have height = 4 * panelHeight + 5

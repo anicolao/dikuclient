@@ -467,20 +467,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-		headerHeight := 3
+		headerHeight := 5
 		sidebarWidth := m.sidebarWidth
 		mainWidth := m.width - sidebarWidth - 1
 
 		m.viewport.Width = mainWidth
-		m.viewport.Height = m.height - headerHeight - 2
+		m.viewport.Height = m.height - headerHeight
 		// Don't apply viewport style - let ANSI codes pass through
 
 		// Set up split viewport dimensions (1/3 of main viewport height)
 		m.splitViewport.Width = mainWidth
-		m.splitViewport.Height = (m.height - headerHeight - 2) / 3
+		m.splitViewport.Height = (m.height - headerHeight) / 3
 
 		// Update viewport sizes for 4 panels
-		panelHeight := (m.height - headerHeight - 2 - 8) / 4
+		panelHeight := (m.height - headerHeight - 8) / 4
 		m.inventoryViewport.Width = sidebarWidth - 4 // Account for borders and padding
 		m.inventoryViewport.Height = panelHeight - 4 // Account for header, timestamp, and borders
 
@@ -879,7 +879,7 @@ func (m *Model) renderStatusBar() string {
 }
 
 func (m *Model) renderMainContent() string {
-	headerHeight := 3
+	headerHeight := 5
 	sidebarWidth := m.sidebarWidth
 	mainWidth := m.width - sidebarWidth - 1
 	contentHeight := m.height - headerHeight
