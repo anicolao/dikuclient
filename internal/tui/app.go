@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"regexp"
@@ -638,11 +639,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// If connection closed shortly after auto-login, it might be wrong password
 		// Send hint to delete the password
 		if m.autoLoginState == 2 && m.webSessionID != "" && m.username != "" && m.password != "" {
+			log.Printf("[TUI-DEBUG] Connection closed after auto-login, sending password deletion hint")
 			// Send password deletion hint (empty password means delete)
 			m.savePasswordForWebClient("")
 		}
 		
 		// When MUD closes connection, TUI should exit
+		if m.webSessionID != "" {
+			log.Printf("[TUI-DEBUG] TUI exiting due to error: %v, PID=%d", msg, os.Getpid())
+		}
 		return m, tea.Quit
 
 	case autoWalkTickMsg:

@@ -3,6 +3,7 @@ package config
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,22 +53,32 @@ func (ps *PasswordStore) Load() error {
 	// This is the NEW approach: client sends passwords to server, server writes to FIFO, TUI reads from FIFO
 	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
 	if webSessionID != "" {
+		log.Printf("[PASSWORD-DEBUG] Starting password load in web mode")
+		
 		// Try to read from password init FIFO (relative path since TUI runs in session dir)
 		fifoPath := "./.password_init_fifo"
 		
 		// Delete any existing FIFO from previous run to avoid blocking on stale FIFO
 		// The server will create a fresh one when it receives passwords_init
+		log.Printf("[PASSWORD-DEBUG] Removing stale FIFO if it exists: %s", fifoPath)
 		os.Remove(fifoPath)
+		
+		log.Printf("[PASSWORD-DEBUG] Starting goroutine to wait for FIFO")
 		
 		// Always try to read from FIFO with a timeout
 		// The server creates/recreates the FIFO on each passwords_init message (including client reloads)
 		// This allows fresh passwords to be read even after client reload
 		done := make(chan bool, 1)
 		go func() {
+			log.Printf("[PASSWORD-DEBUG] Goroutine started, about to open FIFO: %s", fifoPath)
 			file, err := os.Open(fifoPath)
-			if err == nil {
+			if err != nil {
+				log.Printf("[PASSWORD-DEBUG] Failed to open FIFO: %v", err)
+			} else {
+				log.Printf("[PASSWORD-DEBUG] FIFO opened successfully, reading passwords")
 				defer file.Close()
 				scanner := bufio.NewScanner(file)
+				count := 0
 				for scanner.Scan() {
 					line := scanner.Text()
 					if line == "" {
@@ -76,23 +87,30 @@ func (ps *PasswordStore) Load() error {
 					parts := strings.SplitN(line, "|", 2)
 					if len(parts) == 2 {
 						ps.passwords[parts[0]] = parts[1]
+						count++
 					}
 				}
+				log.Printf("[PASSWORD-DEBUG] Read %d passwords from FIFO", count)
 			}
 			done <- true
 		}()
 		
+		log.Printf("[PASSWORD-DEBUG] Waiting for FIFO read with 5 second timeout")
+		
 		// Wait for FIFO read with 5 second timeout
 		select {
 		case <-done:
-			// Successfully read from FIFO or failed to open
+			log.Printf("[PASSWORD-DEBUG] FIFO read completed")
 		case <-time.After(5 * time.Second):
+			log.Printf("[PASSWORD-DEBUG] FIFO read timed out after 5 seconds")
 			// Timeout - continue without passwords
 			// This can happen if:
 			// 1. Server hasn't sent passwords_init yet (rare)
 			// 2. This is a restarted TUI and client hasn't reloaded (no new FIFO created)
 			// In both cases, continuing without passwords is acceptable
 		}
+		
+		log.Printf("[PASSWORD-DEBUG] Password load completed in web mode")
 		
 		// Continue loading from other sources
 	}
