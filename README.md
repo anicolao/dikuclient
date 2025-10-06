@@ -134,8 +134,11 @@ The client automatically builds a map as you explore:
 - `/aliases list` - List all defined aliases
 - `/trigger "pattern" "action"` - Add triggers that fire on MUD output
 - `/triggers list` - List all defined triggers
+- `/stop` - Stop any active command queue or auto-walking
 - `/share` - Get shareable URL (web mode only)
 - `/help` - Show available commands
+
+**Note:** Aliases and triggers support multiple commands separated by semicolons (`;`). Each command is sent sequentially with a 1-second delay.
 
 **Navigation Examples:**
 ```
@@ -160,6 +163,24 @@ Alias added: "k" -> "kill <target>"
 
 > k goblin
 (sends: kill goblin)
+
+> /alias "prep" "get all from corpse;sacrifice corpse"
+Alias added: "prep" -> "get all from corpse;sacrifice corpse"
+
+> prep
+(sends: get all from corpse)
+[1 second later]
+(sends: sacrifice corpse)
+```
+
+**Trigger Example with Multiple Commands:**
+```
+> /trigger "You are hungry" "eat bread;drink water"
+Trigger added: "You are hungry" -> "eat bread;drink water"
+
+[When MUD outputs: "You are hungry"]
+[Queue: eat bread]
+[Queue: drink water]
 ```
 
 See [MAPPER.md](MAPPER.md) for detailed mapping documentation and [ALIASES.md](ALIASES.md) for comprehensive alias usage.

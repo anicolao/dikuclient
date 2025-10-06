@@ -129,18 +129,29 @@ complex bob first second the rest    → cmd bob first second the rest
 /alias "w" "west"
 ```
 
-### Advanced Usage
+### Advanced Usage: Multiple Commands with Semicolons
+
+Aliases can contain multiple commands separated by semicolons (`;`). Each command will be sent sequentially with a 1-second delay between them, allowing you to automate multi-step sequences.
 
 ```
-# Multi-step command alias (note: sends as one command)
+# Multi-step command alias - sends 2 commands, one per second
 /alias "prep" "get all from corpse;sacrifice corpse"
 
-# Combat macro
+# Combat macro - bash followed by consider
 /alias "combo" "bash <target>;consider <target>"
 
-# Social interaction
+# Social interaction - bow then speak
 /alias "greet" "bow <target>;say Hello, <target>!"
+
+# Complex sequence - up to 5 actions
+/alias "fullprep" "kill <target>;get all from corpse;sacrifice corpse;sit;rest"
 ```
+
+**Important Notes:**
+- Commands are queued and sent one per second automatically
+- Use `/stop` command to cancel a queued sequence
+- Additional aliases or triggers will add to the end of the queue
+- This works the same way as the `/go` auto-walking feature
 
 ## Persistence
 
