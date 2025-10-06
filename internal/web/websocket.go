@@ -1163,6 +1163,31 @@ func (h *WebSocketHandler) watchPasswordHints(conn *DataConnection) {
 			for scanner.Scan() {
 				data := scanner.Text()
 				if data != "" {
+					// Parse the hint to update server's password store
+					var hint map[string]string
+					if err := json.Unmarshal([]byte(data), &hint); err == nil {
+						account := hint["account"]
+						password := hint["password"]
+						
+						if account != "" {
+							h.passwordMu.Lock()
+							if h.passwordStore[conn.sessionID] == nil {
+								h.passwordStore[conn.sessionID] = make(map[string]string)
+							}
+							
+							if password == "" {
+								// Empty password means delete
+								delete(h.passwordStore[conn.sessionID], account)
+								log.Printf("[Server] Deleted password from memory for account %s in session %s", account, conn.sessionID)
+							} else {
+								// Update password in memory
+								h.passwordStore[conn.sessionID][account] = password
+								log.Printf("[Server] Updated password in memory for account %s in session %s", account, conn.sessionID)
+							}
+							h.passwordMu.Unlock()
+						}
+					}
+					
 					// Send hint to client
 					conn.sendMessage(&DataMessage{
 						Type:    "password_hint",
