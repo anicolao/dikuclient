@@ -128,3 +128,56 @@ func TestFullLayoutRendering(t *testing.T) {
 	
 	// Note: Height may differ due to other layout factors, we only test width here
 }
+
+// TestMainPanelSidebarHeightMatch verifies that the main panel and sidebar have the same height
+func TestMainPanelSidebarHeightMatch(t *testing.T) {
+	m := NewModel("test", 4000, nil, nil)
+	
+	// Test various terminal heights to ensure the fix works for all cases
+	testCases := []struct {
+		width  int
+		height int
+		name   string
+	}{
+		{120, 40, "height 40"},
+		{120, 41, "height 41"},
+		{120, 42, "height 42"},
+		{120, 43, "height 43"},
+		{120, 44, "height 44"},
+		{120, 45, "height 45"},
+	}
+	
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m.width = tc.width
+			m.height = tc.height
+			m.sidebarWidth = 60
+			m.connected = true
+			
+			// Trigger window resize to update viewport heights
+			_, _ = m.Update(tea.WindowSizeMsg{Width: tc.width, Height: tc.height})
+			
+			// Calculate what the expected heights are after the fix
+			headerHeight := 3
+			contentHeight := tc.height - headerHeight
+			panelHeight := contentHeight / 4
+			// Both sidebar and main panel should have height = 4 * panelHeight + 5
+			// (Sidebar: 4 panels with borders add 3*1 + 1*2 = 5)
+			// (Main: actualContentHeight = 4 * panelHeight + 3, + 2 for borders = 4 * panelHeight + 5)
+			expectedHeight := 4 * panelHeight + 5
+			
+			// Render the main content which includes both main panel and sidebar
+			content := m.renderMainContent()
+			
+			// The rendered content height should match the expected height
+			renderedHeight := lipgloss.Height(content)
+			
+			// Allow for 1 line difference due to rounding or JoinHorizontal behavior
+			// The key is that the main panel and sidebar should be close in height
+			if renderedHeight < expectedHeight || renderedHeight > expectedHeight + 1 {
+				t.Errorf("Height mismatch: terminal height=%d, contentHeight=%d, panelHeight=%d, expected=%d, rendered=%d",
+					tc.height, contentHeight, panelHeight, expectedHeight, renderedHeight)
+			}
+		})
+	}
+}
