@@ -18,6 +18,36 @@ A modern, efficient DikuMUD client written in Go with a beautiful Text User Inte
 
 ## Installation
 
+### Run one-off without installing
+
+You can run the client directly without building or installing:
+
+```bash
+go run github.com/anicolao/dikuclient/cmd/dikuclient@latest --host mud.server.com --port 4000
+```
+
+Or from a cloned repository:
+
+```bash
+git clone https://github.com/anicolao/dikuclient.git
+cd dikuclient
+go run ./cmd/dikuclient --host mud.server.com --port 4000
+```
+
+### Install with go install
+
+Install the binary to your `$GOPATH/bin` directory:
+
+```bash
+go install github.com/anicolao/dikuclient/cmd/dikuclient@latest
+```
+
+Then run it directly (ensure `$GOPATH/bin` is in your `$PATH`):
+
+```bash
+dikuclient --host mud.server.com --port 4000
+```
+
 ### Build from source
 
 ```bash
