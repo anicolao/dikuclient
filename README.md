@@ -6,15 +6,16 @@ A modern, efficient DikuMUD client written in Go with a beautiful Text User Inte
 
 - **Clean TUI Interface**: Modern terminal UI with panels for game output, stats, inventory, and map
 - **Automatic Map Building**: Explores and builds a persistent map as you move through rooms
-- **Navigation Commands**: Find your way with `/point` and `/wayfind` commands
+- **Navigation Commands**: Find your way with `/point`, `/wayfind`, and `/go` commands
+- **Room Management**: Search, list, and find nearby rooms with `/rooms`, `/nearby`, and `/legend`
 - **Aliases**: Create command shortcuts with parameter substitution (e.g., `/alias "gat" "give all <target>"`)
 - **Triggers**: Automated responses to MUD output patterns
 - **Web Mode with Terminal Emulation**: Run the full TUI in a browser with identical experience to terminal mode
+- **Session Sharing**: Share your web session with others using the `/share` command
 - **MUD Connection**: Connect to any MUD server via telnet protocol
-- **Command Input/Output**: Interactive command line for sending commands to the MUD
+- **Command Input/Output**: Interactive command line with history and search (Ctrl+R)
 - **Account Management**: Save and manage multiple MUD accounts with auto-login support
 - **Auto-Login**: Automatically login with saved username and password
-- **Empty Panels**: Placeholder panels for future features (character stats, inventory)
 
 ## Installation
 
@@ -129,14 +130,20 @@ The client automatically builds a map as you explore:
 **Client Commands** (start with `/`):
 - `/point <room>` - Show next direction to reach a room
 - `/wayfind <room>` - Show full path to reach a room
+- `/go <room>` - Auto-walk to a room (one step per second)
+- `/stop` - Stop auto-walk or command queue
 - `/map` - Show map information
+- `/rooms [filter]` - List all known rooms (optionally filtered)
+- `/nearby` - List all rooms within 5 steps
+- `/legend` - List all rooms currently on the map
 - `/alias "name" "template"` - Create command aliases with parameter substitution
 - `/aliases list` - List all defined aliases
+- `/aliases remove <n>` - Remove alias by number
 - `/trigger "pattern" "action"` - Add triggers that fire on MUD output
 - `/triggers list` - List all defined triggers
-- `/stop` - Stop any active command queue or auto-walking
+- `/triggers remove <n>` - Remove trigger by number
 - `/share` - Get shareable URL (web mode only)
-- `/help` - Show available commands
+- `/help [command]` - Show available commands or detailed help for a specific command
 
 **Note:** Aliases and triggers support multiple commands separated by semicolons (`;`). Each command is sent sequentially with a 1-second delay.
 
@@ -229,22 +236,18 @@ dikuclient/
 
 ## Development Status
 
-This implementation includes:
-- ✅ Basic TUI framework setup with Bubble Tea
-- ✅ MUD connection handling
-- ✅ Command input/output
-- ✅ Web mode with WebSocket support (Phase 3)
+This implementation is feature-complete for a modern MUD client:
+- ✅ TUI framework with Bubble Tea
+- ✅ MUD connection handling via telnet
+- ✅ Command input/output with history and search
+- ✅ Web mode with WebSocket support and session sharing
 - ✅ Account management with auto-login
 - ✅ Automatic map building and room tracking
-- ✅ Navigation commands (`/point`, `/wayfind`)
+- ✅ Navigation commands (`/point`, `/wayfind`, `/go`)
+- ✅ Room search and discovery (`/rooms`, `/nearby`, `/legend`)
 - ✅ Map persistence between sessions
-- 🔲 Empty placeholder panels for stats and inventory
-
-### Future Enhancements (Planned)
-
-- Phase 2: Syntax highlighting, enhanced configuration system
-- Phase 4: Plugin system, visual map display, performance optimizations
-- Additional mapper features: custom movement aliases, special room marking, map sharing
+- ✅ Aliases with parameter substitution and multi-command support
+- ✅ Triggers with pattern matching and variable capture
 
 ## License
 
