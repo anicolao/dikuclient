@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -133,39 +134,24 @@ func TestFullLayoutRendering(t *testing.T) {
 func TestMainPanelSidebarHeightMatch(t *testing.T) {
 	m := NewModel("test", 4000, nil, nil)
 
-	// Test various terminal heights to ensure the fix works for all cases
+	// Test all terminal heights from 40 to 80 to ensure the fix works for all cases
+	// Generate test cases in a loop for readability
 	testCases := []struct {
 		width  int
 		height int
 		name   string
-	}{
-		{120, 40, "height 40"},
-		{120, 41, "height 41"},
-		{120, 42, "height 42"},
-		{120, 43, "height 43"},
-		{120, 44, "height 44"},
-		{120, 45, "height 45"},
-		{120, 60, "height 60"},
-		{120, 61, "height 61"},
-		{120, 62, "height 62"},
-		{120, 63, "height 63"},
-		{120, 64, "height 64"},
-		{120, 65, "height 65"},
-		{120, 66, "height 66"},
-		{120, 67, "height 67"},
-		{120, 68, "height 68"},
-		{120, 69, "height 69"},
-		{120, 70, "height 70"},
-		{120, 71, "height 71"},
-		{120, 72, "height 72"},
-		{120, 73, "height 73"},
-		{120, 74, "height 74"},
-		{120, 75, "height 75"},
-		{120, 76, "height 76"},
-		{120, 77, "height 77"},
-		{120, 78, "height 78"},
-		{120, 79, "height 79"},
-		{120, 80, "height 80"},
+	}{}
+	
+	for height := 40; height <= 80; height++ {
+		testCases = append(testCases, struct {
+			width  int
+			height int
+			name   string
+		}{
+			width:  120,
+			height: height,
+			name:   fmt.Sprintf("height %d", height),
+		})
 	}
 
 	for _, tc := range testCases {
