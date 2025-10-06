@@ -105,7 +105,7 @@ func TestHelpCommandIncludesShare(t *testing.T) {
 	model.height = 24
 
 	// Execute the /help command
-	model.handleHelpCommand()
+	model.handleHelpCommand(nil)
 
 	// Check that the output contains the /share command
 	found := false
