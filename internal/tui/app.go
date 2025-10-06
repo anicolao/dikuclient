@@ -803,7 +803,8 @@ func (m *Model) updateViewport() {
 // listenForMessages listens for messages from the MUD server
 func (m *Model) listenForMessages() tea.Msg {
 	if m.conn == nil || m.conn.IsClosed() {
-		return nil
+		// Connection is closed, return error to trigger quit
+		return errMsg(fmt.Errorf("connection closed"))
 	}
 
 	select {
