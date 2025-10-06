@@ -273,6 +273,14 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 		return
 	}
 
+	// Create FIFO for password hints before starting TUI
+	// This ensures the FIFO exists when TUI tries to write to it
+	fifoPath := filepath.Join(sessionDir, ".password_hint_fifo")
+	if err := syscall.Mkfifo(fifoPath, 0600); err != nil && !os.IsExist(err) {
+		log.Printf("Failed to create password hint FIFO: %v", err)
+		// Continue anyway - password hints won't work but TUI can still run
+	}
+
 	// Get the path to the dikuclient binary
 	dikuclientPath, err := exec.LookPath("dikuclient")
 	if err != nil {
@@ -1043,15 +1051,23 @@ func (h *WebSocketHandler) watchPasswordHints(conn *DataConnection) {
 	sessionDir := filepath.Join(".websessions", conn.sessionID)
 	fifoPath := filepath.Join(sessionDir, ".password_hint_fifo")
 
-	// Ensure session directory exists
-	if err := os.MkdirAll(sessionDir, 0755); err != nil {
-		log.Printf("Failed to create session directory: %v", err)
-		return
+	// FIFO should already exist (created by startSharedTUI)
+	// If it doesn't exist, it means TUI hasn't started yet, so wait for it
+	for i := 0; i < 50; i++ { // Wait up to 5 seconds
+		if _, err := os.Stat(fifoPath); err == nil {
+			break
+		}
+		select {
+		case <-conn.done:
+			return
+		case <-time.After(100 * time.Millisecond):
+			continue
+		}
 	}
 
-	// Create FIFO (named pipe)
-	if err := syscall.Mkfifo(fifoPath, 0600); err != nil && !os.IsExist(err) {
-		log.Printf("Failed to create FIFO: %v", err)
+	// Check if FIFO exists
+	if _, err := os.Stat(fifoPath); err != nil {
+		log.Printf("Password hint FIFO does not exist for session %s: %v", conn.sessionID, err)
 		return
 	}
 
