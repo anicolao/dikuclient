@@ -55,8 +55,12 @@ func (ps *PasswordStore) Load() error {
 		// Try to read from password init FIFO (relative path since TUI runs in session dir)
 		fifoPath := "./.password_init_fifo"
 		
+		// Delete any existing FIFO from previous run to avoid blocking on stale FIFO
+		// The server will create a fresh one when it receives passwords_init
+		os.Remove(fifoPath)
+		
 		// Always try to read from FIFO with a timeout
-		// The server recreates the FIFO on each passwords_init message (including client reloads)
+		// The server creates/recreates the FIFO on each passwords_init message (including client reloads)
 		// This allows fresh passwords to be read even after client reload
 		done := make(chan bool, 1)
 		go func() {
