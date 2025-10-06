@@ -601,7 +601,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		if m.password != "" && m.autoLoginState == 1 {
+		if m.autoLoginState == 1 {
 			lastLine := ""
 			if len(m.output) > 0 {
 				lastLine = strings.ToLower(strings.TrimSpace(m.output[len(m.output)-1]))
@@ -609,11 +609,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Check for password prompt
 			if strings.Contains(lastLine, "password") || strings.Contains(lastLine, "pass") {
-				// Send password automatically
-				m.conn.Send(m.password)
-				m.autoLoginState = 2
-				m.output = append(m.output, "\x1b[90m[Auto-login: sending password]\x1b[0m")
+				if m.password != "" {
+					// Send password automatically (CLI mode or already loaded)
+					m.conn.Send(m.password)
+					m.autoLoginState = 2
+					m.output = append(m.output, "\x1b[90m[Auto-login: sending password]\x1b[0m")
+				} else if m.webSessionID != "" {
+					// Web mode - request password from client
+					m.requestPasswordFromClient()
+					// Don't change auto-login state yet, will change when we get the password
+				}
 			}
+		}
+		
+		// Check for password response from web client (if we requested one)
+		if m.webSessionID != "" && m.autoLoginState == 1 && m.password == "" {
+			m.checkPasswordResponse()
 		}
 
 		m.updateViewport()
@@ -2587,4 +2598,75 @@ func (m *Model) handleAliasesRemoveCommand(index int) {
 	}
 
 	m.output = append(m.output, fmt.Sprintf("\x1b[92mRemoved alias: \"%s\" -> \"%s\"\x1b[0m", alias.Name, alias.Template))
+}
+
+// requestPasswordFromClient sends a password request to the web client via a hint file
+func (m *Model) requestPasswordFromClient() {
+	if m.webSessionID == "" || m.username == "" {
+		return
+	}
+
+	// Create a password request hint file
+	sessionDir := filepath.Join(".websessions", m.webSessionID, ".config", "dikuclient")
+	passwordRequestPath := filepath.Join(sessionDir, ".password_request")
+
+	// Ensure directory exists
+	if err := os.MkdirAll(sessionDir, 0700); err != nil {
+		return
+	}
+
+	// Write password request
+	requestData := map[string]string{
+		"host":     m.host,
+		"port":     fmt.Sprintf("%d", m.port),
+		"username": m.username,
+	}
+
+	data, err := json.Marshal(requestData)
+	if err != nil {
+		return
+	}
+
+	if err := os.WriteFile(passwordRequestPath, data, 0600); err != nil {
+		return
+	}
+
+	m.output = append(m.output, "\x1b[90m[Auto-login: requesting password from client]\x1b[0m")
+}
+
+// checkPasswordResponse checks if the web client has responded with a password
+func (m *Model) checkPasswordResponse() {
+	if m.webSessionID == "" {
+		return
+	}
+
+	sessionDir := filepath.Join(".websessions", m.webSessionID, ".config", "dikuclient")
+	passwordResponsePath := filepath.Join(sessionDir, ".password_response")
+
+	// Check if password response file exists
+	data, err := os.ReadFile(passwordResponsePath)
+	if err != nil {
+		// File doesn't exist yet
+		return
+	}
+
+	// Parse the password response
+	var response map[string]string
+	if err := json.Unmarshal(data, &response); err != nil {
+		return
+	}
+
+	password := response["password"]
+	if password != "" {
+		// Send password to MUD server
+		m.conn.Send(password)
+		m.autoLoginState = 2
+		m.output = append(m.output, "\x1b[90m[Auto-login: sending password]\x1b[0m")
+		
+		// Store password for future use in this session
+		m.password = password
+		
+		// Delete the response file
+		os.Remove(passwordResponsePath)
+	}
 }

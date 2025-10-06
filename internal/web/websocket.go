@@ -861,6 +861,9 @@ func (h *WebSocketHandler) handleDataMessage(conn *DataConnection, msg *DataMess
 		h.handleClientFileRequest(conn, sessionDir, msg)
 	case "file_not_found":
 		log.Printf("Client doesn't have file: %s", msg.Path)
+	case "password_response":
+		// Client sent password for auto-login
+		h.handlePasswordResponse(conn, sessionDir, msg)
 	default:
 		log.Printf("Unknown data message type: %s", msg.Type)
 	}
@@ -938,6 +941,19 @@ func (h *WebSocketHandler) handleClientFileRequest(conn *DataConnection, session
 	})
 }
 
+// handlePasswordResponse processes password response from client for auto-login
+func (h *WebSocketHandler) handlePasswordResponse(conn *DataConnection, sessionDir string, msg *DataMessage) {
+	// Write password response to a file that the TUI can read
+	passwordResponsePath := filepath.Join(sessionDir, ".password_response")
+	
+	if err := os.WriteFile(passwordResponsePath, []byte(msg.Content), 0600); err != nil {
+		log.Printf("Failed to write password response file: %v", err)
+		return
+	}
+	
+	log.Printf("Received password response from client for session %s", conn.sessionID)
+}
+
 // watchSessionFiles watches for changes in session files and syncs to client
 func (h *WebSocketHandler) watchSessionFiles(conn *DataConnection) {
 	sessionDir := filepath.Join(".websessions", conn.sessionID, ".config", "dikuclient")
@@ -966,6 +982,9 @@ func (h *WebSocketHandler) watchSessionFiles(conn *DataConnection) {
 
 	// Watch for password hint file
 	go h.watchPasswordHints(conn, sessionDir)
+	
+	// Watch for password request file
+	go h.watchPasswordRequests(conn, sessionDir)
 
 	// Note: Full file watching implementation would require fsnotify or polling
 	// For now, we rely on the initial sync and client-initiated updates
@@ -1010,6 +1029,48 @@ func (h *WebSocketHandler) watchPasswordHints(conn *DataConnection, sessionDir s
 
 			// Delete the hint file after sending
 			os.Remove(passwordHintPath)
+		}
+	}
+}
+
+// watchPasswordRequests watches for password request files and sends them to client
+func (h *WebSocketHandler) watchPasswordRequests(conn *DataConnection, sessionDir string) {
+	passwordRequestPath := filepath.Join(sessionDir, ".password_request")
+	var lastModTime time.Time
+
+	// Poll for password request file every second
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		fileInfo, err := os.Stat(passwordRequestPath)
+		if err != nil {
+			// File doesn't exist yet
+			continue
+		}
+
+		// Check if file was modified since last check
+		if fileInfo.ModTime().After(lastModTime) {
+			lastModTime = fileInfo.ModTime()
+			
+			// Read and send the request
+			data, err := os.ReadFile(passwordRequestPath)
+			if err != nil {
+				continue
+			}
+
+			// Send to client
+			conn.sendMessage(&DataMessage{
+				Type:      "password_request",
+				Path:      ".password_request",
+				Content:   string(data),
+				Timestamp: fileInfo.ModTime().UnixMilli(),
+			})
+
+			log.Printf("Sent password request to client for session %s", conn.sessionID)
+
+			// Delete the request file after sending
+			os.Remove(passwordRequestPath)
 		}
 	}
 }
