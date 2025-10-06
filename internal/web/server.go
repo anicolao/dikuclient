@@ -62,6 +62,16 @@ func StartWithLogging(port int, enableLogs bool) error {
 
 // handleRoot serves the main page and handles session management
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
+	// Check if user wants a new session via /new path
+	if r.URL.Path == "/new" {
+		// Generate a new GUID and redirect
+		newSessionID := uuid.New().String()
+		redirectURL := fmt.Sprintf("/?id=%s", newSessionID)
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		log.Printf("New session created (via /new path): %s", newSessionID)
+		return
+	}
+
 	// Check if session ID is provided
 	sessionID := r.URL.Query().Get("id")
 
@@ -83,7 +93,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user explicitly wants a new session
+	// Check if user explicitly wants a new session via ?id=new
 	if sessionID == "new" {
 		// Generate a new GUID and redirect
 		newSessionID := uuid.New().String()
