@@ -360,7 +360,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if displayLength < 0 {
 						displayLength = 0
 					}
-					bullets := strings.Repeat("⚫", displayLength)
+					bullets := strings.Repeat("•", displayLength)
 					if len(m.output) > 0 {
 						m.output[len(m.output)-1] = m.output[len(m.output)-1] + bullets
 					}
@@ -768,7 +768,7 @@ func (m *Model) updateViewport() {
 			content = strings.Join(lines, "\n")
 		} else if (m.echoSuppressed || m.isPasswordPrompt()) && m.connected {
 			// In password mode, show bullets for each character typed
-			bullets := strings.Repeat("⚫", len(m.currentInput))
+			bullets := strings.Repeat("•", len(m.currentInput))
 			lines := make([]string, len(m.output)-1)
 			copy(lines, m.output[:len(m.output)-1])
 			lines = append(lines, lastLine+bullets+"█")
@@ -790,7 +790,7 @@ func (m *Model) updateViewport() {
 				content = "\x1b[93m" + inputLine + "\x1b[0m"
 			} else {
 				// Password mode - show bullets for each character typed
-				bullets := strings.Repeat("⚫", len(m.currentInput))
+				bullets := strings.Repeat("•", len(m.currentInput))
 				content = bullets + "█"
 			}
 		}
@@ -2427,7 +2427,7 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					if displayLength < 0 {
 						displayLength = 0
 					}
-					bullets := strings.Repeat("⚫", displayLength)
+					bullets := strings.Repeat("•", displayLength)
 					if len(m.output) > 0 {
 						m.output[len(m.output)-1] = m.output[len(m.output)-1] + bullets
 					}
