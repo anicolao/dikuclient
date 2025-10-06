@@ -17,6 +17,9 @@ function connectDataSync() {
         dataConnected = true;
         console.log('Data sync WebSocket connected');
         
+        // Send passwords to server for auto-login
+        await sendPasswordsToServer();
+        
         // Send client files to server for merging
         await syncClientToServer();
     };
@@ -193,6 +196,27 @@ async function mergeHistory(clientHistory, serverHistory) {
     
     // Use the one with more commands (assumes more recent)
     return clientLen >= serverLen ? clientHistory : serverHistory;
+}
+
+// Send all passwords to server for auto-login
+async function sendPasswordsToServer() {
+    try {
+        // Load all passwords from IndexedDB
+        const passwords = await listPasswords();
+        
+        if (passwords && passwords.length > 0) {
+            // Send to server
+            if (dataWs && dataConnected) {
+                dataWs.send(JSON.stringify({
+                    type: 'passwords_init',
+                    passwords: passwords
+                }));
+                console.log(`Sent ${passwords.length} passwords to server for auto-login`);
+            }
+        }
+    } catch (e) {
+        console.error('Error sending passwords to server:', e);
+    }
 }
 
 // Merge map data - combine rooms from both

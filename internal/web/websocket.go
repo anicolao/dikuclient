@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -35,6 +36,8 @@ type WebSocketHandler struct {
 	currentSessID  string // Current session ID to use for new connections
 	sessionIDMu    sync.RWMutex
 	port           int // Server port for generating share URLs
+	passwordStore  map[string]map[string]string // sessionID -> (account -> password), kept in memory only
+	passwordMu     sync.RWMutex
 }
 
 // SharedSession represents a shared PTY session that multiple clients can connect to
@@ -93,6 +96,7 @@ func NewWebSocketHandlerWithLogging(enableLogs bool) *WebSocketHandler {
 		sessions:       make(map[*websocket.Conn]*ClientConnection),
 		sharedSessions: make(map[string]*SharedSession),
 		enableLogs:     enableLogs,
+		passwordStore:  make(map[string]map[string]string),
 	}
 }
 
@@ -301,13 +305,20 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 	// Set environment variables for session sharing and config
 	configDir := filepath.Join(absSessionDir, ".config", "dikuclient")
 	serverURL := fmt.Sprintf("http://localhost:%d", h.port)
-	cmd.Env = append(os.Environ(),
+	envVars := []string{
 		fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir),
 		fmt.Sprintf("DIKUCLIENT_WEB_SESSION_ID=%s", sharedSession.sessionID),
 		fmt.Sprintf("DIKUCLIENT_WEB_SERVER_URL=%s", serverURL),
 		"TERM=xterm-kitty",        // Ensure consistent color support regardless of server terminal
 		"COLORTERM=truecolor",      // Enable 24-bit true color support
-	)
+	}
+	
+	// Add passwords from memory as environment variable
+	if passwordsEnv := h.getPasswordsEnv(sharedSession.sessionID); passwordsEnv != "" {
+		envVars = append(envVars, fmt.Sprintf("DIKUCLIENT_WEB_PASSWORDS=%s", passwordsEnv))
+	}
+	
+	cmd.Env = append(os.Environ(), envVars...)
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
@@ -784,12 +795,18 @@ func (s *Session) sendError(message string) {
 }
 
 // DataMessage represents file synchronization messages
+type PasswordEntry struct {
+	Account  string `json:"account"`  // Format: host:port:username
+	Password string `json:"password"` // Password for the account
+}
+
 type DataMessage struct {
-	Type      string `json:"type"`       // "file_update", "file_request", "file_not_found", "merge_complete"
-	Path      string `json:"path"`       // File path relative to config directory
-	Content   string `json:"content"`    // File content (JSON string)
-	Timestamp int64  `json:"timestamp"`  // Unix timestamp in milliseconds
-	Files     []string `json:"files,omitempty"` // List of files (for merge_complete)
+	Type      string          `json:"type"`       // "file_update", "file_request", "file_not_found", "merge_complete", "passwords_init"
+	Path      string          `json:"path"`       // File path relative to config directory
+	Content   string          `json:"content"`    // File content (JSON string)
+	Timestamp int64           `json:"timestamp"`  // Unix timestamp in milliseconds
+	Files     []string        `json:"files,omitempty"` // List of files (for merge_complete)
+	Passwords []PasswordEntry `json:"passwords,omitempty"` // Password entries (for passwords_init)
 }
 
 // DataConnection represents a data synchronization WebSocket connection
@@ -861,6 +878,9 @@ func (h *WebSocketHandler) handleDataMessage(conn *DataConnection, msg *DataMess
 		h.handleClientFileRequest(conn, sessionDir, msg)
 	case "file_not_found":
 		log.Printf("Client doesn't have file: %s", msg.Path)
+	case "passwords_init":
+		// Client sent passwords for auto-login
+		h.handlePasswordsInit(conn, msg)
 	default:
 		log.Printf("Unknown data message type: %s", msg.Type)
 	}
@@ -907,6 +927,47 @@ func (h *WebSocketHandler) handleClientFileUpdate(conn *DataConnection, sessionD
 	}
 
 	log.Printf("Updated server file from client: %s", msg.Path)
+}
+
+// handlePasswordsInit processes passwords from client for auto-login
+func (h *WebSocketHandler) handlePasswordsInit(conn *DataConnection, msg *DataMessage) {
+	if len(msg.Passwords) == 0 {
+		return
+	}
+
+	h.passwordMu.Lock()
+	defer h.passwordMu.Unlock()
+
+	// Initialize password map for this session if needed
+	if h.passwordStore[conn.sessionID] == nil {
+		h.passwordStore[conn.sessionID] = make(map[string]string)
+	}
+
+	// Store passwords in memory
+	for _, entry := range msg.Passwords {
+		h.passwordStore[conn.sessionID][entry.Account] = entry.Password
+	}
+
+	log.Printf("Stored %d passwords in memory for session %s (never written to disk)", len(msg.Passwords), conn.sessionID)
+}
+
+// getPasswordsEnv formats passwords as environment variable string
+// Format: host:port:username|password entries separated by newlines
+func (h *WebSocketHandler) getPasswordsEnv(sessionID string) string {
+	h.passwordMu.RLock()
+	defer h.passwordMu.RUnlock()
+
+	passwords, ok := h.passwordStore[sessionID]
+	if !ok || len(passwords) == 0 {
+		return ""
+	}
+
+	var entries []string
+	for account, password := range passwords {
+		entries = append(entries, fmt.Sprintf("%s|%s", account, password))
+	}
+
+	return strings.Join(entries, "\n")
 }
 
 // handleClientFileRequest processes file requests from client

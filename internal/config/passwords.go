@@ -45,8 +45,30 @@ func GetPasswordPath() (string, error) {
 	return filepath.Join(configDir, ".passwords"), nil
 }
 
-// Load loads passwords from disk
+// Load loads passwords from disk or environment variable (web mode)
 func (ps *PasswordStore) Load() error {
+	// In web mode, check for passwords from environment variable first
+	if webPasswords := os.Getenv("DIKUCLIENT_WEB_PASSWORDS"); webPasswords != "" {
+		// Parse format: account|password entries separated by newlines
+		scanner := bufio.NewScanner(strings.NewReader(webPasswords))
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				continue
+			}
+			parts := strings.SplitN(line, "|", 2)
+			if len(parts) == 2 {
+				ps.passwords[parts[0]] = parts[1]
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("failed to parse web passwords: %w", err)
+		}
+		// Don't load from file in web mode
+		return nil
+	}
+
+	// Normal CLI mode: load from file
 	passwordPath, err := GetPasswordPath()
 	if err != nil {
 		return err
