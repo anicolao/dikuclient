@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -342,8 +343,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						// Modify the last line to include the command
 						m.output[len(m.output)-1] = m.output[len(m.output)-1] + "\x1b[93m" + command + "\x1b[0m"
 					}
-				}
+				} else if (m.echoSuppressed || m.isPasswordPrompt()) && command != "" {
+					// For password input, show obfuscated bullets with random length
+					// Add -3 to +3 random bullets to the actual length to hide true length
+					actualLength := len(command)
+					randomOffset := rand.Intn(7) - 3 // Range: -3 to +3
+					displayLength := actualLength + randomOffset
+					if displayLength < 0 {
+						displayLength = 0
+					}
+					bullets := strings.Repeat("⚫", displayLength)
+					if len(m.output) > 0 {
+						m.output[len(m.output)-1] = m.output[len(m.output)-1] + bullets
+					}
 
+				}
 				// Reset input
 				m.currentInput = ""
 				m.cursorPos = 0
@@ -722,11 +736,11 @@ func (m *Model) updateViewport() {
 			lines = append(lines, lastLine+"\x1b[93m"+inputLine+"\x1b[0m")
 			content = strings.Join(lines, "\n")
 		} else if (m.echoSuppressed || m.isPasswordPrompt()) && m.connected {
-			// In password mode, just show the prompt without the input
-			// Show a cursor to indicate user can type
+			// In password mode, show bullets for each character typed
+			bullets := strings.Repeat("⚫", len(m.currentInput))
 			lines := make([]string, len(m.output)-1)
 			copy(lines, m.output[:len(m.output)-1])
-			lines = append(lines, lastLine+"█")
+			lines = append(lines, lastLine+bullets+"█")
 			content = strings.Join(lines, "\n")
 		} else {
 			content = strings.Join(m.output, "\n")
@@ -744,8 +758,9 @@ func (m *Model) updateViewport() {
 				// Use bright yellow for better visibility
 				content = "\x1b[93m" + inputLine + "\x1b[0m"
 			} else {
-				// Password mode - just show cursor
-				content = "█"
+				// Password mode - show bullets for each character typed
+				bullets := strings.Repeat("⚫", len(m.currentInput))
+				content = bullets + "█"
 			}
 		}
 	}
@@ -2356,6 +2371,19 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					if len(m.output) > 0 {
 						// Modify the last line to include the command
 						m.output[len(m.output)-1] = m.output[len(m.output)-1] + "\x1b[93m" + command + "\x1b[0m"
+					}
+				} else if (m.echoSuppressed || m.isPasswordPrompt()) && command != "" {
+					// For password input, show obfuscated bullets with random length
+					// Add -3 to +3 random bullets to the actual length to hide true length
+					actualLength := len(command)
+					randomOffset := rand.Intn(7) - 3 // Range: -3 to +3
+					displayLength := actualLength + randomOffset
+					if displayLength < 0 {
+						displayLength = 0
+					}
+					bullets := strings.Repeat("⚫", displayLength)
+					if len(m.output) > 0 {
+						m.output[len(m.output)-1] = m.output[len(m.output)-1] + bullets
 					}
 				}
 
