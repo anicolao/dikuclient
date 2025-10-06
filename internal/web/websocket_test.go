@@ -1,9 +1,75 @@
 package web
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
+
+func TestPasswordsInitFormat(t *testing.T) {
+	// Test that the JavaScript format matches Go deserialization expectations
+	tests := []struct {
+		name        string
+		jsonInput   string
+		wantCount   int
+		wantAccount string
+		wantPass    string
+		wantErr     bool
+	}{
+		{
+			name:        "empty array",
+			jsonInput:   `{"type":"passwords_init","passwords":[]}`,
+			wantCount:   0,
+			wantErr:     false,
+		},
+		{
+			name:        "single password",
+			jsonInput:   `{"type":"passwords_init","passwords":[{"account":"mud.org:4000:testuser","password":"testpass"}]}`,
+			wantCount:   1,
+			wantAccount: "mud.org:4000:testuser",
+			wantPass:    "testpass",
+			wantErr:     false,
+		},
+		{
+			name:        "multiple passwords",
+			jsonInput:   `{"type":"passwords_init","passwords":[{"account":"mud1.org:23:user1","password":"pass1"},{"account":"mud2.org:4000:user2","password":"pass2"}]}`,
+			wantCount:   2,
+			wantErr:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var msg DataMessage
+			err := json.Unmarshal([]byte(tt.jsonInput), &msg)
+			
+			if tt.wantErr && err == nil {
+				t.Errorf("expected error but got none")
+				return
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+			if err != nil {
+				return
+			}
+
+			if len(msg.Passwords) != tt.wantCount {
+				t.Errorf("got %d passwords, want %d", len(msg.Passwords), tt.wantCount)
+			}
+
+			if tt.wantCount > 0 && tt.wantAccount != "" {
+				if msg.Passwords[0].Account != tt.wantAccount {
+					t.Errorf("got account %q, want %q", msg.Passwords[0].Account, tt.wantAccount)
+				}
+				if msg.Passwords[0].Password != tt.wantPass {
+					t.Errorf("got password %q, want %q", msg.Passwords[0].Password, tt.wantPass)
+				}
+			}
+		})
+	}
+}
 
 func TestWebSocketHandler_parseConnectMessage(t *testing.T) {
 	tests := []struct {

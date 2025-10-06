@@ -214,9 +214,15 @@ func (m *Model) Init() tea.Cmd {
 
 // connect establishes a connection to the MUD server
 func (m *Model) connect() tea.Msg {
+	if m.webSessionID != "" {
+	}
 	conn, err := client.NewConnectionWithDebug(m.host, m.port, m.telnetDebugLog)
 	if err != nil {
+		if m.webSessionID != "" {
+		}
 		return errMsg(err)
+	}
+	if m.webSessionID != "" {
 	}
 	return conn
 }
@@ -509,11 +515,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.connected = true
 		m.output = append(m.output, fmt.Sprintf("Connected to %s:%d", m.host, m.port))
 		m.updateViewport()
+		if m.webSessionID != "" {
+		}
 		return m, m.listenForMessages
 
 	case mudMsg:
 		// Add message to output - it already has proper line endings
 		msgStr := string(msg)
+
+		if m.webSessionID != "" && len(msgStr) > 0 {
+			// Log first 50 chars to avoid spam
+			preview := msgStr
+			if len(preview) > 50 {
+				preview = preview[:50] + "..."
+			}
+		}
 
 		// Log raw MUD output if logging enabled
 		if m.mudLogFile != nil {
@@ -631,10 +647,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.listenForMessages
 
 	case errMsg:
+		if m.webSessionID != "" {
+		}
 		m.err = msg
 		m.output = append(m.output, fmt.Sprintf("Error: %v", msg))
 		m.updateViewport()
-		return m, nil
+		
+		// If connection closed shortly after auto-login, it might be wrong password
+		// Send hint to delete the password
+		if m.autoLoginState == 2 && m.webSessionID != "" && m.username != "" && m.password != "" {
+			// Send password deletion hint (empty password means delete)
+			m.savePasswordForWebClient("")
+		}
+		
+		// When MUD closes connection, TUI should exit
+		if m.webSessionID != "" {
+		}
+		return m, tea.Quit
 
 	case autoWalkTickMsg:
 		// Process next step in auto-walk
@@ -793,16 +822,28 @@ func (m *Model) updateViewport() {
 
 // listenForMessages listens for messages from the MUD server
 func (m *Model) listenForMessages() tea.Msg {
+	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+	
 	if m.conn == nil || m.conn.IsClosed() {
-		return nil
+		// Connection is closed, return error to trigger quit
+		return errMsg(fmt.Errorf("connection closed"))
+	}
+
+	if webSessionID != "" {
 	}
 
 	select {
 	case msg := <-m.conn.Receive():
+		if webSessionID != "" {
+		}
 		return mudMsg(msg)
 	case echoSuppressed := <-m.conn.EchoState():
+		if webSessionID != "" {
+		}
 		return echoStateMsg(echoSuppressed)
 	case err := <-m.conn.Errors():
+		if webSessionID != "" {
+		}
 		return errMsg(err)
 	}
 }
@@ -1164,6 +1205,7 @@ func (m *Model) isPasswordPrompt() bool {
 }
 
 // savePasswordForWebClient writes password hint to FIFO for the web client
+// If password is empty, it signals to delete the password for this account
 func (m *Model) savePasswordForWebClient(password string) {
 	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
 	if webSessionID == "" {
@@ -1178,7 +1220,7 @@ func (m *Model) savePasswordForWebClient(password string) {
 
 	hint := map[string]string{
 		"account":  account,
-		"password": password,
+		"password": password, // Empty password means delete
 	}
 
 	hintJSON, err := json.Marshal(hint)

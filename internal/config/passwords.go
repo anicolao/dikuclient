@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // PasswordStore manages password storage separate from accounts.json
@@ -51,29 +52,55 @@ func (ps *PasswordStore) Load() error {
 	// This is the NEW approach: client sends passwords to server, server writes to FIFO, TUI reads from FIFO
 	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
 	if webSessionID != "" {
+		
 		// Try to read from password init FIFO (relative path since TUI runs in session dir)
 		fifoPath := "./.password_init_fifo"
-		file, err := os.Open(fifoPath)
-		if err == nil {
-			defer file.Close()
-			scanner := bufio.NewScanner(file)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if line == "" {
-					continue
-				}
-				parts := strings.SplitN(line, "|", 2)
-				if len(parts) == 2 {
-					ps.passwords[parts[0]] = parts[1]
+		
+		// Delete any existing FIFO from previous run to avoid blocking on stale FIFO
+		// The server will create a fresh one when it receives passwords_init
+		os.Remove(fifoPath)
+		
+		
+		// Always try to read from FIFO with a timeout
+		// The server creates/recreates the FIFO on each passwords_init message (including client reloads)
+		// This allows fresh passwords to be read even after client reload
+		done := make(chan bool, 1)
+		go func() {
+			file, err := os.Open(fifoPath)
+			if err != nil {
+			} else {
+				defer file.Close()
+				scanner := bufio.NewScanner(file)
+				count := 0
+				for scanner.Scan() {
+					line := scanner.Text()
+					if line == "" {
+						continue
+					}
+					parts := strings.SplitN(line, "|", 2)
+					if len(parts) == 2 {
+						ps.passwords[parts[0]] = parts[1]
+						count++
+					}
 				}
 			}
-			if err := scanner.Err(); err != nil {
-				return fmt.Errorf("failed to parse passwords from FIFO: %w", err)
-			}
-			// Successfully read from FIFO
-			return nil
+			done <- true
+		}()
+		
+		
+		// Wait for FIFO read with 5 second timeout
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			// Timeout - continue without passwords
+			// This can happen if:
+			// 1. Server hasn't sent passwords_init yet (rare)
+			// 2. This is a restarted TUI and client hasn't reloaded (no new FIFO created)
+			// In both cases, continuing without passwords is acceptable
 		}
-		// FIFO doesn't exist or can't be opened - that's okay, just continue without passwords
+		
+		
+		// Continue loading from other sources
 	}
 	
 	// In web mode, also check for passwords from environment variable (legacy support)

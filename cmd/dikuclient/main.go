@@ -38,8 +38,10 @@ func main() {
 	}
 
 	// Load password store (read-only in web mode to prevent writing)
-	isWebMode := os.Getenv("DIKUCLIENT_WEB_SESSION_ID") != ""
+	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+	isWebMode := webSessionID != ""
 	passwordStore := config.NewPasswordStore(isWebMode)
+	
 	if err := passwordStore.Load(); err != nil {
 		fmt.Printf("Error loading passwords: %v\n", err)
 		// Continue anyway - passwords file might not exist yet

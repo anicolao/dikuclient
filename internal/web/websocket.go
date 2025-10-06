@@ -359,6 +359,7 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 	sharedSession.mu.Lock()
 	sharedSession.ptmx = ptmx
 	sharedSession.cmd = cmd
+	sharedSession.closed = false // Reset closed flag for restarted TUI
 	sharedSession.mu.Unlock()
 
 	log.Printf("Started shared TUI session for %s with size %dx%d", sharedSession.sessionID, cols, rows)
@@ -641,7 +642,7 @@ func (h *WebSocketHandler) forwardSharedPTYOutput(sharedSession *SharedSession) 
 		n, err := ptmx.Read(buf)
 		if err != nil {
 			if err != io.EOF {
-				log.Printf("Error reading from PTY: %v", err)
+			} else {
 			}
 			break
 		}
@@ -670,7 +671,6 @@ func (h *WebSocketHandler) forwardSharedPTYOutput(sharedSession *SharedSession) 
 					for ws := range sharedSession.clients {
 						err := ws.WriteMessage(websocket.BinaryMessage, data)
 						if err != nil {
-							log.Printf("Error writing to WebSocket client: %v", err)
 							// Note: Don't break here, try to send to other clients
 						}
 					}
@@ -680,8 +680,21 @@ func (h *WebSocketHandler) forwardSharedPTYOutput(sharedSession *SharedSession) 
 		}
 	}
 
-	// PTY closed, clean up
+	// PTY closed, clean up and restart TUI
 	sharedSession.cleanup()
+	
+	// Restart TUI if there are still connected clients
+	sharedSession.mu.RLock()
+	hasClients := len(sharedSession.clients) > 0
+	sharedSession.mu.RUnlock()
+	
+	if hasClients {
+		// Brief delay before restart to avoid tight restart loop
+		time.Sleep(1 * time.Second)
+		h.startSharedTUI(sharedSession, nil)
+		// Start forwarding output from restarted TUI
+		go h.forwardSharedPTYOutput(sharedSession)
+	}
 }
 
 // forwardPTYOutput forwards output from PTY to WebSocket (deprecated)
@@ -954,29 +967,37 @@ func (h *WebSocketHandler) handleClientFileUpdate(conn *DataConnection, sessionD
 
 // handlePasswordsInit processes passwords from client for auto-login
 func (h *WebSocketHandler) handlePasswordsInit(conn *DataConnection, msg *DataMessage) {
-	if len(msg.Passwords) == 0 {
-		return
-	}
-
 	h.passwordMu.Lock()
-	defer h.passwordMu.Unlock()
-
+	
 	// Initialize password map for this session if needed
 	if h.passwordStore[conn.sessionID] == nil {
 		h.passwordStore[conn.sessionID] = make(map[string]string)
 	}
 
-	// Store passwords in memory
+	// Store passwords in memory (even if empty)
 	for _, entry := range msg.Passwords {
 		h.passwordStore[conn.sessionID][entry.Account] = entry.Password
 	}
+	
+	h.passwordMu.Unlock()
 
 	log.Printf("Stored %d passwords in memory for session %s (never written to disk)", len(msg.Passwords), conn.sessionID)
 	
 	// Write passwords to FIFO so TUI can read them (NEW approach)
 	// The TUI will be blocking on read from this FIFO
+	// CRITICAL: Always write to FIFO, even if empty, to unblock the TUI
 	sessionDir := filepath.Join(".websessions", conn.sessionID)
 	initFifoPath := filepath.Join(sessionDir, ".password_init_fifo")
+	
+	// Delete existing FIFO if it exists (e.g., from client reload)
+	// This ensures fresh passwords can be sent after a page reload
+	os.Remove(initFifoPath)
+	
+	// Recreate the FIFO
+	if err := syscall.Mkfifo(initFifoPath, 0600); err != nil {
+		log.Printf("[Server] Failed to create password init FIFO: %v", err)
+		return
+	}
 	
 	// Open FIFO for writing in a goroutine (non-blocking)
 	go func() {
@@ -987,7 +1008,7 @@ func (h *WebSocketHandler) handlePasswordsInit(conn *DataConnection, msg *DataMe
 		}
 		defer file.Close()
 		
-		// Write password entries
+		// Write password entries (if any)
 		for _, entry := range msg.Passwords {
 			line := fmt.Sprintf("%s|%s\n", entry.Account, entry.Password)
 			if _, err := file.WriteString(line); err != nil {
@@ -1129,6 +1150,31 @@ func (h *WebSocketHandler) watchPasswordHints(conn *DataConnection) {
 			for scanner.Scan() {
 				data := scanner.Text()
 				if data != "" {
+					// Parse the hint to update server's password store
+					var hint map[string]string
+					if err := json.Unmarshal([]byte(data), &hint); err == nil {
+						account := hint["account"]
+						password := hint["password"]
+						
+						if account != "" {
+							h.passwordMu.Lock()
+							if h.passwordStore[conn.sessionID] == nil {
+								h.passwordStore[conn.sessionID] = make(map[string]string)
+							}
+							
+							if password == "" {
+								// Empty password means delete
+								delete(h.passwordStore[conn.sessionID], account)
+								log.Printf("[Server] Deleted password from memory for account %s in session %s", account, conn.sessionID)
+							} else {
+								// Update password in memory
+								h.passwordStore[conn.sessionID][account] = password
+								log.Printf("[Server] Updated password in memory for account %s in session %s", account, conn.sessionID)
+							}
+							h.passwordMu.Unlock()
+						}
+					}
+					
 					// Send hint to client
 					conn.sendMessage(&DataMessage{
 						Type:    "password_hint",
