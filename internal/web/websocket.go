@@ -680,8 +680,22 @@ func (h *WebSocketHandler) forwardSharedPTYOutput(sharedSession *SharedSession) 
 		}
 	}
 
-	// PTY closed, clean up
+	// PTY closed, clean up and restart TUI
 	sharedSession.cleanup()
+	
+	// Restart TUI if there are still connected clients
+	sharedSession.mu.RLock()
+	hasClients := len(sharedSession.clients) > 0
+	sharedSession.mu.RUnlock()
+	
+	if hasClients {
+		log.Printf("TUI exited for session %s, restarting...", sharedSession.sessionID)
+		// Brief delay before restart to avoid tight restart loop
+		time.Sleep(1 * time.Second)
+		h.startSharedTUI(sharedSession, nil)
+		// Start forwarding output from restarted TUI
+		go h.forwardSharedPTYOutput(sharedSession)
+	}
 }
 
 // forwardPTYOutput forwards output from PTY to WebSocket (deprecated)

@@ -77,10 +77,16 @@ async function handlePasswordHint(message) {
         const hint = JSON.parse(message.content);
         const { account, password } = hint;
         
-        if (account && password) {
-            // Save password to client-side IndexedDB
-            await savePassword(account, password);
-            console.log(`[Client] Saved manually entered password for account: ${account}`);
+        if (account) {
+            if (password === "" || password === null || password === undefined) {
+                // Empty password means delete
+                await deletePassword(account);
+                console.log(`[Client] Deleted wrong password for account: ${account}`);
+            } else {
+                // Save password to client-side IndexedDB
+                await savePassword(account, password);
+                console.log(`[Client] Saved manually entered password for account: ${account}`);
+            }
             
             // Re-send passwords to server so it has the updated list
             await sendPasswordsToServer();

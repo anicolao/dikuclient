@@ -634,7 +634,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg
 		m.output = append(m.output, fmt.Sprintf("Error: %v", msg))
 		m.updateViewport()
-		return m, nil
+		
+		// If connection closed shortly after auto-login, it might be wrong password
+		// Send hint to delete the password
+		if m.autoLoginState == 2 && m.webSessionID != "" && m.username != "" && m.password != "" {
+			// Send password deletion hint (empty password means delete)
+			m.savePasswordForWebClient("")
+		}
+		
+		// When MUD closes connection, TUI should exit
+		return m, tea.Quit
 
 	case autoWalkTickMsg:
 		// Process next step in auto-walk
@@ -1164,6 +1173,7 @@ func (m *Model) isPasswordPrompt() bool {
 }
 
 // savePasswordForWebClient writes password hint to FIFO for the web client
+// If password is empty, it signals to delete the password for this account
 func (m *Model) savePasswordForWebClient(password string) {
 	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
 	if webSessionID == "" {
@@ -1178,7 +1188,7 @@ func (m *Model) savePasswordForWebClient(password string) {
 
 	hint := map[string]string{
 		"account":  account,
-		"password": password,
+		"password": password, // Empty password means delete
 	}
 
 	hintJSON, err := json.Marshal(hint)
