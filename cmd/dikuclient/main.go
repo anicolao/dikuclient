@@ -4,8 +4,6 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"io"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -33,45 +31,20 @@ var (
 func main() {
 	flag.Parse()
 
-	// Debug logging for TUI lifecycle
-	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
-	if webSessionID != "" {
-		// Create debug log file to capture all stderr output in web mode
-		timestamp := time.Now().Format("20060102-150405")
-		debugLogFile, err := os.OpenFile(fmt.Sprintf("tui-debug-%s.log", timestamp), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err == nil {
-			// Redirect log output to both stderr and the file
-			log.SetOutput(io.MultiWriter(os.Stderr, debugLogFile))
-			defer debugLogFile.Close()
-		}
-		log.Printf("[TUI-DEBUG] TUI starting, session=%s, PID=%d", webSessionID, os.Getpid())
-	}
-
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
 	}
 
-	if webSessionID != "" {
-		log.Printf("[TUI-DEBUG] Config loaded successfully")
-	}
-
 	// Load password store (read-only in web mode to prevent writing)
+	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
 	isWebMode := webSessionID != ""
 	passwordStore := config.NewPasswordStore(isWebMode)
-	
-	if webSessionID != "" {
-		log.Printf("[TUI-DEBUG] About to call passwordStore.Load()")
-	}
 	
 	if err := passwordStore.Load(); err != nil {
 		fmt.Printf("Error loading passwords: %v\n", err)
 		// Continue anyway - passwords file might not exist yet
-	}
-	
-	if webSessionID != "" {
-		log.Printf("[TUI-DEBUG] passwordStore.Load() completed, loaded %d passwords", len(passwordStore.GetAllPasswords()))
 	}
 
 	// Handle account management commands

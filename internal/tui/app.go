@@ -3,7 +3,6 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand"
 	"os"
 	"regexp"
@@ -216,17 +215,14 @@ func (m *Model) Init() tea.Cmd {
 // connect establishes a connection to the MUD server
 func (m *Model) connect() tea.Msg {
 	if m.webSessionID != "" {
-		log.Printf("[TUI-DEBUG] Attempting to connect to %s:%d", m.host, m.port)
 	}
 	conn, err := client.NewConnectionWithDebug(m.host, m.port, m.telnetDebugLog)
 	if err != nil {
 		if m.webSessionID != "" {
-			log.Printf("[TUI-DEBUG] Connection failed: %v", err)
 		}
 		return errMsg(err)
 	}
 	if m.webSessionID != "" {
-		log.Printf("[TUI-DEBUG] Connection established successfully")
 	}
 	return conn
 }
@@ -520,7 +516,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.output = append(m.output, fmt.Sprintf("Connected to %s:%d", m.host, m.port))
 		m.updateViewport()
 		if m.webSessionID != "" {
-			log.Printf("[TUI-DEBUG] Connection established, starting listenForMessages")
 		}
 		return m, m.listenForMessages
 
@@ -534,7 +529,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(preview) > 50 {
 				preview = preview[:50] + "..."
 			}
-			log.Printf("[TUI-DEBUG] Received mudMsg: %q", preview)
 		}
 
 		// Log raw MUD output if logging enabled
@@ -654,7 +648,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case errMsg:
 		if m.webSessionID != "" {
-			log.Printf("[TUI-DEBUG] Received errMsg in Update: %v", msg)
 		}
 		m.err = msg
 		m.output = append(m.output, fmt.Sprintf("Error: %v", msg))
@@ -663,14 +656,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// If connection closed shortly after auto-login, it might be wrong password
 		// Send hint to delete the password
 		if m.autoLoginState == 2 && m.webSessionID != "" && m.username != "" && m.password != "" {
-			log.Printf("[TUI-DEBUG] Connection closed after auto-login (state=%d), sending password deletion hint", m.autoLoginState)
 			// Send password deletion hint (empty password means delete)
 			m.savePasswordForWebClient("")
 		}
 		
 		// When MUD closes connection, TUI should exit
 		if m.webSessionID != "" {
-			log.Printf("[TUI-DEBUG] TUI exiting due to error: %v, PID=%d, returning tea.Quit", msg, os.Getpid())
 		}
 		return m, tea.Quit
 
@@ -835,31 +826,23 @@ func (m *Model) listenForMessages() tea.Msg {
 	
 	if m.conn == nil || m.conn.IsClosed() {
 		// Connection is closed, return error to trigger quit
-		if webSessionID != "" {
-			log.Printf("[TUI-DEBUG] listenForMessages: connection is closed (conn==nil: %v, IsClosed: %v)", 
-				m.conn == nil, m.conn != nil && m.conn.IsClosed())
-		}
 		return errMsg(fmt.Errorf("connection closed"))
 	}
 
 	if webSessionID != "" {
-		log.Printf("[TUI-DEBUG] listenForMessages: entering select, waiting for message/error")
 	}
 
 	select {
 	case msg := <-m.conn.Receive():
 		if webSessionID != "" {
-			log.Printf("[TUI-DEBUG] listenForMessages: received message from MUD (len=%d)", len(msg))
 		}
 		return mudMsg(msg)
 	case echoSuppressed := <-m.conn.EchoState():
 		if webSessionID != "" {
-			log.Printf("[TUI-DEBUG] listenForMessages: received echo state change: %v", echoSuppressed)
 		}
 		return echoStateMsg(echoSuppressed)
 	case err := <-m.conn.Errors():
 		if webSessionID != "" {
-			log.Printf("[TUI-DEBUG] listenForMessages: received error from connection: %v", err)
 		}
 		return errMsg(err)
 	}
