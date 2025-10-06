@@ -81,6 +81,8 @@ type Model struct {
 	splitViewport         viewport.Model     // Second viewport for tracking live output when split
 	lastRenderedGameOutput string            // Last rendered game output (for testing)
 	lastRenderedSidebar    string            // Last rendered sidebar (for testing)
+	pendingCommands       []string           // Queue of commands to send (from triggers, aliases, or /go)
+	commandQueueActive    bool               // Currently processing command queue
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -115,6 +117,7 @@ type mudMsg string
 type errMsg error
 type echoStateMsg bool // true if echo suppressed (password mode)
 type autoWalkTickMsg struct{}
+type commandQueueTickMsg struct{}
 
 // NewModel creates a new application model
 func NewModel(host string, port int, mudLogFile, tuiLogFile *os.File) Model {
@@ -328,6 +331,39 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Try to expand alias
 				if expandedCommand, expanded := m.aliasManager.Expand(command); expanded {
 					command = expandedCommand
+				}
+
+				// Split command on `;` to support multiple commands
+				commands := strings.Split(command, ";")
+				for i := range commands {
+					commands[i] = strings.TrimSpace(commands[i])
+				}
+				// Filter out empty commands
+				var nonEmptyCommands []string
+				for _, cmd := range commands {
+					if cmd != "" {
+						nonEmptyCommands = append(nonEmptyCommands, cmd)
+					}
+				}
+
+				// If multiple commands, enqueue them
+				if len(nonEmptyCommands) > 1 {
+					// Show original command in output
+					if !m.echoSuppressed && !m.isPasswordPrompt() && command != "" {
+						if len(m.output) > 0 {
+							m.output[len(m.output)-1] = m.output[len(m.output)-1] + "\x1b[93m" + command + "\x1b[0m"
+						}
+					}
+					// Reset input
+					m.currentInput = ""
+					m.cursorPos = 0
+					m.updateViewport()
+					return m, m.enqueueCommands(nonEmptyCommands)
+				}
+
+				// Single command - execute immediately
+				if len(nonEmptyCommands) == 1 {
+					command = nonEmptyCommands[0]
 				}
 
 				// Check if this is a movement command
@@ -582,9 +618,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.triggerManager != nil && m.conn != nil {
 				actions := m.triggerManager.Match(line)
 				for _, action := range actions {
-					// Send the action as if the user typed it
-					m.output = append(m.output, fmt.Sprintf("\x1b[90m[Trigger: %s]\x1b[0m", action))
-					m.conn.Send(action)
+					// Split action on `;` to support multiple commands
+					commands := strings.Split(action, ";")
+					for i := range commands {
+						commands[i] = strings.TrimSpace(commands[i])
+					}
+					// Filter out empty commands
+					var nonEmptyCommands []string
+					for _, cmd := range commands {
+						if cmd != "" {
+							nonEmptyCommands = append(nonEmptyCommands, cmd)
+						}
+					}
+					if len(nonEmptyCommands) > 0 {
+						m.output = append(m.output, fmt.Sprintf("\x1b[90m[Trigger: %s]\x1b[0m", action))
+						autoWalkCmd = m.enqueueCommands(nonEmptyCommands)
+					}
 				}
 			}
 		}
@@ -693,6 +742,46 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.autoWalkIndex = 0
 				m.output = append(m.output, "\x1b[92m[Auto-walk complete!]\x1b[0m")
 				m.updateViewport()
+			}
+		}
+		return m, nil
+
+	case commandQueueTickMsg:
+		// Process next command in queue
+		if m.commandQueueActive && len(m.pendingCommands) > 0 {
+			command := m.pendingCommands[0]
+			m.pendingCommands = m.pendingCommands[1:]
+			
+			// Send the command
+			if m.conn != nil && m.connected {
+				m.conn.Send(command)
+				
+				// Track if this is an auto-walk command
+				if m.autoWalking && m.autoWalkIndex < len(m.autoWalkPath) {
+					m.autoWalkIndex++
+					m.pendingMovement = command
+					m.output = append(m.output, fmt.Sprintf("\x1b[90m[Auto-walk: %s (%d/%d)]\x1b[0m", command, m.autoWalkIndex, len(m.autoWalkPath)))
+				} else {
+					m.output = append(m.output, fmt.Sprintf("\x1b[90m[Queue: %s]\x1b[0m", command))
+				}
+				m.updateViewport()
+			}
+			
+			// If more commands remain, schedule next tick
+			if len(m.pendingCommands) > 0 {
+				return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+					return commandQueueTickMsg{}
+				})
+			} else {
+				// Queue complete
+				m.commandQueueActive = false
+				if m.autoWalking {
+					m.autoWalking = false
+					m.autoWalkPath = nil
+					m.autoWalkIndex = 0
+					m.output = append(m.output, "\x1b[92m[Auto-walk complete!]\x1b[0m")
+					m.updateViewport()
+				}
 			}
 		}
 		return m, nil
@@ -1496,6 +1585,9 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 		return nil
 	case "go":
 		return m.handleGoCommand(args)
+	case "stop":
+		m.handleStopCommand()
+		return nil
 	case "trigger":
 		m.handleTriggerCommand(command)
 		return nil
@@ -1741,6 +1833,7 @@ func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "  \x1b[96m/point <room>\x1b[0m            - Show next direction to reach a room")
 	m.output = append(m.output, "  \x1b[96m/wayfind <room>\x1b[0m         - Show full path to reach a room")
 	m.output = append(m.output, "  \x1b[96m/go <room>\x1b[0m              - Auto-walk to a room (one step per second)")
+	m.output = append(m.output, "  \x1b[96m/stop\x1b[0m                   - Stop auto-walk or command queue")
 	m.output = append(m.output, "  \x1b[96m/map\x1b[0m                    - Show map information")
 	m.output = append(m.output, "  \x1b[96m/rooms [filter]\x1b[0m         - List all known rooms (optionally filtered)")
 	m.output = append(m.output, "  \x1b[96m/nearby\x1b[0m                 - List all rooms within 5 steps")
@@ -1761,6 +1854,7 @@ func (m *Model) handleHelpCommand() {
 	m.output = append(m.output, "\x1b[90mRoom search matches all terms in room title, description, or exits\x1b[0m")
 	m.output = append(m.output, "\x1b[90mTriggers match output lines and execute actions (supports <variable> capture)\x1b[0m")
 	m.output = append(m.output, "\x1b[90mAliases expand commands with parameters (e.g., /alias \"gat\" \"give all <target>\")\x1b[0m")
+	m.output = append(m.output, "\x1b[90mTriggers and aliases support multiple commands separated by ';' (e.g., \"cmd1;cmd2;cmd3\")\x1b[0m")
 }
 
 // handleRoomsCommand lists all known rooms or filters by search terms
@@ -1981,17 +2075,23 @@ func (m *Model) handleLegendCommand() {
 
 // handleGoCommand starts auto-walking to a destination
 func (m *Model) handleGoCommand(args []string) tea.Cmd {
-	// If already auto-walking, stop it
-	if m.autoWalking {
-		m.autoWalking = false
-		m.autoWalkPath = nil
-		m.autoWalkIndex = 0
-		m.output = append(m.output, "\x1b[93mAuto-walk cancelled.\x1b[0m")
+	// If no args provided
+	if len(args) == 0 {
+		// If auto-walking or queue is active, stop it
+		if m.autoWalking || m.commandQueueActive || len(m.pendingCommands) > 0 {
+			m.stopCommandQueue()
+			m.output = append(m.output, "\x1b[93mAuto-walk cancelled.\x1b[0m")
+			return nil
+		}
+		// Otherwise show usage
+		m.output = append(m.output, "\x1b[91mUsage: /go <room search terms> or /go <number> [search terms]\x1b[0m")
 		return nil
 	}
 
-	if len(args) == 0 {
-		m.output = append(m.output, "\x1b[91mUsage: /go <room search terms> or /go <number> [search terms]\x1b[0m")
+	// If already auto-walking or queue is active, stop it first
+	if m.autoWalking || m.commandQueueActive || len(m.pendingCommands) > 0 {
+		m.stopCommandQueue()
+		m.output = append(m.output, "\x1b[93mAuto-walk cancelled. Start a new /go to navigate.\x1b[0m")
 		return nil
 	}
 
@@ -2096,17 +2196,25 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 		return nil
 	}
 
-	// Start auto-walking
-	m.autoWalking = true
+	// Enqueue the path commands
+	m.autoWalking = true  // Keep this for compatibility with failure detection
 	m.autoWalkPath = path
 	m.autoWalkIndex = 0
 	m.autoWalkTarget = targetRoom.Title // Store target for recovery
-	m.output = append(m.output, fmt.Sprintf("\x1b[92mAuto-walking to '%s' (%d steps). Type /go to cancel.\x1b[0m", targetRoom.Title, len(path)))
+	m.output = append(m.output, fmt.Sprintf("\x1b[92mAuto-walking to '%s' (%d steps). Type /stop to cancel.\x1b[0m", targetRoom.Title, len(path)))
 
-	// Return a command that starts the first tick after 1 second
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return autoWalkTickMsg{}
-	})
+	// Enqueue all the movement commands
+	return m.enqueueCommands(path)
+}
+
+// handleStopCommand stops any pending command queue and auto-walking
+func (m *Model) handleStopCommand() {
+	if m.commandQueueActive || m.autoWalking || len(m.pendingCommands) > 0 {
+		m.stopCommandQueue()
+		m.output = append(m.output, "\x1b[93mCommand queue and auto-walking stopped.\x1b[0m")
+	} else {
+		m.output = append(m.output, "\x1b[93mNo active command queue or auto-walking to stop.\x1b[0m")
+	}
 }
 
 // handleAutoWalkFailure handles a failed movement during auto-walk
@@ -2131,12 +2239,14 @@ func (m *Model) handleAutoWalkFailure() tea.Cmd {
 		m.worldMap.Save()
 	}
 
-	// Stop current auto-walk
+	// Stop current auto-walk and clear command queue
 	targetTitle := m.autoWalkTarget
 	m.autoWalking = false
 	m.autoWalkPath = nil
 	m.autoWalkIndex = 0
 	m.autoWalkTarget = ""
+	m.pendingCommands = nil  // Clear the remaining queued commands
+	m.commandQueueActive = false
 
 	// Try to replan the route to the same destination
 	if targetTitle != "" {
@@ -2165,13 +2275,38 @@ func (m *Model) handleAutoWalkFailure() tea.Cmd {
 		m.autoWalkTarget = targetTitle
 		m.output = append(m.output, fmt.Sprintf("\x1b[92m[Auto-walk: Restarting with new route (%d steps)]\x1b[0m", len(path)))
 
-		// Start the first tick after 1 second
-		return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-			return autoWalkTickMsg{}
-		})
+		// Enqueue the new path
+		return m.enqueueCommands(path)
 	}
 
 	return nil
+}
+
+// enqueueCommands adds commands to the pending queue and starts processing if not already active
+// Commands should be split on `;` before calling this function
+func (m *Model) enqueueCommands(commands []string) tea.Cmd {
+	// Add commands to the queue
+	m.pendingCommands = append(m.pendingCommands, commands...)
+	
+	// If queue is not already active, start processing
+	if !m.commandQueueActive && len(m.pendingCommands) > 0 {
+		m.commandQueueActive = true
+		return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return commandQueueTickMsg{}
+		})
+	}
+	
+	return nil
+}
+
+// stopCommandQueue clears the command queue and stops auto-walking
+func (m *Model) stopCommandQueue() {
+	m.pendingCommands = nil
+	m.commandQueueActive = false
+	m.autoWalking = false
+	m.autoWalkPath = nil
+	m.autoWalkIndex = 0
+	m.autoWalkTarget = ""
 }
 
 // handleTriggerCommand adds a new trigger
