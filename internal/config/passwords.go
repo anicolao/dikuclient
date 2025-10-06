@@ -55,8 +55,17 @@ func (ps *PasswordStore) Load() error {
 		// Try to read from password init FIFO (relative path since TUI runs in session dir)
 		fifoPath := "./.password_init_fifo"
 		
-		// Use a goroutine with timeout to avoid blocking forever on restarted TUI instances
-		// where the passwords_init message may have already been consumed
+		// Check if FIFO exists - if it does, it's from a previous TUI instance
+		// Skip reading from it since the message was already consumed
+		if _, err := os.Stat(fifoPath); err == nil {
+			// FIFO exists from previous run - skip it and continue without passwords
+			// The server only sends passwords_init once at initial connection
+			return nil
+		}
+		
+		// FIFO doesn't exist - this is the first TUI instance for this session
+		// We expect the server to create it and send passwords
+		// Try to read with a timeout in case the server hasn't sent the message yet
 		done := make(chan bool, 1)
 		go func() {
 			file, err := os.Open(fifoPath)
@@ -82,7 +91,7 @@ func (ps *PasswordStore) Load() error {
 		case <-done:
 			// Successfully read from FIFO or failed to open
 		case <-time.After(5 * time.Second):
-			// Timeout - continue without passwords (likely a restarted TUI)
+			// Timeout - continue without passwords
 			// This is okay since the TUI will work without stored passwords
 		}
 		
