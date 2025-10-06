@@ -227,20 +227,24 @@ async function sendPasswordsToServer() {
         // Load all passwords from IndexedDB
         const passwords = await listPasswords();
         
-        if (passwords && passwords.length > 0) {
-            // Send to server
-            if (dataWs && dataConnected) {
-                dataWs.send(JSON.stringify({
-                    type: 'passwords_init',
-                    passwords: passwords
-                }));
-                console.log(`[Client] Sent ${passwords.length} passwords to server for auto-login`);
-            }
-        } else {
-            console.log('[Client] No passwords to send to server');
+        // CRITICAL: Always send passwords_init message, even if empty
+        // The TUI blocks waiting for this message, so we must send it
+        if (dataWs && dataConnected) {
+            dataWs.send(JSON.stringify({
+                type: 'passwords_init',
+                passwords: passwords || []
+            }));
+            console.log(`[Client] Sent ${passwords ? passwords.length : 0} passwords to server for auto-login`);
         }
     } catch (e) {
         console.error('[Client] Error sending passwords to server:', e);
+        // Even on error, try to send empty passwords to unblock TUI
+        if (dataWs && dataConnected) {
+            dataWs.send(JSON.stringify({
+                type: 'passwords_init',
+                passwords: []
+            }));
+        }
     }
 }
 

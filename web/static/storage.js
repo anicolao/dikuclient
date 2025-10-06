@@ -180,9 +180,13 @@ async function listPasswords() {
         const request = index.getAll(currentSessionId);
         
         request.onsuccess = () => {
-            const passwords = {};
+            // Return array of {account, password} objects for Go deserialization
+            const passwords = [];
             for (const item of request.result) {
-                passwords[item.account] = item.password;
+                passwords.push({
+                    account: item.account,
+                    password: item.password
+                });
             }
             resolve(passwords);
         };

@@ -954,27 +954,25 @@ func (h *WebSocketHandler) handleClientFileUpdate(conn *DataConnection, sessionD
 
 // handlePasswordsInit processes passwords from client for auto-login
 func (h *WebSocketHandler) handlePasswordsInit(conn *DataConnection, msg *DataMessage) {
-	if len(msg.Passwords) == 0 {
-		return
-	}
-
 	h.passwordMu.Lock()
-	defer h.passwordMu.Unlock()
-
+	
 	// Initialize password map for this session if needed
 	if h.passwordStore[conn.sessionID] == nil {
 		h.passwordStore[conn.sessionID] = make(map[string]string)
 	}
 
-	// Store passwords in memory
+	// Store passwords in memory (even if empty)
 	for _, entry := range msg.Passwords {
 		h.passwordStore[conn.sessionID][entry.Account] = entry.Password
 	}
+	
+	h.passwordMu.Unlock()
 
 	log.Printf("Stored %d passwords in memory for session %s (never written to disk)", len(msg.Passwords), conn.sessionID)
 	
 	// Write passwords to FIFO so TUI can read them (NEW approach)
 	// The TUI will be blocking on read from this FIFO
+	// CRITICAL: Always write to FIFO, even if empty, to unblock the TUI
 	sessionDir := filepath.Join(".websessions", conn.sessionID)
 	initFifoPath := filepath.Join(sessionDir, ".password_init_fifo")
 	
@@ -987,7 +985,7 @@ func (h *WebSocketHandler) handlePasswordsInit(conn *DataConnection, msg *DataMe
 		}
 		defer file.Close()
 		
-		// Write password entries
+		// Write password entries (if any)
 		for _, entry := range msg.Passwords {
 			line := fmt.Sprintf("%s|%s\n", entry.Account, entry.Password)
 			if _, err := file.WriteString(line); err != nil {
