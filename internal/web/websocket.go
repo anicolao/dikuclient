@@ -630,23 +630,29 @@ func incompleteUTF8Tail(data []byte) int {
 func (h *WebSocketHandler) forwardSharedPTYOutput(sharedSession *SharedSession) {
 	sharedSession.mu.RLock()
 	ptmx := sharedSession.ptmx
+	sessionID := sharedSession.sessionID
 	sharedSession.mu.RUnlock()
 
 	if ptmx == nil {
+		log.Printf("[SERVER-DEBUG] forwardSharedPTYOutput: ptmx is nil for session %s", sessionID)
 		return
 	}
 
+	log.Printf("[SERVER-DEBUG] forwardSharedPTYOutput: starting read loop for session %s", sessionID)
 	buf := make([]byte, 4096)
 	for {
 		n, err := ptmx.Read(buf)
 		if err != nil {
 			if err != io.EOF {
-				log.Printf("Error reading from PTY: %v", err)
+				log.Printf("[SERVER-DEBUG] Error reading from PTY for session %s: %v", sessionID, err)
+			} else {
+				log.Printf("[SERVER-DEBUG] PTY EOF for session %s", sessionID)
 			}
 			break
 		}
 
 		if n > 0 {
+			log.Printf("[SERVER-DEBUG] Read %d bytes from PTY for session %s", n, sessionID)
 			sharedSession.mu.Lock()
 			if !sharedSession.closed {
 				// Prepend any buffered UTF-8 bytes from previous read
@@ -667,10 +673,12 @@ func (h *WebSocketHandler) forwardSharedPTYOutput(sharedSession *SharedSession) 
 
 				// Broadcast to all connected clients
 				if len(data) > 0 {
+					clientCount := len(sharedSession.clients)
+					log.Printf("[SERVER-DEBUG] Broadcasting %d bytes to %d clients for session %s", len(data), clientCount, sessionID)
 					for ws := range sharedSession.clients {
 						err := ws.WriteMessage(websocket.BinaryMessage, data)
 						if err != nil {
-							log.Printf("Error writing to WebSocket client: %v", err)
+							log.Printf("[SERVER-DEBUG] Error writing to WebSocket client: %v", err)
 							// Note: Don't break here, try to send to other clients
 						}
 					}
@@ -689,12 +697,15 @@ func (h *WebSocketHandler) forwardSharedPTYOutput(sharedSession *SharedSession) 
 	sharedSession.mu.RUnlock()
 	
 	if hasClients {
-		log.Printf("TUI exited for session %s, restarting...", sharedSession.sessionID)
+		log.Printf("[SERVER-DEBUG] TUI exited for session %s, restarting...", sharedSession.sessionID)
 		// Brief delay before restart to avoid tight restart loop
 		time.Sleep(1 * time.Second)
+		log.Printf("[SERVER-DEBUG] Starting new TUI instance for session %s", sharedSession.sessionID)
 		h.startSharedTUI(sharedSession, nil)
+		log.Printf("[SERVER-DEBUG] New TUI started, beginning output forwarding for session %s", sharedSession.sessionID)
 		// Start forwarding output from restarted TUI
 		go h.forwardSharedPTYOutput(sharedSession)
+		log.Printf("[SERVER-DEBUG] Output forwarding goroutine started for session %s", sharedSession.sessionID)
 	}
 }
 
