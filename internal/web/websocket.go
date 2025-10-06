@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,7 +10,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
+	"syscall"
+	"time"
 	"unicode/utf8"
 
 	"github.com/creack/pty"
@@ -34,6 +38,8 @@ type WebSocketHandler struct {
 	currentSessID  string // Current session ID to use for new connections
 	sessionIDMu    sync.RWMutex
 	port           int // Server port for generating share URLs
+	passwordStore  map[string]map[string]string // sessionID -> (account -> password), kept in memory only
+	passwordMu     sync.RWMutex
 }
 
 // SharedSession represents a shared PTY session that multiple clients can connect to
@@ -92,6 +98,7 @@ func NewWebSocketHandlerWithLogging(enableLogs bool) *WebSocketHandler {
 		sessions:       make(map[*websocket.Conn]*ClientConnection),
 		sharedSessions: make(map[string]*SharedSession),
 		enableLogs:     enableLogs,
+		passwordStore:  make(map[string]map[string]string),
 	}
 }
 
@@ -266,6 +273,21 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 		return
 	}
 
+	// Create FIFOs for password communication before starting TUI
+	// 1. password_hint_fifo: TUI → Server (when user types password)
+	// 2. password_init_fifo: Server → TUI (when client sends passwords on startup)
+	hintFifoPath := filepath.Join(sessionDir, ".password_hint_fifo")
+	if err := syscall.Mkfifo(hintFifoPath, 0600); err != nil && !os.IsExist(err) {
+		log.Printf("Failed to create password hint FIFO: %v", err)
+		// Continue anyway - password hints won't work but TUI can still run
+	}
+	
+	initFifoPath := filepath.Join(sessionDir, ".password_init_fifo")
+	if err := syscall.Mkfifo(initFifoPath, 0600); err != nil && !os.IsExist(err) {
+		log.Printf("Failed to create password init FIFO: %v", err)
+		// Continue anyway - password init won't work but TUI can still run
+	}
+
 	// Get the path to the dikuclient binary
 	dikuclientPath, err := exec.LookPath("dikuclient")
 	if err != nil {
@@ -300,13 +322,20 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 	// Set environment variables for session sharing and config
 	configDir := filepath.Join(absSessionDir, ".config", "dikuclient")
 	serverURL := fmt.Sprintf("http://localhost:%d", h.port)
-	cmd.Env = append(os.Environ(),
+	envVars := []string{
 		fmt.Sprintf("DIKUCLIENT_CONFIG_DIR=%s", configDir),
 		fmt.Sprintf("DIKUCLIENT_WEB_SESSION_ID=%s", sharedSession.sessionID),
 		fmt.Sprintf("DIKUCLIENT_WEB_SERVER_URL=%s", serverURL),
 		"TERM=xterm-kitty",        // Ensure consistent color support regardless of server terminal
 		"COLORTERM=truecolor",      // Enable 24-bit true color support
-	)
+	}
+	
+	// Add passwords from memory as environment variable
+	if passwordsEnv := h.getPasswordsEnv(sharedSession.sessionID); passwordsEnv != "" {
+		envVars = append(envVars, fmt.Sprintf("DIKUCLIENT_WEB_PASSWORDS=%s", passwordsEnv))
+	}
+	
+	cmd.Env = append(os.Environ(), envVars...)
 
 	// Start the command with a PTY
 	ptmx, err := pty.Start(cmd)
@@ -780,4 +809,352 @@ func (s *Session) sendError(message string) {
 	if err != nil {
 		log.Printf("Error sending error message: %v", err)
 	}
+}
+
+// DataMessage represents file synchronization messages
+type PasswordEntry struct {
+	Account  string `json:"account"`  // Format: host:port:username
+	Password string `json:"password"` // Password for the account
+}
+
+type DataMessage struct {
+	Type      string          `json:"type"`       // "file_update", "file_request", "file_not_found", "merge_complete", "passwords_init"
+	Path      string          `json:"path"`       // File path relative to config directory
+	Content   string          `json:"content"`    // File content (JSON string)
+	Timestamp int64           `json:"timestamp"`  // Unix timestamp in milliseconds
+	Files     []string        `json:"files,omitempty"` // List of files (for merge_complete)
+	Passwords []PasswordEntry `json:"passwords,omitempty"` // Password entries (for passwords_init)
+}
+
+// DataConnection represents a data synchronization WebSocket connection
+type DataConnection struct {
+	ws        *websocket.Conn
+	sessionID string
+	mu        sync.Mutex
+	done      chan struct{}
+}
+
+// HandleDataWebSocket handles data synchronization WebSocket connections
+func (h *WebSocketHandler) HandleDataWebSocket(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("id")
+	if sessionID == "" {
+		log.Printf("Data WebSocket connection rejected: no session ID")
+		http.Error(w, "Session ID required", http.StatusBadRequest)
+		return
+	}
+
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("Failed to upgrade data WebSocket: %v", err)
+		return
+	}
+
+	conn := &DataConnection{
+		ws:        ws,
+		sessionID: sessionID,
+		done:      make(chan struct{}),
+	}
+
+	log.Printf("Data WebSocket connected for session %s", sessionID)
+
+	// Start file watcher for this session
+	go h.watchSessionFiles(conn)
+	go h.watchPasswordHints(conn)
+
+	// Handle incoming messages
+	for {
+		messageType, message, err := ws.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("Data WebSocket error: %v", err)
+			}
+			break
+		}
+
+		if messageType == websocket.TextMessage {
+			var msg DataMessage
+			if err := json.Unmarshal(message, &msg); err != nil {
+				log.Printf("Invalid data message: %v", err)
+				continue
+			}
+
+			h.handleDataMessage(conn, &msg)
+		}
+	}
+
+	// Signal goroutines to stop
+	close(conn.done)
+	
+	log.Printf("Data WebSocket closed for session %s", sessionID)
+}
+
+// handleDataMessage processes incoming data synchronization messages
+func (h *WebSocketHandler) handleDataMessage(conn *DataConnection, msg *DataMessage) {
+	sessionDir := filepath.Join(".websessions", conn.sessionID, ".config", "dikuclient")
+
+	switch msg.Type {
+	case "file_update":
+		// Client sent a file update
+		h.handleClientFileUpdate(conn, sessionDir, msg)
+	case "file_request":
+		// Client requests a file
+		h.handleClientFileRequest(conn, sessionDir, msg)
+	case "file_not_found":
+		log.Printf("Client doesn't have file: %s", msg.Path)
+	case "passwords_init":
+		// Client sent passwords for auto-login
+		h.handlePasswordsInit(conn, msg)
+	default:
+		log.Printf("Unknown data message type: %s", msg.Type)
+	}
+}
+
+// handleClientFileUpdate processes file updates from client
+func (h *WebSocketHandler) handleClientFileUpdate(conn *DataConnection, sessionDir string, msg *DataMessage) {
+	filePath := filepath.Join(sessionDir, msg.Path)
+	
+	// Prevent writing .passwords file in web mode (passwords should never reach server)
+	if msg.Path == ".passwords" {
+		log.Printf("Blocked attempt to write .passwords file in web mode")
+		return
+	}
+
+	// Check if file exists and its modification time
+	fileInfo, err := os.Stat(filePath)
+	if err == nil {
+		// File exists, check if client version is newer
+		serverTime := fileInfo.ModTime().UnixMilli()
+		if msg.Timestamp <= serverTime {
+			// Server version is newer or same, don't overwrite
+			log.Printf("Skipping server update for %s (server version is newer)", msg.Path)
+			return
+		}
+	}
+
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
+		log.Printf("Failed to create directory for %s: %v", msg.Path, err)
+		return
+	}
+
+	// Write file
+	if err := os.WriteFile(filePath, []byte(msg.Content), 0600); err != nil {
+		log.Printf("Failed to write file %s: %v", msg.Path, err)
+		return
+	}
+
+	// Set modification time
+	modTime := time.UnixMilli(msg.Timestamp)
+	if err := os.Chtimes(filePath, modTime, modTime); err != nil {
+		log.Printf("Failed to set file time for %s: %v", msg.Path, err)
+	}
+
+	log.Printf("Updated server file from client: %s", msg.Path)
+}
+
+// handlePasswordsInit processes passwords from client for auto-login
+func (h *WebSocketHandler) handlePasswordsInit(conn *DataConnection, msg *DataMessage) {
+	if len(msg.Passwords) == 0 {
+		return
+	}
+
+	h.passwordMu.Lock()
+	defer h.passwordMu.Unlock()
+
+	// Initialize password map for this session if needed
+	if h.passwordStore[conn.sessionID] == nil {
+		h.passwordStore[conn.sessionID] = make(map[string]string)
+	}
+
+	// Store passwords in memory
+	for _, entry := range msg.Passwords {
+		h.passwordStore[conn.sessionID][entry.Account] = entry.Password
+	}
+
+	log.Printf("Stored %d passwords in memory for session %s (never written to disk)", len(msg.Passwords), conn.sessionID)
+	
+	// Write passwords to FIFO so TUI can read them (NEW approach)
+	// The TUI will be blocking on read from this FIFO
+	sessionDir := filepath.Join(".websessions", conn.sessionID)
+	initFifoPath := filepath.Join(sessionDir, ".password_init_fifo")
+	
+	// Open FIFO for writing in a goroutine (non-blocking)
+	go func() {
+		file, err := os.OpenFile(initFifoPath, os.O_WRONLY, 0600)
+		if err != nil {
+			log.Printf("[Server] Failed to open password init FIFO for writing: %v", err)
+			return
+		}
+		defer file.Close()
+		
+		// Write password entries
+		for _, entry := range msg.Passwords {
+			line := fmt.Sprintf("%s|%s\n", entry.Account, entry.Password)
+			if _, err := file.WriteString(line); err != nil {
+				log.Printf("[Server] Failed to write to password init FIFO: %v", err)
+				return
+			}
+		}
+		log.Printf("[Server] Wrote %d passwords to init FIFO for TUI", len(msg.Passwords))
+	}()
+}
+
+// getPasswordsEnv formats passwords as environment variable string
+// Format: host:port:username|password entries separated by newlines
+func (h *WebSocketHandler) getPasswordsEnv(sessionID string) string {
+	h.passwordMu.RLock()
+	defer h.passwordMu.RUnlock()
+
+	passwords, ok := h.passwordStore[sessionID]
+	if !ok || len(passwords) == 0 {
+		return ""
+	}
+
+	var entries []string
+	for account, password := range passwords {
+		entries = append(entries, fmt.Sprintf("%s|%s", account, password))
+	}
+
+	return strings.Join(entries, "\n")
+}
+
+// handleClientFileRequest processes file requests from client
+func (h *WebSocketHandler) handleClientFileRequest(conn *DataConnection, sessionDir string, msg *DataMessage) {
+	filePath := filepath.Join(sessionDir, msg.Path)
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		// File doesn't exist, send not found
+		conn.sendMessage(&DataMessage{
+			Type: "file_not_found",
+			Path: msg.Path,
+		})
+		return
+	}
+
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		log.Printf("Failed to stat file %s: %v", msg.Path, err)
+		return
+	}
+
+	// Send file to client
+	conn.sendMessage(&DataMessage{
+		Type:      "file_update",
+		Path:      msg.Path,
+		Content:   string(data),
+		Timestamp: fileInfo.ModTime().UnixMilli(),
+	})
+}
+
+// watchSessionFiles watches for changes in session files and syncs to client
+func (h *WebSocketHandler) watchSessionFiles(conn *DataConnection) {
+	sessionDir := filepath.Join(".websessions", conn.sessionID, ".config", "dikuclient")
+	
+	// Files to watch
+	filesToWatch := []string{
+		"accounts.json",
+		"history.json",
+		"map.json",
+		"xps.json",
+	}
+
+	// Initial sync - send all existing files to client
+	for _, fileName := range filesToWatch {
+		filePath := filepath.Join(sessionDir, fileName)
+		if data, err := os.ReadFile(filePath); err == nil {
+			fileInfo, _ := os.Stat(filePath)
+			conn.sendMessage(&DataMessage{
+				Type:      "file_update",
+				Path:      fileName,
+				Content:   string(data),
+				Timestamp: fileInfo.ModTime().UnixMilli(),
+			})
+		}
+	}
+
+	// Note: Full file watching implementation would require fsnotify or polling
+	// For now, we rely on the initial sync and client-initiated updates
+	log.Printf("Initial file sync complete for session %s", conn.sessionID)
+}
+
+// watchPasswordHints watches for password hints via FIFO and sends them to client
+func (h *WebSocketHandler) watchPasswordHints(conn *DataConnection) {
+	sessionDir := filepath.Join(".websessions", conn.sessionID)
+	fifoPath := filepath.Join(sessionDir, ".password_hint_fifo")
+
+	// FIFO should already exist (created by startSharedTUI)
+	// If it doesn't exist, it means TUI hasn't started yet, so wait for it
+	for i := 0; i < 50; i++ { // Wait up to 5 seconds
+		if _, err := os.Stat(fifoPath); err == nil {
+			break
+		}
+		select {
+		case <-conn.done:
+			return
+		case <-time.After(100 * time.Millisecond):
+			continue
+		}
+	}
+
+	// Check if FIFO exists
+	if _, err := os.Stat(fifoPath); err != nil {
+		log.Printf("Password hint FIFO does not exist for session %s: %v", conn.sessionID, err)
+		return
+	}
+
+	defer os.Remove(fifoPath) // Clean up FIFO on exit
+
+	// Read from FIFO in a loop
+	for {
+		select {
+		case <-conn.done:
+			return
+		default:
+			// Open FIFO for reading (blocks until writer opens it)
+			file, err := os.OpenFile(fifoPath, os.O_RDONLY, 0)
+			if err != nil {
+				// Check if we should exit
+				select {
+				case <-conn.done:
+					return
+				default:
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+			}
+
+			// Read data from FIFO
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				data := scanner.Text()
+				if data != "" {
+					// Send hint to client
+					conn.sendMessage(&DataMessage{
+						Type:    "password_hint",
+						Content: data,
+					})
+					log.Printf("[Server] Sent password hint to client for session %s", conn.sessionID)
+				}
+			}
+			file.Close()
+		}
+	}
+}
+
+// sendMessage sends a data message to the client
+func (conn *DataConnection) sendMessage(msg *DataMessage) error {
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	if err := conn.ws.WriteMessage(websocket.TextMessage, data); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
+	}
+
+	return nil
 }

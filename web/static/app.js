@@ -6,6 +6,8 @@ let fitAddon = null;
 let useFallback = false;
 let fallbackContent = '';
 
+
+
 // DOM elements
 const terminalDiv = document.getElementById('terminal');
 
@@ -245,3 +247,5 @@ function connectToServer() {
         }, 3000);
     };
 }
+
+

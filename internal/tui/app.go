@@ -1,7 +1,9 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"regexp"
 	"sort"
@@ -282,6 +284,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Reset history navigation state
 					m.historyIndex = -1
 					m.historySavedInput = ""
+				} else if command != "" && m.isPasswordPrompt() {
+					// This is a password being entered
+					// For web mode, create a password hint file so client can save it
+					webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+					if webSessionID != "" {
+						// Save password hint for web client
+						go m.savePasswordForWebClient(command)
+					}
 				}
 
 				// Check if this is a client command (starts with /)
@@ -325,15 +335,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Don't modify m.output here - let the server echo if it wants to
 				// Or we can store the command for display purposes
-				if !m.echoSuppressed && command != "" {
+				// Don't echo if it's a password prompt
+				if !m.echoSuppressed && !m.isPasswordPrompt() && command != "" {
 					// Add the command as a new line in output (it will show on the prompt line)
 					// This preserves it even when new output arrives
 					if len(m.output) > 0 {
 						// Modify the last line to include the command
 						m.output[len(m.output)-1] = m.output[len(m.output)-1] + "\x1b[93m" + command + "\x1b[0m"
 					}
-				}
+				} else if (m.echoSuppressed || m.isPasswordPrompt()) && command != "" {
+					// For password input, show obfuscated bullets with random length
+					// Add -3 to +3 random bullets to the actual length to hide true length
+					actualLength := len(command)
+					randomOffset := rand.Intn(7) - 3 // Range: -3 to +3
+					displayLength := actualLength + randomOffset
+					if displayLength < 0 {
+						displayLength = 0
+					}
+					bullets := strings.Repeat("⚫", displayLength)
+					if len(m.output) > 0 {
+						m.output[len(m.output)-1] = m.output[len(m.output)-1] + bullets
+					}
 
+				}
 				// Reset input
 				m.currentInput = ""
 				m.cursorPos = 0
@@ -694,8 +718,8 @@ func (m *Model) updateViewport() {
 			}
 
 			content = strings.Join(lines, "\n")
-		} else if (m.currentInput != "" || m.connected) && !m.echoSuppressed {
-			// Build input line with cursor (only if echo is not suppressed)
+		} else if (m.currentInput != "" || m.connected) && !m.echoSuppressed && !m.isPasswordPrompt() {
+			// Build input line with cursor (only if echo is not suppressed and not a password prompt)
 			inputLine := m.currentInput
 			if m.cursorPos < len(m.currentInput) {
 				// Show cursor in the middle of text
@@ -711,12 +735,12 @@ func (m *Model) updateViewport() {
 			copy(lines, m.output[:len(m.output)-1])
 			lines = append(lines, lastLine+"\x1b[93m"+inputLine+"\x1b[0m")
 			content = strings.Join(lines, "\n")
-		} else if m.echoSuppressed && m.connected {
-			// In password mode, just show the prompt without the input
-			// Show a cursor to indicate user can type
+		} else if (m.echoSuppressed || m.isPasswordPrompt()) && m.connected {
+			// In password mode, show bullets for each character typed
+			bullets := strings.Repeat("⚫", len(m.currentInput))
 			lines := make([]string, len(m.output)-1)
 			copy(lines, m.output[:len(m.output)-1])
-			lines = append(lines, lastLine+"█")
+			lines = append(lines, lastLine+bullets+"█")
 			content = strings.Join(lines, "\n")
 		} else {
 			content = strings.Join(m.output, "\n")
@@ -724,7 +748,7 @@ func (m *Model) updateViewport() {
 	} else {
 		// No output yet, just show cursor if connected
 		if m.currentInput != "" || m.connected {
-			if !m.echoSuppressed {
+			if !m.echoSuppressed && !m.isPasswordPrompt() {
 				inputLine := m.currentInput
 				if m.cursorPos < len(m.currentInput) {
 					inputLine = m.currentInput[:m.cursorPos] + "█" + m.currentInput[m.cursorPos:]
@@ -734,8 +758,9 @@ func (m *Model) updateViewport() {
 				// Use bright yellow for better visibility
 				content = "\x1b[93m" + inputLine + "\x1b[0m"
 			} else {
-				// Password mode - just show cursor
-				content = "█"
+				// Password mode - show bullets for each character typed
+				bullets := strings.Repeat("⚫", len(m.currentInput))
+				content = bullets + "█"
 			}
 		}
 	}
@@ -1136,6 +1161,45 @@ func (m *Model) isPasswordPrompt() bool {
 	}
 	lastLine := strings.ToLower(strings.TrimSpace(m.output[len(m.output)-1]))
 	return strings.Contains(lastLine, "pass")
+}
+
+// savePasswordForWebClient writes password hint to FIFO for the web client
+func (m *Model) savePasswordForWebClient(password string) {
+	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+	if webSessionID == "" {
+		return
+	}
+
+	// FIFO path - TUI runs inside .websessions/<sessionID> so just use relative path
+	fifoPath := "./.password_hint_fifo"
+
+	// Determine account key from current connection
+	account := fmt.Sprintf("%s:%d:%s", m.host, m.port, m.username)
+
+	hint := map[string]string{
+		"account":  account,
+		"password": password,
+	}
+
+	hintJSON, err := json.Marshal(hint)
+	if err != nil {
+		return
+	}
+
+	// Open FIFO for writing (will block until server opens for reading)
+	// This is done in a goroutine to avoid blocking the TUI
+	go func() {
+		file, err := os.OpenFile(fifoPath, os.O_WRONLY, 0)
+		if err != nil {
+			// FIFO doesn't exist or can't be opened, skip silently
+			return
+		}
+		defer file.Close()
+
+		// Write hint to FIFO
+		file.Write(hintJSON)
+		file.Write([]byte("\n"))
+	}()
 }
 
 // detectAndUpdateRoom tries to parse room information from recent output
@@ -2285,12 +2349,26 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 				// Don't modify m.output here - let the server echo if it wants to
 				// Or we can store the command for display purposes
-				if !m.echoSuppressed && command != "" {
+				// Don't echo if it's a password prompt
+				if !m.echoSuppressed && !m.isPasswordPrompt() && command != "" {
 					// Add the command as a new line in output (it will show on the prompt line)
 					// This preserves it even when new output arrives
 					if len(m.output) > 0 {
 						// Modify the last line to include the command
 						m.output[len(m.output)-1] = m.output[len(m.output)-1] + "\x1b[93m" + command + "\x1b[0m"
+					}
+				} else if (m.echoSuppressed || m.isPasswordPrompt()) && command != "" {
+					// For password input, show obfuscated bullets with random length
+					// Add -3 to +3 random bullets to the actual length to hide true length
+					actualLength := len(command)
+					randomOffset := rand.Intn(7) - 3 // Range: -3 to +3
+					displayLength := actualLength + randomOffset
+					if displayLength < 0 {
+						displayLength = 0
+					}
+					bullets := strings.Repeat("⚫", displayLength)
+					if len(m.output) > 0 {
+						m.output[len(m.output)-1] = m.output[len(m.output)-1] + bullets
 					}
 				}
 
