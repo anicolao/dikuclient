@@ -188,14 +188,24 @@ func TestMainPanelSidebarHeightMatch(t *testing.T) {
 					tc.height, contentHeight, panelHeight, expectedHeight, renderedHeight)
 			}
 
-			// Render sidebar separately to verify it also matches expected height exactly
-			sidebarWidth := 60
-			sidebar := m.renderSidebar(sidebarWidth, contentHeight)
-			sidebarHeight := lipgloss.Height(sidebar)
+			// Verify gameOutput and sidebar heights match expected height exactly
+			gameOutputHeight := lipgloss.Height(m.lastRenderedGameOutput)
+			sidebarHeight := lipgloss.Height(m.lastRenderedSidebar)
+			
+			if gameOutputHeight != expectedHeight {
+				t.Errorf("GameOutput height mismatch: terminal height=%d, expected=%d, gameOutput=%d",
+					tc.height, expectedHeight, gameOutputHeight)
+			}
 			
 			if sidebarHeight != expectedHeight {
 				t.Errorf("Sidebar height mismatch: terminal height=%d, expected=%d, sidebar=%d",
 					tc.height, expectedHeight, sidebarHeight)
+			}
+			
+			// Ensure gameOutput and sidebar have the same height
+			if gameOutputHeight != sidebarHeight {
+				t.Errorf("GameOutput and Sidebar heights don't match: terminal height=%d, gameOutput=%d, sidebar=%d",
+					tc.height, gameOutputHeight, sidebarHeight)
 			}
 		})
 	}

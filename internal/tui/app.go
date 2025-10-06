@@ -79,6 +79,8 @@ type Model struct {
 	historySearchIndex    int                // Current position in search results
 	isSplit               bool               // Whether the main viewport is split
 	splitViewport         viewport.Model     // Second viewport for tracking live output when split
+	lastRenderedGameOutput string            // Last rendered game output (for testing)
+	lastRenderedSidebar    string            // Last rendered sidebar (for testing)
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -996,6 +998,10 @@ func (m *Model) renderMainContent() string {
 
 	// Sidebar with panels
 	sidebar := m.renderSidebar(sidebarWidth, contentHeight)
+
+	// Store last rendered components for testing
+	m.lastRenderedGameOutput = gameOutput
+	m.lastRenderedSidebar = sidebar
 
 	return lipgloss.JoinHorizontal(
 		lipgloss.Top,
