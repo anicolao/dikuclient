@@ -814,6 +814,7 @@ type DataConnection struct {
 	ws        *websocket.Conn
 	sessionID string
 	mu        sync.Mutex
+	done      chan struct{}
 }
 
 // HandleDataWebSocket handles data synchronization WebSocket connections
@@ -834,12 +835,14 @@ func (h *WebSocketHandler) HandleDataWebSocket(w http.ResponseWriter, r *http.Re
 	conn := &DataConnection{
 		ws:        ws,
 		sessionID: sessionID,
+		done:      make(chan struct{}),
 	}
 
 	log.Printf("Data WebSocket connected for session %s", sessionID)
 
 	// Start file watcher for this session
 	go h.watchSessionFiles(conn)
+	go h.watchPasswordHints(conn)
 
 	// Handle incoming messages
 	for {
@@ -862,6 +865,9 @@ func (h *WebSocketHandler) HandleDataWebSocket(w http.ResponseWriter, r *http.Re
 		}
 	}
 
+	// Signal goroutines to stop
+	close(conn.done)
+	
 	log.Printf("Data WebSocket closed for session %s", sessionID)
 }
 
@@ -1028,6 +1034,36 @@ func (h *WebSocketHandler) watchSessionFiles(conn *DataConnection) {
 	// Note: Full file watching implementation would require fsnotify or polling
 	// For now, we rely on the initial sync and client-initiated updates
 	log.Printf("Initial file sync complete for session %s", conn.sessionID)
+}
+
+// watchPasswordHints watches for password hint files and sends them to client
+func (h *WebSocketHandler) watchPasswordHints(conn *DataConnection) {
+	sessionDir := filepath.Join(".websessions", conn.sessionID)
+	hintFile := filepath.Join(sessionDir, ".password_hint")
+
+	// Poll for password hints every 100ms
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// Check if hint file exists
+			if data, err := os.ReadFile(hintFile); err == nil {
+				// Send hint to client
+				conn.sendMessage(&DataMessage{
+					Type:    "password_hint",
+					Content: string(data),
+				})
+
+				// Delete hint file after sending
+				os.Remove(hintFile)
+				log.Printf("[Server] Sent password hint to client for session %s", conn.sessionID)
+			}
+		case <-conn.done:
+			return
+		}
+	}
 }
 
 // sendMessage sends a data message to the client

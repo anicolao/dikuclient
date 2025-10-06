@@ -59,11 +59,34 @@ async function handleDataMessage(message) {
             // Server requests a file
             await handleFileRequest(message);
             break;
+        case 'password_hint':
+            // Server sent a password hint (for manually entered passwords)
+            await handlePasswordHint(message);
+            break;
         case 'merge_complete':
             console.log('Data merge complete:', message.files);
             break;
         default:
             console.log('Unknown data message type:', message.type);
+    }
+}
+
+// Handle password hint from server
+async function handlePasswordHint(message) {
+    try {
+        const hint = JSON.parse(message.content);
+        const { account, password } = hint;
+        
+        if (account && password) {
+            // Save password to client-side IndexedDB
+            await savePassword(account, password);
+            console.log(`[Client] Saved manually entered password for account: ${account}`);
+            
+            // Re-send passwords to server so it has the updated list
+            await sendPasswordsToServer();
+        }
+    } catch (e) {
+        console.error('[Client] Error handling password hint:', e);
     }
 }
 
@@ -211,11 +234,13 @@ async function sendPasswordsToServer() {
                     type: 'passwords_init',
                     passwords: passwords
                 }));
-                console.log(`Sent ${passwords.length} passwords to server for auto-login`);
+                console.log(`[Client] Sent ${passwords.length} passwords to server for auto-login`);
             }
+        } else {
+            console.log('[Client] No passwords to send to server');
         }
     } catch (e) {
-        console.error('Error sending passwords to server:', e);
+        console.error('[Client] Error sending passwords to server:', e);
     }
 }
 

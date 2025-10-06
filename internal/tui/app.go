@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -284,8 +286,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.historyIndex = -1
 					m.historySavedInput = ""
 				} else if command != "" && m.isPasswordPrompt() {
-					// This is a password being entered (no special handling needed)
-					// Password is captured on client side for web mode
+					// This is a password being entered
+					// For web mode, create a password hint file so client can save it
+					webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+					if webSessionID != "" {
+						// Save password hint for web client
+						go m.savePasswordForWebClient(command)
+					}
 				}
 
 				// Check if this is a client command (starts with /)
@@ -1157,7 +1164,35 @@ func (m *Model) isPasswordPrompt() bool {
 	return strings.Contains(lastLine, "pass")
 }
 
+// savePasswordForWebClient creates a password hint file for the web client
+func (m *Model) savePasswordForWebClient(password string) {
+	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+	if webSessionID == "" {
+		return
+	}
 
+	// Create hint file in session directory
+	sessionDir := filepath.Join(".websessions", webSessionID)
+	hintFile := filepath.Join(sessionDir, ".password_hint")
+
+	// Determine account key from current connection
+	account := fmt.Sprintf("%s:%d:%s", m.host, m.port, m.username)
+
+	hint := map[string]string{
+		"account":  account,
+		"password": password,
+	}
+
+	hintJSON, err := json.Marshal(hint)
+	if err != nil {
+		return
+	}
+
+	// Write hint file (will be picked up by server and sent to client)
+	if err := os.WriteFile(hintFile, hintJSON, 0600); err != nil {
+		return
+	}
+}
 
 // detectAndUpdateRoom tries to parse room information from recent output
 func (m *Model) detectAndUpdateRoom() {
