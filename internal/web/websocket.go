@@ -990,6 +990,16 @@ func (h *WebSocketHandler) handlePasswordsInit(conn *DataConnection, msg *DataMe
 	sessionDir := filepath.Join(".websessions", conn.sessionID)
 	initFifoPath := filepath.Join(sessionDir, ".password_init_fifo")
 	
+	// Delete existing FIFO if it exists (e.g., from client reload)
+	// This ensures fresh passwords can be sent after a page reload
+	os.Remove(initFifoPath)
+	
+	// Recreate the FIFO
+	if err := syscall.Mkfifo(initFifoPath, 0600); err != nil {
+		log.Printf("[Server] Failed to create password init FIFO: %v", err)
+		return
+	}
+	
 	// Open FIFO for writing in a goroutine (non-blocking)
 	go func() {
 		file, err := os.OpenFile(initFifoPath, os.O_WRONLY, 0600)
