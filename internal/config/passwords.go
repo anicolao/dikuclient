@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // PasswordStore manages password storage separate from accounts.json
@@ -53,27 +54,39 @@ func (ps *PasswordStore) Load() error {
 	if webSessionID != "" {
 		// Try to read from password init FIFO (relative path since TUI runs in session dir)
 		fifoPath := "./.password_init_fifo"
-		file, err := os.Open(fifoPath)
-		if err == nil {
-			defer file.Close()
-			scanner := bufio.NewScanner(file)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if line == "" {
-					continue
-				}
-				parts := strings.SplitN(line, "|", 2)
-				if len(parts) == 2 {
-					ps.passwords[parts[0]] = parts[1]
+		
+		// Use a goroutine with timeout to avoid blocking forever on restarted TUI instances
+		// where the passwords_init message may have already been consumed
+		done := make(chan bool, 1)
+		go func() {
+			file, err := os.Open(fifoPath)
+			if err == nil {
+				defer file.Close()
+				scanner := bufio.NewScanner(file)
+				for scanner.Scan() {
+					line := scanner.Text()
+					if line == "" {
+						continue
+					}
+					parts := strings.SplitN(line, "|", 2)
+					if len(parts) == 2 {
+						ps.passwords[parts[0]] = parts[1]
+					}
 				}
 			}
-			if err := scanner.Err(); err != nil {
-				return fmt.Errorf("failed to parse passwords from FIFO: %w", err)
-			}
-			// Successfully read from FIFO
-			return nil
+			done <- true
+		}()
+		
+		// Wait for FIFO read with 5 second timeout
+		select {
+		case <-done:
+			// Successfully read from FIFO or failed to open
+		case <-time.After(5 * time.Second):
+			// Timeout - continue without passwords (likely a restarted TUI)
+			// This is okay since the TUI will work without stored passwords
 		}
-		// FIFO doesn't exist or can't be opened - that's okay, just continue without passwords
+		
+		// Continue loading from other sources
 	}
 	
 	// In web mode, also check for passwords from environment variable (legacy support)
