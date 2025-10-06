@@ -183,9 +183,19 @@ func TestMainPanelSidebarHeightMatch(t *testing.T) {
 			renderedHeight := lipgloss.Height(content)
 
 			// The main panel and sidebar should be exactly the same height
-			if renderedHeight < expectedHeight {
-				t.Errorf("Height mismatch: terminal height=%d, contentHeight=%d, panelHeight=%d, expected=%d, rendered=%d",
+			if renderedHeight != expectedHeight {
+				t.Errorf("Rendered height mismatch: terminal height=%d, contentHeight=%d, panelHeight=%d, expected=%d, rendered=%d",
 					tc.height, contentHeight, panelHeight, expectedHeight, renderedHeight)
+			}
+
+			// Render sidebar separately to verify it also matches expected height exactly
+			sidebarWidth := 60
+			sidebar := m.renderSidebar(sidebarWidth, contentHeight)
+			sidebarHeight := lipgloss.Height(sidebar)
+			
+			if sidebarHeight != expectedHeight {
+				t.Errorf("Sidebar height mismatch: terminal height=%d, expected=%d, sidebar=%d",
+					tc.height, expectedHeight, sidebarHeight)
 			}
 		})
 	}
