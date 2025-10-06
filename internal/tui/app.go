@@ -883,6 +883,15 @@ func (m *Model) renderMainContent() string {
 	sidebarWidth := m.sidebarWidth
 	mainWidth := m.width - sidebarWidth - 1
 	contentHeight := m.height - headerHeight
+	
+	// Calculate actual main panel height to match sidebar height
+	// The sidebar has 4 panels with panelHeight = contentHeight / 4
+	// Each panel adds borders: 3 panels add +1 (top border), 1 panel adds +2 (top+bottom)
+	// Total sidebar height = 4 * panelHeight + 5
+	// Main panel with top+bottom borders renders as Height(h) + 2
+	// So we need: h + 2 = 4 * panelHeight + 5, therefore h = 4 * panelHeight + 3
+	panelHeight := contentHeight / 4
+	actualContentHeight := 4 * panelHeight + 3
 
 	// Build title for main window with current room and exits
 	mainTitle := ""
@@ -925,8 +934,8 @@ func (m *Model) renderMainContent() string {
 		// Split mode: 2/3 for user scrolled position, 1/3 for live output at bottom
 		// When stacking two boxes vertically, we need to account for the extra border line
 		// where they meet (the separator between them)
-		topHeight := (contentHeight * 2) / 3
-		bottomHeight := contentHeight - topHeight - 1 // -1 for separator border
+		topHeight := (actualContentHeight * 2) / 3
+		bottomHeight := actualContentHeight - topHeight - 1 // -1 for separator border
 
 		// Adjust viewport heights to match the split heights
 		// Subtract border heights: topHeight has 1 border (top), bottomHeight has 2 borders (top+bottom)
@@ -969,7 +978,7 @@ func (m *Model) renderMainContent() string {
 	} else {
 		// Normal mode: single viewport
 		// Restore viewport to full height
-		m.viewport.Height = contentHeight - 2 // Subtract 2 for top and bottom borders
+		m.viewport.Height = actualContentHeight - 2 // Subtract 2 for top and bottom borders
 
 		mainBorderStyle := lipgloss.NewStyle().
 			BorderStyle(customBorder).
@@ -981,7 +990,7 @@ func (m *Model) renderMainContent() string {
 
 		gameOutput = mainBorderStyle.
 			Width(mainWidth).
-			Height(contentHeight).
+			Height(actualContentHeight).
 			Render(m.viewport.View())
 	}
 
