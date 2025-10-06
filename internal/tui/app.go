@@ -1164,16 +1164,16 @@ func (m *Model) isPasswordPrompt() bool {
 	return strings.Contains(lastLine, "pass")
 }
 
-// savePasswordForWebClient creates a password hint file for the web client
+// savePasswordForWebClient writes password hint to FIFO for the web client
 func (m *Model) savePasswordForWebClient(password string) {
 	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
 	if webSessionID == "" {
 		return
 	}
 
-	// Create hint file in session directory
+	// FIFO path in session directory
 	sessionDir := filepath.Join(".websessions", webSessionID)
-	hintFile := filepath.Join(sessionDir, ".password_hint")
+	fifoPath := filepath.Join(sessionDir, ".password_hint_fifo")
 
 	// Determine account key from current connection
 	account := fmt.Sprintf("%s:%d:%s", m.host, m.port, m.username)
@@ -1188,10 +1188,20 @@ func (m *Model) savePasswordForWebClient(password string) {
 		return
 	}
 
-	// Write hint file (will be picked up by server and sent to client)
-	if err := os.WriteFile(hintFile, hintJSON, 0600); err != nil {
-		return
-	}
+	// Open FIFO for writing (will block until server opens for reading)
+	// This is done in a goroutine to avoid blocking the TUI
+	go func() {
+		file, err := os.OpenFile(fifoPath, os.O_WRONLY, 0)
+		if err != nil {
+			// FIFO doesn't exist or can't be opened, skip silently
+			return
+		}
+		defer file.Close()
+
+		// Write hint to FIFO
+		file.Write(hintJSON)
+		file.Write([]byte("\n"))
+	}()
 }
 
 // detectAndUpdateRoom tries to parse room information from recent output

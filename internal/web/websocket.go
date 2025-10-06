@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -1036,32 +1038,58 @@ func (h *WebSocketHandler) watchSessionFiles(conn *DataConnection) {
 	log.Printf("Initial file sync complete for session %s", conn.sessionID)
 }
 
-// watchPasswordHints watches for password hint files and sends them to client
+// watchPasswordHints watches for password hints via FIFO and sends them to client
 func (h *WebSocketHandler) watchPasswordHints(conn *DataConnection) {
 	sessionDir := filepath.Join(".websessions", conn.sessionID)
-	hintFile := filepath.Join(sessionDir, ".password_hint")
+	fifoPath := filepath.Join(sessionDir, ".password_hint_fifo")
 
-	// Poll for password hints every 100ms
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
+	// Ensure session directory exists
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		log.Printf("Failed to create session directory: %v", err)
+		return
+	}
 
+	// Create FIFO (named pipe)
+	if err := syscall.Mkfifo(fifoPath, 0600); err != nil && !os.IsExist(err) {
+		log.Printf("Failed to create FIFO: %v", err)
+		return
+	}
+
+	defer os.Remove(fifoPath) // Clean up FIFO on exit
+
+	// Read from FIFO in a loop
 	for {
 		select {
-		case <-ticker.C:
-			// Check if hint file exists
-			if data, err := os.ReadFile(hintFile); err == nil {
-				// Send hint to client
-				conn.sendMessage(&DataMessage{
-					Type:    "password_hint",
-					Content: string(data),
-				})
-
-				// Delete hint file after sending
-				os.Remove(hintFile)
-				log.Printf("[Server] Sent password hint to client for session %s", conn.sessionID)
-			}
 		case <-conn.done:
 			return
+		default:
+			// Open FIFO for reading (blocks until writer opens it)
+			file, err := os.OpenFile(fifoPath, os.O_RDONLY, 0)
+			if err != nil {
+				// Check if we should exit
+				select {
+				case <-conn.done:
+					return
+				default:
+					time.Sleep(100 * time.Millisecond)
+					continue
+				}
+			}
+
+			// Read data from FIFO
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				data := scanner.Text()
+				if data != "" {
+					// Send hint to client
+					conn.sendMessage(&DataMessage{
+						Type:    "password_hint",
+						Content: data,
+					})
+					log.Printf("[Server] Sent password hint to client for session %s", conn.sessionID)
+				}
+			}
+			file.Close()
 		}
 	}
 }
