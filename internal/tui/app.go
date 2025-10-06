@@ -79,6 +79,8 @@ type Model struct {
 	historySearchIndex    int                // Current position in search results
 	isSplit               bool               // Whether the main viewport is split
 	splitViewport         viewport.Model     // Second viewport for tracking live output when split
+	lastRenderedGameOutput string            // Last rendered game output (for testing)
+	lastRenderedSidebar    string            // Last rendered sidebar (for testing)
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -467,20 +469,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-		headerHeight := 3
+		headerHeight := 5
 		sidebarWidth := m.sidebarWidth
 		mainWidth := m.width - sidebarWidth - 1
 
 		m.viewport.Width = mainWidth
-		m.viewport.Height = m.height - headerHeight - 2
+		m.viewport.Height = m.height - headerHeight
 		// Don't apply viewport style - let ANSI codes pass through
 
 		// Set up split viewport dimensions (1/3 of main viewport height)
 		m.splitViewport.Width = mainWidth
-		m.splitViewport.Height = (m.height - headerHeight - 2) / 3
+		m.splitViewport.Height = (m.height - headerHeight) / 3
 
 		// Update viewport sizes for 4 panels
-		panelHeight := (m.height - headerHeight - 2 - 8) / 4
+		panelHeight := (m.height - headerHeight - 8) / 4
 		m.inventoryViewport.Width = sidebarWidth - 4 // Account for borders and padding
 		m.inventoryViewport.Height = panelHeight - 4 // Account for header, timestamp, and borders
 
@@ -879,7 +881,7 @@ func (m *Model) renderStatusBar() string {
 }
 
 func (m *Model) renderMainContent() string {
-	headerHeight := 3
+	headerHeight := 5
 	sidebarWidth := m.sidebarWidth
 	mainWidth := m.width - sidebarWidth - 1
 	contentHeight := m.height - headerHeight
@@ -997,6 +999,10 @@ func (m *Model) renderMainContent() string {
 	// Sidebar with panels
 	sidebar := m.renderSidebar(sidebarWidth, contentHeight)
 
+	// Store last rendered components for testing
+	m.lastRenderedGameOutput = gameOutput
+	m.lastRenderedSidebar = sidebar
+
 	return lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		gameOutput,
@@ -1058,7 +1064,8 @@ func (m *Model) renderSidebar(width, height int) string {
 		BorderLeft(true).
 		BorderRight(true).
 		BorderBottom(false).
-		Padding(1)
+		PaddingLeft(1).
+		PaddingRight(1)
 
 	tellsPanel := tellsStyle.
 		Width(width - 2).
@@ -1120,7 +1127,8 @@ func (m *Model) renderSidebar(width, height int) string {
 		BorderLeft(true).
 		BorderRight(true).
 		BorderBottom(false).
-		Padding(1)
+		PaddingLeft(1).
+		PaddingRight(1)
 
 	xpPanel := xpStyle.
 		Width(width - 2).
@@ -1147,7 +1155,8 @@ func (m *Model) renderSidebar(width, height int) string {
 		BorderLeft(true).
 		BorderRight(true).
 		BorderBottom(false).
-		Padding(1)
+		PaddingLeft(1).
+		PaddingRight(1)
 
 	inventoryPanel := inventoryStyle.
 		Width(width - 2).
@@ -1180,7 +1189,8 @@ func (m *Model) renderSidebar(width, height int) string {
 		BorderLeft(true).
 		BorderRight(true).
 		BorderBottom(true).
-		Padding(1)
+		PaddingLeft(1).
+		PaddingRight(1)
 
 	mapPanel := mapStyle.
 		Width(width - 2).
