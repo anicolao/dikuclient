@@ -62,15 +62,44 @@ func StartWithLogging(port int, enableLogs bool) error {
 
 // handleRoot serves the main page and handles session management
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
+	// Check if user wants a new session via /new path
+	if r.URL.Path == "/new" {
+		// Generate a new GUID and redirect
+		newSessionID := uuid.New().String()
+		redirectURL := fmt.Sprintf("/?id=%s", newSessionID)
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		log.Printf("New session created (via /new path): %s", newSessionID)
+		return
+	}
+
 	// Check if session ID is provided
 	sessionID := r.URL.Query().Get("id")
 
 	if sessionID == "" {
-		// No session ID - generate a new GUID and redirect
+		// No session ID in URL - check for last session cookie
+		if cookie, err := r.Cookie("dikuclient_last_session"); err == nil && cookie.Value != "" {
+			// Redirect to last used session
+			redirectURL := fmt.Sprintf("/?id=%s", cookie.Value)
+			http.Redirect(w, r, redirectURL, http.StatusFound)
+			log.Printf("Redirecting to last session: %s", cookie.Value)
+			return
+		}
+		
+		// No cookie or empty cookie - generate a new GUID and redirect
 		newSessionID := uuid.New().String()
 		redirectURL := fmt.Sprintf("/?id=%s", newSessionID)
 		http.Redirect(w, r, redirectURL, http.StatusFound)
 		log.Printf("New session created: %s", newSessionID)
+		return
+	}
+
+	// Check if user explicitly wants a new session via ?id=new
+	if sessionID == "new" {
+		// Generate a new GUID and redirect
+		newSessionID := uuid.New().String()
+		redirectURL := fmt.Sprintf("/?id=%s", newSessionID)
+		http.Redirect(w, r, redirectURL, http.StatusFound)
+		log.Printf("New session created (explicit): %s", newSessionID)
 		return
 	}
 
