@@ -359,6 +359,7 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 	sharedSession.mu.Lock()
 	sharedSession.ptmx = ptmx
 	sharedSession.cmd = cmd
+	sharedSession.closed = false // Reset closed flag for restarted TUI
 	sharedSession.mu.Unlock()
 
 	log.Printf("Started shared TUI session for %s with size %dx%d", sharedSession.sessionID, cols, rows)
