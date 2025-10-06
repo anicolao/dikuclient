@@ -1064,7 +1064,8 @@ func (m *Model) renderSidebar(width, height int) string {
 		BorderLeft(true).
 		BorderRight(true).
 		BorderBottom(false).
-		Padding(1)
+		PaddingLeft(1).
+		PaddingRight(1)
 
 	tellsPanel := tellsStyle.
 		Width(width - 2).
@@ -1126,7 +1127,8 @@ func (m *Model) renderSidebar(width, height int) string {
 		BorderLeft(true).
 		BorderRight(true).
 		BorderBottom(false).
-		Padding(1)
+		PaddingLeft(1).
+		PaddingRight(1)
 
 	xpPanel := xpStyle.
 		Width(width - 2).
@@ -1153,7 +1155,8 @@ func (m *Model) renderSidebar(width, height int) string {
 		BorderLeft(true).
 		BorderRight(true).
 		BorderBottom(false).
-		Padding(1)
+		PaddingLeft(1).
+		PaddingRight(1)
 
 	inventoryPanel := inventoryStyle.
 		Width(width - 2).
@@ -1186,7 +1189,8 @@ func (m *Model) renderSidebar(width, height int) string {
 		BorderLeft(true).
 		BorderRight(true).
 		BorderBottom(true).
-		Padding(1)
+		PaddingLeft(1).
+		PaddingRight(1)
 
 	mapPanel := mapStyle.
 		Width(width - 2).
