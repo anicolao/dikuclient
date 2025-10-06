@@ -47,7 +47,36 @@ func GetPasswordPath() (string, error) {
 
 // Load loads passwords from disk or environment variable (web mode)
 func (ps *PasswordStore) Load() error {
-	// In web mode, check for passwords from environment variable first
+	// In web mode, check for passwords from FIFO first (blocking read from server)
+	// This is the NEW approach: client sends passwords to server, server writes to FIFO, TUI reads from FIFO
+	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+	if webSessionID != "" {
+		// Try to read from password init FIFO (relative path since TUI runs in session dir)
+		fifoPath := "./.password_init_fifo"
+		file, err := os.Open(fifoPath)
+		if err == nil {
+			defer file.Close()
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if line == "" {
+					continue
+				}
+				parts := strings.SplitN(line, "|", 2)
+				if len(parts) == 2 {
+					ps.passwords[parts[0]] = parts[1]
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				return fmt.Errorf("failed to parse passwords from FIFO: %w", err)
+			}
+			// Successfully read from FIFO
+			return nil
+		}
+		// FIFO doesn't exist or can't be opened - that's okay, just continue without passwords
+	}
+	
+	// In web mode, also check for passwords from environment variable (legacy support)
 	if webPasswords := os.Getenv("DIKUCLIENT_WEB_PASSWORDS"); webPasswords != "" {
 		// Parse format: account|password entries separated by newlines
 		scanner := bufio.NewScanner(strings.NewReader(webPasswords))

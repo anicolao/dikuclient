@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -1171,9 +1170,8 @@ func (m *Model) savePasswordForWebClient(password string) {
 		return
 	}
 
-	// FIFO path in session directory
-	sessionDir := filepath.Join(".websessions", webSessionID)
-	fifoPath := filepath.Join(sessionDir, ".password_hint_fifo")
+	// FIFO path - TUI runs inside .websessions/<sessionID> so just use relative path
+	fifoPath := "./.password_hint_fifo"
 
 	// Determine account key from current connection
 	account := fmt.Sprintf("%s:%d:%s", m.host, m.port, m.username)

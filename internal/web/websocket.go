@@ -273,12 +273,19 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 		return
 	}
 
-	// Create FIFO for password hints before starting TUI
-	// This ensures the FIFO exists when TUI tries to write to it
-	fifoPath := filepath.Join(sessionDir, ".password_hint_fifo")
-	if err := syscall.Mkfifo(fifoPath, 0600); err != nil && !os.IsExist(err) {
+	// Create FIFOs for password communication before starting TUI
+	// 1. password_hint_fifo: TUI → Server (when user types password)
+	// 2. password_init_fifo: Server → TUI (when client sends passwords on startup)
+	hintFifoPath := filepath.Join(sessionDir, ".password_hint_fifo")
+	if err := syscall.Mkfifo(hintFifoPath, 0600); err != nil && !os.IsExist(err) {
 		log.Printf("Failed to create password hint FIFO: %v", err)
 		// Continue anyway - password hints won't work but TUI can still run
+	}
+	
+	initFifoPath := filepath.Join(sessionDir, ".password_init_fifo")
+	if err := syscall.Mkfifo(initFifoPath, 0600); err != nil && !os.IsExist(err) {
+		log.Printf("Failed to create password init FIFO: %v", err)
+		// Continue anyway - password init won't work but TUI can still run
 	}
 
 	// Get the path to the dikuclient binary
@@ -965,6 +972,31 @@ func (h *WebSocketHandler) handlePasswordsInit(conn *DataConnection, msg *DataMe
 	}
 
 	log.Printf("Stored %d passwords in memory for session %s (never written to disk)", len(msg.Passwords), conn.sessionID)
+	
+	// Write passwords to FIFO so TUI can read them (NEW approach)
+	// The TUI will be blocking on read from this FIFO
+	sessionDir := filepath.Join(".websessions", conn.sessionID)
+	initFifoPath := filepath.Join(sessionDir, ".password_init_fifo")
+	
+	// Open FIFO for writing in a goroutine (non-blocking)
+	go func() {
+		file, err := os.OpenFile(initFifoPath, os.O_WRONLY, 0600)
+		if err != nil {
+			log.Printf("[Server] Failed to open password init FIFO for writing: %v", err)
+			return
+		}
+		defer file.Close()
+		
+		// Write password entries
+		for _, entry := range msg.Passwords {
+			line := fmt.Sprintf("%s|%s\n", entry.Account, entry.Password)
+			if _, err := file.WriteString(line); err != nil {
+				log.Printf("[Server] Failed to write to password init FIFO: %v", err)
+				return
+			}
+		}
+		log.Printf("[Server] Wrote %d passwords to init FIFO for TUI", len(msg.Passwords))
+	}()
 }
 
 // getPasswordsEnv formats passwords as environment variable string
