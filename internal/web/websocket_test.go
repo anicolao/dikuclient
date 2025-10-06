@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/gorilla/websocket"
 )
 
 func TestPasswordsInitFormat(t *testing.T) {
@@ -127,5 +129,62 @@ func TestWebSocketHandler_parseConnectMessage(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSharedSession_TerminalSizeStorage(t *testing.T) {
+	// Test that terminal size is properly stored and retrieved in SharedSession
+	session := &SharedSession{
+		sessionID: "test-session",
+		clients:   make(map[*websocket.Conn]bool),
+	}
+
+	// Initially, no size should be set
+	if session.rows != 0 || session.cols != 0 {
+		t.Errorf("expected initial size to be 0x0, got %dx%d", session.cols, session.rows)
+	}
+
+	// Simulate setting terminal size
+	session.rows = 50
+	session.cols = 120
+
+	// Verify size is stored
+	if session.rows != 50 || session.cols != 120 {
+		t.Errorf("expected size 120x50, got %dx%d", session.cols, session.rows)
+	}
+
+	// Simulate resize
+	session.rows = 60
+	session.cols = 150
+
+	// Verify updated size
+	if session.rows != 60 || session.cols != 150 {
+		t.Errorf("expected size 150x60, got %dx%d", session.cols, session.rows)
+	}
+}
+
+func TestHandleSharedResize_StoresSize(t *testing.T) {
+	// Test that handleSharedResize stores the terminal size
+	handler := NewWebSocketHandler()
+	session := &SharedSession{
+		sessionID: "test-session",
+		clients:   make(map[*websocket.Conn]bool),
+		closed:    true, // Mark as closed so we don't try to set PTY size
+	}
+
+	// Create resize message
+	resizeMsg := ResizeMessage{
+		Type: "resize",
+		Cols: 100,
+		Rows: 40,
+	}
+	msgBytes, _ := json.Marshal(resizeMsg)
+
+	// Handle resize
+	handler.handleSharedResize(session, msgBytes)
+
+	// Verify size is stored
+	if session.rows != 40 || session.cols != 100 {
+		t.Errorf("expected size 100x40 to be stored, got %dx%d", session.cols, session.rows)
 	}
 }
