@@ -278,6 +278,17 @@ To fully integrate the Go code, you need to:
 **Error**: "ADB not found"
 - Solution: Add Android SDK platform-tools to PATH
 
+### Go Mobile Build Errors
+
+**Error**: "go: could not create module cache: mkdir /nix/store/.../pkg: permission denied" (Nix users)
+- Solution: The build script now automatically sets `GOMODCACHE` and `GOCACHE` to writable directories
+- If you still encounter issues, manually set these environment variables:
+  ```bash
+  export GOMODCACHE="$HOME/go/pkg/mod"
+  export GOCACHE="$HOME/.cache/go-build"
+  ./scripts/build-mobile.sh all
+  ```
+
 ## Next Steps
 
 1. **Complete Go Mobile Integration**:

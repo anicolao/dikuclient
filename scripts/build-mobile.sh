@@ -13,6 +13,12 @@ echo -e "${GREEN}DikuClient Mobile Build Script${NC}"
 echo "================================"
 echo ""
 
+# Set up Go environment for Nix compatibility
+# This ensures gomobile can create module cache in writable directory
+export GOMODCACHE="${GOMODCACHE:-$HOME/go/pkg/mod}"
+export GOCACHE="${GOCACHE:-$HOME/.cache/go-build}"
+mkdir -p "$GOMODCACHE" "$GOCACHE"
+
 # Check if gomobile is installed
 if ! command -v gomobile &> /dev/null; then
     echo -e "${YELLOW}gomobile not found. Installing...${NC}"
