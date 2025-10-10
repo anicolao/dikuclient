@@ -28,6 +28,7 @@ Key characteristics:
 5. **Touchscreen input** support for typing commands
 6. **Keyboard support** when available
 7. **Standalone installation** - Users should be able to install DikuClient and have a working setup without needing to install any other programs
+8. **Floating buttons capability** - The app architecture must support overlaying UI buttons on top of the terminal window for fast controls, with buttons potentially overlapping the terminal content
 
 ### Impact of Standalone Requirement
 
@@ -52,6 +53,32 @@ The standalone installation requirement is a critical constraint that significan
 
 This constraint shifts the recommendation from "quick and simple" (Termux) to "professional and complete" (native apps), requiring more initial development effort but providing a significantly better user experience.
 
+### Impact of Floating Buttons Requirement
+
+The floating buttons requirement ensures future extensibility for advanced mobile controls:
+
+**What it means**:
+- Ability to overlay interactive UI controls on top of the terminal display
+- Buttons can overlap terminal content (not constrained to non-overlapping regions)
+- Fast-access controls for common MUD commands or client features
+- Native mobile UI patterns (floating action buttons, overlays)
+
+**What it requires**:
+- ✅ Native UI framework that supports layered views (Z-order control)
+- ✅ Terminal emulator as a view component (not full-screen exclusive mode)
+- ✅ Ability to handle touch events both for buttons and terminal
+- ✅ Flexible layout system for positioning floating elements
+
+**What it rules out**:
+- ❌ Full-screen terminal-only solutions without UI layer capability
+- ❌ Simple terminal emulation without native UI integration
+
+**Why native apps satisfy this**:
+- **iOS (SwiftUI/UIKit)**: ZStack in SwiftUI or view hierarchy in UIKit naturally supports overlaying views. SwiftTerm is a UIView component that can be placed in a view hierarchy with other UI elements layered on top.
+- **Android (Jetpack Compose/Views)**: Box composable or FrameLayout naturally supports Z-ordering. Terminal views can have other composables/views rendered on top with full control over layering.
+
+This requirement reinforces the need for native app development on both platforms, as both iOS and Android UI frameworks provide robust support for floating/overlaid UI elements.
+
 ## iOS Deployment Strategies
 
 ### Option 1: Go Mobile + Terminal Emulator (Recommended for iOS)
@@ -63,7 +90,7 @@ This constraint shifts the recommendation from "quick and simple" (Termux) to "p
 ┌─────────────────────────────────────┐
 │         iOS Native App              │
 ├─────────────────────────────────────┤
-│  SwiftUI/UIKit Container            │
+│  SwiftUI/UIKit Container (ZStack)   │
 │  ┌───────────────────────────────┐  │
 │  │  Terminal Emulator View       │  │
 │  │  (SwiftTerm or custom)        │  │
@@ -74,6 +101,11 @@ This constraint shifts the recommendation from "quick and simple" (Termux) to "p
 │  │  │  │  (dikuclient TUI) │  │  │  │
 │  │  │  └───────────────────┘  │  │  │
 │  │  └─────────────────────────┘  │  │
+│  └───────────────────────────────┘  │
+│  ┌───────────────────────────────┐  │
+│  │  Floating Buttons Layer       │  │
+│  │  (overlaid on terminal)       │  │
+│  │  [↑] [↓] [⚔] [🛡] [🏃]       │  │
 │  └───────────────────────────────┘  │
 │  ┌───────────────────────────────┐  │
 │  │  On-screen Keyboard           │  │
@@ -113,6 +145,7 @@ This constraint shifts the recommendation from "quick and simple" (Termux) to "p
 - ✅ Native iOS performance
 - ✅ Offline-capable (Go runs locally)
 - ✅ SwiftTerm is mature and well-maintained
+- ✅ **Floating buttons support**: SwiftUI ZStack or UIKit view hierarchy enables easy overlay of buttons on terminal
 
 **Cons**:
 - ⚠️ Requires iOS wrapper app development (Swift/SwiftUI)
@@ -121,6 +154,22 @@ This constraint shifts the recommendation from "quick and simple" (Termux) to "p
 - ⚠️ Larger app size (~10-15MB for Go runtime)
 
 **Standalone Requirement**: ✅ **Satisfies** - Users install one app from App Store, no additional dependencies needed
+
+**Floating Buttons Capability**: ✅ **Fully Supported** - SwiftUI's ZStack or UIKit's view layering allows floating buttons to be overlaid on the terminal view. Example:
+```swift
+ZStack {
+    TerminalView()  // SwiftTerm terminal
+    VStack {
+        Spacer()
+        HStack {
+            FloatingButton(icon: "arrow.up") { sendCommand("north") }
+            FloatingButton(icon: "arrow.down") { sendCommand("south") }
+            // ... more buttons
+        }
+        .padding()
+    }
+}
+```
 
 **Build Process**:
 ```bash
@@ -192,8 +241,9 @@ gomobile bind -target=ios github.com/anicolao/dikuclient/mobile
 - ❌ No truly native feel
 - ❌ Network overhead (localhost WebSocket)
 - ❌ Battery drain from running server
+- ⚠️ **Limited floating buttons support** - Could overlay HTML buttons but would be non-native and less performant
 
-**Not Recommended for iOS**: iOS restricts background processes, making this approach impractical.
+**Not Recommended for iOS**: iOS restricts background processes, making this approach impractical. Also doesn't provide native floating buttons capability.
 
 ### Option 3: iOS Shell App (Alternative)
 
@@ -207,13 +257,15 @@ gomobile bind -target=ios github.com/anicolao/dikuclient/mobile
 **Pros**:
 - ✅ Full native integration
 - ✅ Best performance
+- ✅ Native floating buttons support
 
 **Cons**:
 - ❌ Requires significant iOS development work
 - ❌ Most complex implementation
 - ❌ Large maintenance burden
+- ❌ Reinventing the wheel (SwiftTerm already exists)
 
-**Not Recommended**: Too much custom development required.
+**Not Recommended**: Too much custom development required when existing solutions (SwiftTerm) already provide all needed functionality including floating buttons support.
 
 ### iOS Recommendation: Option 1 (Go Mobile + SwiftTerm)
 
@@ -222,6 +274,7 @@ gomobile bind -target=ios github.com/anicolao/dikuclient/mobile
 - Leverages existing mature libraries (SwiftTerm)
 - Native iOS performance and feel
 - Full compatibility with Bubble Tea TUI
+- **Full floating buttons support** via SwiftUI/UIKit layering
 - Most maintainable long-term solution
 
 **Estimated Effort**:
@@ -313,6 +366,7 @@ gomobile bind -target=ios github.com/anicolao/dikuclient/mobile
 - ⚠️ Not a standalone app (runs in terminal)
 - ⚠️ Less discoverable than Play Store app
 - ❌ **Does NOT satisfy standalone requirement** - Users must install Termux first
+- ❌ **Does NOT support floating buttons** - Terminal-only environment, no native UI layer for overlays
 
 **User Experience**:
 1. Install Termux from F-Droid or Play Store
@@ -340,7 +394,7 @@ Place in `~/.shortcuts/` and create home screen widget.
 ┌─────────────────────────────────────┐
 │      Native Android App             │
 ├─────────────────────────────────────┤
-│  Jetpack Compose / Views            │
+│  Jetpack Compose / Views (Box)      │
 │  ┌───────────────────────────────┐  │
 │  │  Terminal Emulator View       │  │
 │  │  (Termux library or custom)   │  │
@@ -351,6 +405,11 @@ Place in `~/.shortcuts/` and create home screen widget.
 │  │  │  │  (dikuclient)     │  │  │  │
 │  │  │  └───────────────────┘  │  │  │
 │  │  └─────────────────────────┘  │  │
+│  └───────────────────────────────┘  │
+│  ┌───────────────────────────────┐  │
+│  │  Floating Buttons Layer       │  │
+│  │  (overlaid on terminal)       │  │
+│  │  [↑] [↓] [⚔] [🛡] [🏃]       │  │
 │  └───────────────────────────────┘  │
 └─────────────────────────────────────┘
 ```
@@ -379,6 +438,7 @@ Place in `~/.shortcuts/` and create home screen widget.
 - ✅ Better discoverability
 - ✅ Full Bubble Tea TUI compatibility
 - ✅ All ANSI colors and features work
+- ✅ **Floating buttons support**: Jetpack Compose Box or FrameLayout enables easy overlay of buttons on terminal
 
 **Cons**:
 - ⚠️ Requires Android app development (Kotlin/Java)
@@ -388,6 +448,22 @@ Place in `~/.shortcuts/` and create home screen widget.
 - ⚠️ More maintenance burden
 
 **Standalone Requirement**: ✅ **Satisfies** - Users install one app from Play Store, no additional dependencies needed
+
+**Floating Buttons Capability**: ✅ **Fully Supported** - Jetpack Compose's Box or traditional FrameLayout allows floating buttons to be overlaid on the terminal view. Example:
+```kotlin
+Box {
+    TerminalView()  // Terminal emulator
+    Column(
+        modifier = Modifier.align(Alignment.BottomCenter)
+    ) {
+        Row {
+            FloatingButton("↑") { sendCommand("north") }
+            FloatingButton("↓") { sendCommand("south") }
+            // ... more buttons
+        }
+    }
+}
+```
 
 **Estimated Effort**:
 - Go mobile wrapper: 1-2 days
@@ -419,15 +495,17 @@ Place in `~/.shortcuts/` and create home screen widget.
 - ⚠️ Complex background service management
 - ⚠️ Not truly native
 - ❌ **Does NOT satisfy standalone requirement** - Requires managing background server process
+- ⚠️ **Limited floating buttons support** - Could overlay HTML buttons but would be non-native and less performant
 
-**Not Recommended**: Complex architecture with poor user experience for a standalone requirement.
+**Not Recommended**: Complex architecture with poor user experience for standalone and floating buttons requirements.
 
 ### Android Recommendation: Option 2 (Native Android App with Go Mobile)
 
-**Given the standalone requirement**, the Native Android App is the only viable option that satisfies all constraints.
+**Given the standalone and floating buttons requirements**, the Native Android App is the only viable option that satisfies all constraints.
 
 **Rationale**:
 - ✅ **Satisfies standalone requirement** - One app installation, no dependencies
+- ✅ **Supports floating buttons** - Native UI framework with full overlay capability
 - ✅ Play Store distribution for easy discovery and installation
 - ✅ Native Android experience with proper app lifecycle management
 - ✅ Full compatibility with existing TUI code
@@ -441,7 +519,11 @@ Place in `~/.shortcuts/` and create home screen widget.
 - Total: **1-2 weeks**
 
 **Why Not Termux (Option 1)?**
-While the Termux approach requires zero code changes and can be implemented in half a day, it **violates the standalone requirement** because users must first install Termux (a separate app) before they can use DikuClient. This creates a poor user experience and an additional barrier to adoption.
+While the Termux approach requires zero code changes and can be implemented in half a day, it has two critical limitations:
+1. **Violates standalone requirement** - Users must first install Termux (a separate app) before they can use DikuClient
+2. **No floating buttons support** - Termux is a terminal-only environment with no native UI layer for overlaying buttons
+
+These limitations make it unsuitable despite its simplicity.
 
 **Implementation Path**: Similar to iOS, use gomobile to create an Android library, then build a native Android app with an embedded terminal emulator view (using Termux's open-source terminal library or TerminalView).
 
@@ -817,9 +899,9 @@ jobs:
 
 ## Recommendations
 
-### Given the Standalone Requirement
+### Given the Standalone and Floating Buttons Requirements
 
-With the constraint that users should be able to install DikuClient without needing any other programs, **both platforms require native app development**.
+With the constraints that users should be able to install DikuClient without needing any other programs AND that the app must support overlaying floating buttons on the terminal, **both platforms require native app development**.
 
 ### Recommended Approach: Native Apps for Both Platforms
 
@@ -829,6 +911,7 @@ With the constraint that users should be able to install DikuClient without need
 - Shared mobile wrapper code (~200-300 lines can be reused)
 - Consistent user experience across platforms
 - Both satisfy standalone requirement
+- **Both support floating buttons** via native UI frameworks (SwiftUI/UIKit and Jetpack Compose/Views)
 - Professional app store presence
 - Easier maintenance with unified codebase
 
@@ -859,9 +942,14 @@ With the constraint that users should be able to install DikuClient without need
 
 ### Why Not Termux or PWA?
 
-- **Termux (Option 1)**: While it requires zero code changes and minimal effort, it **violates the standalone requirement**. Users must install Termux first, creating a two-step installation process.
+- **Termux (Option 1)**: While it requires zero code changes and minimal effort, it has two critical limitations:
+  - **Violates standalone requirement** - Users must install Termux first
+  - **No floating buttons support** - Terminal-only environment with no native UI layer
   
-- **PWA (Option 3)**: While it works on both platforms, it requires managing a background server process and doesn't provide a truly native experience. It also **violates the standalone requirement** due to the complexity of background service management.
+- **PWA (Option 3)**: While it works on both platforms, it has multiple limitations:
+  - **Violates standalone requirement** - Requires managing background server process
+  - **Limited floating buttons support** - Could overlay HTML buttons but non-native and less performant
+  - Not truly native experience
 
 ### Incremental Rollout Strategy
 
@@ -888,6 +976,7 @@ However, given the code sharing potential, **developing both simultaneously is r
 **For iOS**: Native app with Go Mobile + SwiftTerm
 - ✅ Minimal code changes (200-300 lines of mobile wrapper)
 - ✅ Satisfies standalone requirement (one app install)
+- ✅ **Supports floating buttons** (SwiftUI ZStack/UIKit layering)
 - ✅ Native experience with App Store distribution
 - ✅ Full TUI compatibility
 - Effort: 1-2 weeks
@@ -895,15 +984,17 @@ However, given the code sharing potential, **developing both simultaneously is r
 **For Android**: Native app with Go Mobile + Terminal View
 - ✅ Minimal code changes (200-300 lines, shared with iOS)
 - ✅ Satisfies standalone requirement (one app install)
+- ✅ **Supports floating buttons** (Jetpack Compose Box/FrameLayout)
 - ✅ Native experience with Play Store distribution
 - ✅ Full TUI compatibility
 - Effort: 1-2 weeks
 
-**Both approaches maintain core principles**:
+**Both approaches maintain all core requirements**:
 - ✅ **Run Go code directly on device** (not via remote server)
 - ✅ **Full-screen terminal display** with complete ANSI support
 - ✅ **Minimal changes to existing codebase** (~200-300 lines of mobile wrapper, no changes to core)
 - ✅ **Standalone installation** (no additional apps required)
+- ✅ **Floating buttons capability** (native UI framework overlay support)
 
 ### Key Insight: Code Sharing
 
@@ -917,8 +1008,8 @@ The mobile wrapper code can be largely shared between iOS and Android platforms,
    - Set up gomobile build process
 
 2. **Phase 2**: Develop native apps (1-2 weeks, can be parallel)
-   - iOS: SwiftUI + SwiftTerm
-   - Android: Kotlin + Terminal View
+   - iOS: SwiftUI + SwiftTerm with floating button layer
+   - Android: Kotlin + Terminal View with floating button layer
    - Both apps integrate the same Go mobile library
 
 3. **Phase 3**: Beta testing (1 week)
@@ -931,4 +1022,4 @@ The mobile wrapper code can be largely shared between iOS and Android platforms,
    - Documentation and user guides
    - Marketing and announcement
 
-**Total Timeline**: Approximately 3-4 weeks to launch on both platforms with a standalone installation experience that satisfies all requirements.
+**Total Timeline**: Approximately 3-4 weeks to launch on both platforms with a standalone installation experience that satisfies all requirements, including floating buttons support for future enhancements.
