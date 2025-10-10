@@ -45,3 +45,16 @@ telnet-debug-*.log
 # Node modules
 node_modules/
 package-lock.json
+
+# Mobile build artifacts
+ios/Frameworks/
+ios/DerivedData/
+ios/*.xcodeproj/xcuserdata/
+ios/*.xcodeproj/project.xcworkspace/xcuserdata/
+android/app/libs/*.aar
+android/.gradle/
+android/app/build/
+android/local.properties
+android/.idea/
+*.apk
+*.ipa
