@@ -83,6 +83,7 @@ type Model struct {
 	lastRenderedSidebar    string            // Last rendered sidebar (for testing)
 	pendingCommands       []string           // Queue of commands to send (from triggers, aliases, or /go)
 	commandQueueActive    bool               // Currently processing command queue
+	lastViewportContent   string             // Last content set on viewport (to avoid unnecessary updates)
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -425,21 +426,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyLeft:
 			if m.cursorPos > 0 {
 				m.cursorPos--
+				m.updateViewport()
 			}
 			return m, nil
 
 		case tea.KeyRight:
 			if m.cursorPos < len(m.currentInput) {
 				m.cursorPos++
+				m.updateViewport()
 			}
 			return m, nil
 
 		case tea.KeyHome:
 			m.cursorPos = 0
+			m.updateViewport()
 			return m, nil
 
 		case tea.KeyEnd:
 			m.cursorPos = len(m.currentInput)
+			m.updateViewport()
 			return m, nil
 
 		case tea.KeySpace:
@@ -885,24 +890,29 @@ func (m *Model) updateViewport() {
 		}
 	}
 
-	// Check if viewport is at bottom BEFORE setting new content
-	wasAtBottom := m.viewport.AtBottom()
+	// Only update viewport content if it actually changed
+	// This avoids unnecessary screen refreshes and viewport jumps during typing
+	if content != m.lastViewportContent {
+		// Check if viewport is at bottom BEFORE setting new content
+		wasAtBottom := m.viewport.AtBottom()
 
-	m.viewport.SetContent(content)
+		m.viewport.SetContent(content)
+		m.lastViewportContent = content
 
-	// If not in split mode or if viewport is already at bottom, go to bottom
-	// This preserves scroll position when in split mode
-	if !m.isSplit {
-		m.viewport.GotoBottom()
-	} else if wasAtBottom {
-		// If user was already at bottom and new content arrived, exit split mode
-		m.isSplit = false
-		m.viewport.GotoBottom()
+		// If not in split mode or if viewport is already at bottom, go to bottom
+		// This preserves scroll position when in split mode
+		if !m.isSplit {
+			m.viewport.GotoBottom()
+		} else if wasAtBottom {
+			// If user was already at bottom and new content arrived, exit split mode
+			m.isSplit = false
+			m.viewport.GotoBottom()
+		}
+
+		// Update split viewport content (always stays at bottom for live tracking)
+		m.splitViewport.SetContent(content)
+		m.splitViewport.GotoBottom()
 	}
-
-	// Update split viewport content (always stays at bottom for live tracking)
-	m.splitViewport.SetContent(content)
-	m.splitViewport.GotoBottom()
 
 	// Log TUI content if logging enabled
 	if m.tuiLogFile != nil {
