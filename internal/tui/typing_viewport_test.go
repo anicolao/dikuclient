@@ -175,3 +175,58 @@ func TestTypingSameCharacterMultipleTimes(t *testing.T) {
 		t.Errorf("Expected currentInput to be 'nnn', got '%s'", model.currentInput)
 	}
 }
+
+// TestBackspaceAndRetypeUpdatesViewport tests that backspacing and retyping
+// the same character updates the viewport correctly
+func TestBackspaceAndRetypeUpdatesViewport(t *testing.T) {
+	m := NewModel("localhost", 4000, nil, nil)
+	model := &m
+
+	// Resize to set viewport dimensions
+	sizeMsg := tea.WindowSizeMsg{Width: 100, Height: 40}
+	updatedModel, _ := model.Update(sizeMsg)
+	model = updatedModel.(*Model)
+
+	// Add some output and set connected state
+	model.connected = true
+	model.output = append(model.output, "Welcome to the MUD!")
+	model.output = append(model.output, "Type a command>")
+	model.updateViewport()
+
+	// Type 'n'
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	updatedModel, _ = model.Update(msg)
+	model = updatedModel.(*Model)
+	contentAfterN := model.lastViewportContent
+
+	// Backspace
+	msg = tea.KeyMsg{Type: tea.KeyBackspace}
+	updatedModel, _ = model.Update(msg)
+	model = updatedModel.(*Model)
+
+	// Verify content changed after backspace
+	if model.lastViewportContent == contentAfterN {
+		t.Error("Expected viewport content to change after backspace")
+	}
+	contentAfterBackspace := model.lastViewportContent
+
+	// Type 'n' again
+	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}}
+	updatedModel, _ = model.Update(msg)
+	model = updatedModel.(*Model)
+
+	// Verify content changed after retyping
+	if model.lastViewportContent == contentAfterBackspace {
+		t.Error("Expected viewport content to change after retyping 'n'")
+	}
+
+	// The content should be the same as when we first typed 'n'
+	if model.lastViewportContent != contentAfterN {
+		t.Error("Expected viewport content to be the same as when first typed 'n'")
+	}
+
+	// Verify final input
+	if model.currentInput != "n" {
+		t.Errorf("Expected currentInput to be 'n', got '%s'", model.currentInput)
+	}
+}
