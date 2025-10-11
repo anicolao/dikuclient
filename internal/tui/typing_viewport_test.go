@@ -176,6 +176,72 @@ func TestTypingSameCharacterMultipleTimes(t *testing.T) {
 	}
 }
 
+// TestVimStyleKeysAreTextInput tests that vim navigation keys (b, k, u, etc.)
+// are treated as regular text input and don't trigger viewport scrolling
+func TestVimStyleKeysAreTextInput(t *testing.T) {
+	m := NewModel("localhost", 4000, nil, nil)
+	model := &m
+
+	// Resize to set viewport dimensions
+	sizeMsg := tea.WindowSizeMsg{Width: 100, Height: 40}
+	updatedModel, _ := model.Update(sizeMsg)
+	model = updatedModel.(*Model)
+
+	// Add some output and set connected state
+	model.connected = true
+	model.output = append(model.output, "Welcome to the MUD!")
+	model.output = append(model.output, "Type a command>")
+	model.updateViewport()
+
+	// Get initial viewport offset
+	initialYOffset := model.viewport.YOffset
+
+	// Type 'k' (which is vim up-scroll if passed to viewport)
+	msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}}
+	updatedModel, _ = model.Update(msg)
+	model = updatedModel.(*Model)
+
+	// Verify 'k' was added to input, not used for scrolling
+	if model.currentInput != "k" {
+		t.Errorf("Expected currentInput to be 'k', got '%s'", model.currentInput)
+	}
+
+	// Verify viewport did not scroll (YOffset should be unchanged)
+	if model.viewport.YOffset != initialYOffset {
+		t.Errorf("Expected YOffset to remain %d, got %d (viewport scrolled when it shouldn't)", initialYOffset, model.viewport.YOffset)
+	}
+
+	// Type 'b' (which is vim page-up if passed to viewport)
+	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}}
+	updatedModel, _ = model.Update(msg)
+	model = updatedModel.(*Model)
+
+	// Verify 'b' was added to input
+	if model.currentInput != "kb" {
+		t.Errorf("Expected currentInput to be 'kb', got '%s'", model.currentInput)
+	}
+
+	// Verify viewport still did not scroll
+	if model.viewport.YOffset != initialYOffset {
+		t.Errorf("Expected YOffset to remain %d, got %d (viewport scrolled when it shouldn't)", initialYOffset, model.viewport.YOffset)
+	}
+
+	// Type 'u' (which is vim half-page-up if passed to viewport)
+	msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'u'}}
+	updatedModel, _ = model.Update(msg)
+	model = updatedModel.(*Model)
+
+	// Verify 'u' was added to input
+	if model.currentInput != "kbu" {
+		t.Errorf("Expected currentInput to be 'kbu', got '%s'", model.currentInput)
+	}
+
+	// Verify viewport still did not scroll
+	if model.viewport.YOffset != initialYOffset {
+		t.Errorf("Expected YOffset to remain %d, got %d (viewport scrolled when it shouldn't)", initialYOffset, model.viewport.YOffset)
+	}
+}
+
 // TestBackspaceAndRetypeUpdatesViewport tests that backspacing and retyping
 // the same character updates the viewport correctly
 func TestBackspaceAndRetypeUpdatesViewport(t *testing.T) {

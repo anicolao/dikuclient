@@ -503,6 +503,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.currentInput = m.currentInput[:m.cursorPos] + string(msg.Runes) + m.currentInput[m.cursorPos:]
 				m.cursorPos += len(msg.Runes)
 				m.updateViewport()
+				return m, nil
 			}
 		}
 
