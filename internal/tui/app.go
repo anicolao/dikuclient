@@ -24,66 +24,66 @@ import (
 
 // Model represents the application state
 type Model struct {
-	conn                  *client.Connection
-	viewport              viewport.Model
-	output                []string
-	currentInput          string
-	cursorPos             int
-	width                 int
-	height                int
-	connected             bool
-	host                  string
-	port                  int
-	sidebarWidth          int
-	err                   error
-	mudLogFile            *os.File
-	tuiLogFile            *os.File
-	telnetDebugLog        *os.File // Debug log for telnet/UTF-8 processing
-	echoSuppressed        bool     // Server has disabled echo (e.g., for passwords)
-	username              string
-	password              string
-	autoLoginState        int                // 0=idle, 1=sent username, 2=sent password
-	worldMap              *mapper.Map        // World map for navigation
-	recentOutput          []string           // Buffer for recent output to detect rooms
-	pendingMovement       string             // Last movement command sent
-	mapDebug              bool               // Enable mapper debug output
-	autoWalking           bool               // Currently auto-walking with /go
-	autoWalkPath          []string           // Path to auto-walk
-	autoWalkIndex         int                // Current step in auto-walk
-	lastRoomSearch        []*mapper.Room     // Last room search results for disambiguation
-	triggerManager        *triggers.Manager  // Trigger manager
-	aliasManager          *aliases.Manager   // Alias manager
-	inventory             []string           // Current inventory items
-	inventoryTime         time.Time          // Time when inventory was last updated
-	inventoryViewport     viewport.Model     // Viewport for scrollable inventory
-	tells                 []string           // Recent tells received
-	tellsViewport         viewport.Model     // Viewport for scrollable tells
-	skipNextRoomDetection bool               // Skip next room detection (e.g., after recall teleport)
-	autoWalkTarget        string             // Target room title for auto-walk (for recovery)
-	mapLegend             map[string]int     // Room ID to number mapping for map legend display
-	mapLegendRooms        []*mapper.Room     // Rooms in the current legend (for /go command)
-	xpTracking            map[string]*XPStat // XP/s tracking per creature (current session)
-	pendingKill           string             // Last kill command target
-	killTime              time.Time          // Time when kill command was sent
-	xpViewport            viewport.Model     // Viewport for scrollable XP stats
-	xpStatsManager        *xpstats.Manager   // Persistent XP stats manager
-	webSessionID          string             // Web session ID for sharing (empty if not in web mode)
-	webServerURL          string             // Web server URL for sharing (empty if not in web mode)
-	historyManager        *history.Manager   // Persistent command history manager
-	commandHistory        []string           // Command history for readline-style navigation (in-memory cache)
-	historyIndex          int                // Current position in command history (-1 = not navigating)
-	historySavedInput     string             // Saved current input when starting history navigation
-	historySearchMode     bool               // True when in Ctrl+R search mode
-	historySearchQuery    string             // Current search query in search mode
-	historySearchResults  []int              // Indices of matching commands in history
-	historySearchIndex    int                // Current position in search results
-	isSplit               bool               // Whether the main viewport is split
-	splitViewport         viewport.Model     // Second viewport for tracking live output when split
-	lastRenderedGameOutput string            // Last rendered game output (for testing)
-	lastRenderedSidebar    string            // Last rendered sidebar (for testing)
-	pendingCommands       []string           // Queue of commands to send (from triggers, aliases, or /go)
-	commandQueueActive    bool               // Currently processing command queue
-	lastViewportContent   string             // Last content set on viewport (to avoid unnecessary updates)
+	conn                   *client.Connection
+	viewport               viewport.Model
+	output                 []string
+	currentInput           string
+	cursorPos              int
+	width                  int
+	height                 int
+	connected              bool
+	host                   string
+	port                   int
+	sidebarWidth           int
+	err                    error
+	mudLogFile             *os.File
+	tuiLogFile             *os.File
+	telnetDebugLog         *os.File // Debug log for telnet/UTF-8 processing
+	echoSuppressed         bool     // Server has disabled echo (e.g., for passwords)
+	username               string
+	password               string
+	autoLoginState         int                // 0=idle, 1=sent username, 2=sent password
+	worldMap               *mapper.Map        // World map for navigation
+	recentOutput           []string           // Buffer for recent output to detect rooms
+	pendingMovement        string             // Last movement command sent
+	mapDebug               bool               // Enable mapper debug output
+	autoWalking            bool               // Currently auto-walking with /go
+	autoWalkPath           []string           // Path to auto-walk
+	autoWalkIndex          int                // Current step in auto-walk
+	lastRoomSearch         []*mapper.Room     // Last room search results for disambiguation
+	triggerManager         *triggers.Manager  // Trigger manager
+	aliasManager           *aliases.Manager   // Alias manager
+	inventory              []string           // Current inventory items
+	inventoryTime          time.Time          // Time when inventory was last updated
+	inventoryViewport      viewport.Model     // Viewport for scrollable inventory
+	tells                  []string           // Recent tells received
+	tellsViewport          viewport.Model     // Viewport for scrollable tells
+	skipNextRoomDetection  bool               // Skip next room detection (e.g., after recall teleport)
+	autoWalkTarget         string             // Target room title for auto-walk (for recovery)
+	mapLegend              map[string]int     // Room ID to number mapping for map legend display
+	mapLegendRooms         []*mapper.Room     // Rooms in the current legend (for /go command)
+	xpTracking             map[string]*XPStat // XP/s tracking per creature (current session)
+	pendingKill            string             // Last kill command target
+	killTime               time.Time          // Time when kill command was sent
+	xpViewport             viewport.Model     // Viewport for scrollable XP stats
+	xpStatsManager         *xpstats.Manager   // Persistent XP stats manager
+	webSessionID           string             // Web session ID for sharing (empty if not in web mode)
+	webServerURL           string             // Web server URL for sharing (empty if not in web mode)
+	historyManager         *history.Manager   // Persistent command history manager
+	commandHistory         []string           // Command history for readline-style navigation (in-memory cache)
+	historyIndex           int                // Current position in command history (-1 = not navigating)
+	historySavedInput      string             // Saved current input when starting history navigation
+	historySearchMode      bool               // True when in Ctrl+R search mode
+	historySearchQuery     string             // Current search query in search mode
+	historySearchResults   []int              // Indices of matching commands in history
+	historySearchIndex     int                // Current position in search results
+	isSplit                bool               // Whether the main viewport is split
+	splitViewport          viewport.Model     // Second viewport for tracking live output when split
+	lastRenderedGameOutput string             // Last rendered game output (for testing)
+	lastRenderedSidebar    string             // Last rendered sidebar (for testing)
+	pendingCommands        []string           // Queue of commands to send (from triggers, aliases, or /go)
+	commandQueueActive     bool               // Currently processing command queue
+	lastViewportContent    string             // Last content set on viewport (to avoid unnecessary updates)
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -709,14 +709,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg
 		m.output = append(m.output, fmt.Sprintf("Error: %v", msg))
 		m.updateViewport()
-		
+
 		// If connection closed shortly after auto-login, it might be wrong password
 		// Send hint to delete the password
 		if m.autoLoginState == 2 && m.webSessionID != "" && m.username != "" && m.password != "" {
 			// Send password deletion hint (empty password means delete)
 			m.savePasswordForWebClient("")
 		}
-		
+
 		// When MUD closes connection, TUI should exit
 		if m.webSessionID != "" {
 		}
@@ -757,11 +757,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.commandQueueActive && len(m.pendingCommands) > 0 {
 			command := m.pendingCommands[0]
 			m.pendingCommands = m.pendingCommands[1:]
-			
+
 			// Send the command
 			if m.conn != nil && m.connected {
 				m.conn.Send(command)
-				
+
 				// Track if this is an auto-walk command
 				if m.autoWalking && m.autoWalkIndex < len(m.autoWalkPath) {
 					m.autoWalkIndex++
@@ -772,7 +772,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.updateViewport()
 			}
-			
+
 			// If more commands remain, schedule next tick
 			if len(m.pendingCommands) > 0 {
 				return m, tea.Tick(time.Second, func(t time.Time) tea.Msg {
@@ -925,7 +925,7 @@ func (m *Model) updateViewport() {
 // listenForMessages listens for messages from the MUD server
 func (m *Model) listenForMessages() tea.Msg {
 	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
-	
+
 	if m.conn == nil || m.conn.IsClosed() {
 		// Connection is closed, return error to trigger quit
 		return errMsg(fmt.Errorf("connection closed"))
@@ -985,7 +985,7 @@ func (m *Model) renderMainContent() string {
 	sidebarWidth := m.sidebarWidth
 	mainWidth := m.width - sidebarWidth - 1
 	contentHeight := m.height - headerHeight
-	
+
 	// Calculate actual main panel height to match sidebar height
 	// The sidebar has 4 panels with panelHeight = contentHeight / 4
 	// Each panel adds borders: 3 panels add +1 (top border), 1 panel adds +2 (top+bottom)
@@ -993,7 +993,7 @@ func (m *Model) renderMainContent() string {
 	// Main panel with top+bottom borders renders as Height(h) + 2
 	// So we need: h + 2 = 4 * panelHeight + 5, therefore h = 4 * panelHeight + 3
 	panelHeight := contentHeight / 4
-	actualContentHeight := 4 * panelHeight + 3
+	actualContentHeight := 4*panelHeight + 3
 
 	// Build title for main window with current room and exits
 	mainTitle := ""
@@ -1475,8 +1475,8 @@ var combatPromptRegex = regexp.MustCompile(`\[([^:]+):[^\]]+\]\s*\[([^:]+):[^\]]
 // deathMessageRegex matches death messages in format: The <target> is dead!
 var deathMessageRegex = regexp.MustCompile(`^(The|A|An)\s+(.+?)\s+is dead!`)
 
-// xpGainRegex matches XP gain messages in format: You receive [0-9]+ experience.
-var xpGainRegex = regexp.MustCompile(`^You receive (\d+) experience\.`)
+// xpGainRegex matches XP gain messages in format: You <anything> [0-9]+ experience.
+var xpGainRegex = regexp.MustCompile(`^You[^\d]+ (\d+) experience\.`)
 
 // detectCombatPrompt detects combat status in the prompt
 func (m *Model) detectCombatPrompt(line string) {
@@ -1489,6 +1489,9 @@ func (m *Model) detectCombatPrompt(line string) {
 		// Only start tracking if we don't have a pending kill or if this is a new target
 		if m.pendingKill == "" || m.pendingKill != target {
 			m.pendingKill = target
+			// note the pending kill to the client
+			m.output = append(m.output, fmt.Sprintf("\x1b[90m[XP Tracker: Pending kill on '%s']\x1b[0m\n", target))
+
 			m.killTime = time.Now()
 		}
 	}
@@ -1545,6 +1548,7 @@ func (m *Model) detectXPEvents(line string) {
 			}
 
 			// Clear pending kill
+			m.output = append(m.output, fmt.Sprintf("\x1b[90m[XP Tracker: Recorded kill on '%s' - %d XP in %.1f seconds (%.2f XP/s)]\x1b[0m\n", m.pendingKill, xp, seconds, xpPerSecond))
 			m.pendingKill = ""
 		}
 	}
@@ -2441,7 +2445,7 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 	}
 
 	// Enqueue the path commands
-	m.autoWalking = true  // Keep this for compatibility with failure detection
+	m.autoWalking = true // Keep this for compatibility with failure detection
 	m.autoWalkPath = path
 	m.autoWalkIndex = 0
 	m.autoWalkTarget = targetRoom.Title // Store target for recovery
@@ -2489,7 +2493,7 @@ func (m *Model) handleAutoWalkFailure() tea.Cmd {
 	m.autoWalkPath = nil
 	m.autoWalkIndex = 0
 	m.autoWalkTarget = ""
-	m.pendingCommands = nil  // Clear the remaining queued commands
+	m.pendingCommands = nil // Clear the remaining queued commands
 	m.commandQueueActive = false
 
 	// Try to replan the route to the same destination
@@ -2531,7 +2535,7 @@ func (m *Model) handleAutoWalkFailure() tea.Cmd {
 func (m *Model) enqueueCommands(commands []string) tea.Cmd {
 	// Add commands to the queue
 	m.pendingCommands = append(m.pendingCommands, commands...)
-	
+
 	// If queue is not already active, start processing
 	if !m.commandQueueActive && len(m.pendingCommands) > 0 {
 		m.commandQueueActive = true
@@ -2539,7 +2543,7 @@ func (m *Model) enqueueCommands(commands []string) tea.Cmd {
 			return commandQueueTickMsg{}
 		})
 	}
-	
+
 	return nil
 }
 
