@@ -41,41 +41,55 @@ var directionAliases = map[string]string{
 
 // parseBarsoomRoom attempts to parse a Barsoom MUD room format
 // Barsoom format: --< on a line, title on next line, description paragraphs, then >-- on a line
+// Searches backwards from the end to find the most recent complete room
 func parseBarsoomRoom(lines []string, enableDebug bool, debugInfo *strings.Builder) *RoomInfo {
-	// Find --< marker
-	startMarkerIdx := -1
-	for i := 0; i < len(lines); i++ {
-		line := stripANSI(lines[i])
-		line = strings.TrimSpace(line)
-		if line == "--<" {
-			startMarkerIdx = i
-			if enableDebug {
-				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found Barsoom start marker at index %d\n", i))
-			}
-			break
-		}
-	}
-
-	if startMarkerIdx == -1 {
-		return nil // Not a Barsoom format room
-	}
-
-	// Find >-- marker
+	// Search backwards from the end to find the most recent complete room
+	// Keep track of the last seen exits line, end marker, and start marker
+	var exits []string
+	exitsLineIdx := -1
 	endMarkerIdx := -1
-	for i := startMarkerIdx + 1; i < len(lines); i++ {
+	startMarkerIdx := -1
+
+	for i := len(lines) - 1; i >= 0; i-- {
 		line := stripANSI(lines[i])
 		line = strings.TrimSpace(line)
-		if line == ">--" {
+
+		// Track the last (most recent) exits line we encounter
+		if exitsLineIdx == -1 {
+			if parsedExits := parseExitsLine(line); len(parsedExits) > 0 {
+				exits = parsedExits
+				exitsLineIdx = i
+				if enableDebug {
+					debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found exits line at index %d: %v\n", i, exits))
+				}
+			}
+		}
+
+		// Find the end marker >--
+		if endMarkerIdx == -1 && line == ">--" {
 			endMarkerIdx = i
 			if enableDebug {
 				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found Barsoom end marker at index %d\n", i))
 			}
-			break
+		}
+
+		// Find the start marker --<
+		if endMarkerIdx != -1 && line == "--<" {
+			startMarkerIdx = i
+			if enableDebug {
+				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found Barsoom start marker at index %d\n", i))
+			}
+			break // Found a complete room, stop searching
 		}
 	}
 
-	if endMarkerIdx == -1 {
-		return nil // Incomplete Barsoom format
+	// Validate we found a complete Barsoom room
+	if startMarkerIdx == -1 || endMarkerIdx == -1 {
+		return nil // Not a complete Barsoom format room
+	}
+
+	if len(exits) == 0 {
+		return nil // No exits found
 	}
 
 	// Title is the first non-empty line after --<
@@ -106,24 +120,6 @@ func parseBarsoomRoom(lines []string, enableDebug bool, debugInfo *strings.Build
 		if line != "" {
 			descriptionLines = append(descriptionLines, line)
 		}
-	}
-
-	// Find exits line after the end marker
-	var exits []string
-	for i := endMarkerIdx + 1; i < len(lines); i++ {
-		line := stripANSI(lines[i])
-		line = strings.TrimSpace(line)
-		if parsedExits := parseExitsLine(line); len(parsedExits) > 0 {
-			exits = parsedExits
-			if enableDebug {
-				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found Barsoom exits at index %d: %v\n", i, exits))
-			}
-			break
-		}
-	}
-
-	if len(exits) == 0 {
-		return nil // No exits found
 	}
 
 	description := strings.Join(descriptionLines, " ")

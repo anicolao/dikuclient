@@ -159,6 +159,59 @@ func TestParseRoomInfo_BarsoomFormatMultipleParagraphs(t *testing.T) {
 	}
 }
 
+func TestParseRoomInfo_BarsoomFormatMultipleRooms(t *testing.T) {
+	// Test that backward search finds the most recent room when multiple rooms are present
+	lines := []string{
+		// Old room that should NOT be detected
+		"119H 110V 3674X 0.00% 77C T:56 Exits:NS>",
+		"--<",
+		"Old Temple",
+		"An ancient temple.",
+		">--",
+		"Exits: north, south",
+		"",
+		// Some movement output
+		"You move north.",
+		"",
+		// New room that SHOULD be detected (most recent)
+		"120H 110V 3600X 0.00% 77C T:57 Exits:EW>",
+		"--<",
+		"Temple Square",
+		"You are standing in a large temple square. The ancient stones speak of a glorious past.",
+		">--",
+		"Exits: east, west",
+	}
+
+	info := ParseRoomInfo(lines, false)
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil")
+	}
+
+	// Should find the most recent room (Temple Square), not the old one
+	if info.Title != "Temple Square" {
+		t.Errorf("Title = %q, want %q (should find most recent room)", info.Title, "Temple Square")
+	}
+
+	expectedDesc := "You are standing in a large temple square. The ancient stones speak of a glorious past."
+	if info.Description != expectedDesc {
+		t.Errorf("Description = %q, want %q", info.Description, expectedDesc)
+	}
+
+	expectedExits := map[string]bool{"east": true, "west": true}
+	if len(info.Exits) != len(expectedExits) {
+		t.Errorf("Got %d exits, want %d", len(info.Exits), len(expectedExits))
+	}
+	for _, exit := range info.Exits {
+		if !expectedExits[exit] {
+			t.Errorf("Unexpected exit: %q", exit)
+		}
+	}
+
+	if !info.IsBarsoomRoom {
+		t.Error("Expected IsBarsoomRoom to be true")
+	}
+}
+
 func TestDetectMovement(t *testing.T) {
 	tests := []struct {
 		input    string
