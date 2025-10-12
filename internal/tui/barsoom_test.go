@@ -122,8 +122,12 @@ You are standing in a large temple square.
 		t.Error("Expected currentRoomDescription to be populated for Barsoom room even without movement")
 	}
 
-	// Verify the description contains the room title
-	if !strings.Contains(m.currentRoomDescription, "Temple Square") {
-		t.Error("Expected description to contain room title")
+	// Verify the Barsoom title and exits are stored for the title bar
+	if m.currentBarsoomTitle != "Temple Square" {
+		t.Errorf("Expected currentBarsoomTitle to be 'Temple Square', got %q", m.currentBarsoomTitle)
+	}
+	
+	if len(m.currentBarsoomExits) != 3 {
+		t.Errorf("Expected 3 exits, got %d", len(m.currentBarsoomExits))
 	}
 }

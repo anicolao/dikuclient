@@ -82,6 +82,8 @@ type Model struct {
 	descriptionViewport    viewport.Model     // Description viewport stuck to top (for Barsoom rooms)
 	currentRoomDescription string             // Current room description to display in top split
 	hasDescriptionSplit    bool               // Whether description split is active
+	currentBarsoomTitle    string             // Title of current Barsoom room (for title bar)
+	currentBarsoomExits    []string           // Exits of current Barsoom room (for title bar)
 	lastRenderedGameOutput string             // Last rendered game output (for testing)
 	lastRenderedSidebar    string             // Last rendered sidebar (for testing)
 	pendingCommands        []string           // Queue of commands to send (from triggers, aliases, or /go)
@@ -1014,7 +1016,16 @@ func (m *Model) renderMainContent() string {
 
 	// Build title for main window with current room and exits
 	mainTitle := ""
-	if m.worldMap != nil {
+	
+	// Use Barsoom room info if available (updated in real-time)
+	if m.hasDescriptionSplit && m.currentBarsoomTitle != "" {
+		exitsStr := strings.Join(m.currentBarsoomExits, ", ")
+		if exitsStr == "" {
+			exitsStr = "none"
+		}
+		mainTitle = m.currentBarsoomTitle + " [" + exitsStr + "]"
+	} else if m.worldMap != nil {
+		// Fall back to map's current room (only updates on movement)
 		currentRoom := m.worldMap.GetCurrentRoom()
 		if currentRoom != nil {
 			exitList := make([]string, 0, len(currentRoom.Exits))
@@ -1499,18 +1510,13 @@ func (m *Model) detectAndUpdateRoom() {
 	if barsoomRoomInfo != nil && barsoomRoomInfo.Title != "" {
 		// Update description split for Barsoom room
 		if barsoomRoomInfo.IsBarsoomRoom {
-			// Format the description for display
+			// Store current Barsoom room info for title bar
+			m.currentBarsoomTitle = barsoomRoomInfo.Title
+			m.currentBarsoomExits = barsoomRoomInfo.Exits
+			
+			// Format the description for display (no title, no exits - those are in title bar)
 			descLines := []string{
 				"",
-				"\x1b[1;96m" + barsoomRoomInfo.Title + "\x1b[0m", // Bright cyan title
-				"",
-			}
-			
-			// Add exits if available
-			if len(barsoomRoomInfo.Exits) > 0 {
-				exitsStr := strings.Join(barsoomRoomInfo.Exits, ", ")
-				descLines = append(descLines, "\x1b[90mExits: "+exitsStr+"\x1b[0m") // Gray color for exits
-				descLines = append(descLines, "")
 			}
 			
 			// Wrap description text at reasonable width (e.g., 80 chars)
@@ -1595,6 +1601,8 @@ func (m *Model) detectAndUpdateRoom() {
 		// Clear description split if no Barsoom room
 		m.hasDescriptionSplit = false
 		m.currentRoomDescription = ""
+		m.currentBarsoomTitle = ""
+		m.currentBarsoomExits = nil
 		return
 	}
 
@@ -1627,6 +1635,8 @@ func (m *Model) detectAndUpdateRoom() {
 	// Not a Barsoom room, clear description split
 	m.hasDescriptionSplit = false
 	m.currentRoomDescription = ""
+	m.currentBarsoomTitle = ""
+	m.currentBarsoomExits = nil
 
 	// Create or update room in map
 	room := mapper.NewRoom(roomInfo.Title, roomInfo.Description, roomInfo.Exits)
