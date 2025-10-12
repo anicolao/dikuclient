@@ -126,6 +126,8 @@ func (m *Map) Save() error {
 }
 
 // AddOrUpdateRoom adds a new room or updates an existing one
+// This method only adds the room to the map without creating exit links
+// Use LinkRooms to establish directional connections between rooms
 func (m *Map) AddOrUpdateRoom(room *Room) {
 	// Check if we're following a known exit from the current room
 	// If so, we might be revisiting an existing room
@@ -224,26 +226,38 @@ func (m *Map) AddOrUpdateRoom(room *Room) {
 		}
 	}
 
-	// Get the room from the map (whether new or existing)
-	currentRoom := m.Rooms[room.ID]
-
-	// Link from current room (before we move) if we have the information
-	if m.CurrentRoomID != "" && m.LastDirection != "" && m.CurrentRoomID != room.ID {
-		// Link current room (where we are now) to new room (where we're going)
-		if fromRoom, exists := m.Rooms[m.CurrentRoomID]; exists {
-			fromRoom.UpdateExit(m.LastDirection, room.ID)
-		}
-
-		// Link new room back to current room (reverse direction)
-		reverseDir := getReverseDirection(m.LastDirection)
-		if reverseDir != "" {
-			currentRoom.UpdateExit(reverseDir, m.CurrentRoomID)
-		}
-	}
-
-	// Update current room tracking
+	// Update current room tracking WITHOUT creating links
+	// Links are created separately via LinkRooms
 	m.PreviousRoomID = m.CurrentRoomID
 	m.CurrentRoomID = room.ID
+}
+
+// LinkRooms creates a directional link from the previous room to the current room
+// This should be called after movement is confirmed
+func (m *Map) LinkRooms() {
+	if m.PreviousRoomID == "" || m.CurrentRoomID == "" || m.LastDirection == "" {
+		return
+	}
+	
+	if m.PreviousRoomID == m.CurrentRoomID {
+		return // Same room, no link needed
+	}
+
+	// Link from previous room to current room (confirmed link)
+	if fromRoom, exists := m.Rooms[m.PreviousRoomID]; exists {
+		fromRoom.UpdateExit(m.LastDirection, m.CurrentRoomID)
+	}
+
+	// Create tentative reverse link (will be confirmed when traversed)
+	reverseDir := getReverseDirection(m.LastDirection)
+	if reverseDir != "" {
+		if currentRoom, exists := m.Rooms[m.CurrentRoomID]; exists {
+			// Only set if not already set to something else
+			if existingDest, hasExit := currentRoom.Exits[reverseDir]; !hasExit || existingDest == "" {
+				currentRoom.UpdateExit(reverseDir, m.PreviousRoomID)
+			}
+		}
+	}
 }
 
 // SetLastDirection records the direction of the last movement

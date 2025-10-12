@@ -19,7 +19,9 @@ func TestMapPersistence(t *testing.T) {
 	room2 := NewRoom("Room 2", "This is room 2.", []string{"south"})
 
 	m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 
 	// Save the map
 	if err := m.Save(); err != nil {
@@ -50,8 +52,11 @@ func TestMapFindRooms(t *testing.T) {
 	room3 := NewRoom("Temple Entrance", "The entrance to the temple.", []string{"east"})
 
 	m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(room3)
+	m.LinkRooms()
 
 	// Search for "temple"
 	results := m.FindRooms("temple")
@@ -85,16 +90,22 @@ func TestMapPathfinding(t *testing.T) {
 	t.Logf("Room3 ID: %s", room3.ID)
 
 	m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
+	m.LinkRooms()
 	t.Logf("After room1: Current=%s, Previous=%s", m.CurrentRoomID, m.PreviousRoomID)
 
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
+	m.LinkRooms()
 	t.Logf("After room2: Current=%s, Previous=%s", m.CurrentRoomID, m.PreviousRoomID)
 	t.Logf("Room1 exits: %v", m.Rooms[room1.ID].Exits)
 	t.Logf("Room2 exits: %v", m.Rooms[room2.ID].Exits)
 
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room3)
+	m.LinkRooms()
+	m.LinkRooms()
 	t.Logf("After room3: Current=%s, Previous=%s", m.CurrentRoomID, m.PreviousRoomID)
 	t.Logf("Room2 exits: %v", m.Rooms[room2.ID].Exits)
 	t.Logf("Room3 exits: %v", m.Rooms[room3.ID].Exits)
@@ -177,24 +188,33 @@ func TestFindNearbyRooms(t *testing.T) {
 	room6 := NewRoom("Room 6", "Sixth room.", []string{"south"})
 
 	m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room3)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room4)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room5)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room6)
+	m.LinkRooms()
 
 	// Now current room is Room6, go back to Room3
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(room5)
+	m.LinkRooms()
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(room4)
+	m.LinkRooms()
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(room3)
+	m.LinkRooms()
 
 	// Test from Room3 - should find Room1, Room2, Room4, Room5 within 5 steps
 	// Room6 is also within 3 steps
@@ -254,16 +274,19 @@ func TestRoomIDWithDistance(t *testing.T) {
 	// Create first room with certain characteristics
 	room1 := NewRoom("Identical Room", "This room looks the same.", []string{"north", "south"})
 	m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 
 	// Move to another room
 	intermediate := NewRoom("Intermediate", "A connecting room.", []string{"north", "south"})
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(intermediate)
+	m.LinkRooms()
 
 	// Go back south to room1 - this should recognize it via the exit mapping
 	revisitRoom1 := NewRoom("Identical Room", "This room looks the same.", []string{"north", "south"})
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(revisitRoom1)
+	m.LinkRooms()
 
 	// The revisited room should have the same ID as room1 (it IS room1)
 	if revisitRoom1.ID != room1.ID {
@@ -291,18 +314,22 @@ func TestRoomIDDistanceCalculation(t *testing.T) {
 	// Build a simple path to test distance calculation
 	room0 := NewRoom("Start", "The starting room.", []string{"north"})
 	m.AddOrUpdateRoom(room0)
+	m.LinkRooms()
 
 	room1 := NewRoom("Room 1", "One step away.", []string{"south", "north"})
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 
 	room2 := NewRoom("Room 2", "Two steps away.", []string{"south", "north"})
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 
 	room3 := NewRoom("Room 3", "Three steps away.", []string{"south"})
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room3)
+	m.LinkRooms()
 
 	// Verify distances in IDs
 	if !strings.HasSuffix(room0.ID, "|0") {
@@ -339,34 +366,45 @@ func TestFindNearbyRoomsMaxDistance(t *testing.T) {
 	room6 := NewRoom("Room 6", "Sixth room.", []string{"south"})
 
 	m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 	
 	// Build north branch
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room4)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room6)
+	m.LinkRooms()
 	
 	// Go back to room1
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(room4)
+	m.LinkRooms()
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 	
 	// Build east branch
 	m.SetLastDirection("east")
 	m.AddOrUpdateRoom(room3)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(room5)
+	m.LinkRooms()
 	
 	// Go back to room1
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(room3)
+	m.LinkRooms()
 	m.SetLastDirection("west")
 	m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 
 	// Test with maxDistance = 2 from Room1
 	nearby := m.FindNearbyRooms(2)

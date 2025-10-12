@@ -48,6 +48,7 @@ func TestRecallSkipsRoomDetection(t *testing.T) {
 	// Create a starting room
 	room1 := mapper.NewRoom("Starting Room", "A starting location.", []string{"north"})
 	worldMap.AddOrUpdateRoom(room1)
+	worldMap.LinkRooms()
 	
 	m := Model{
 		output:                []string{},
@@ -90,7 +91,9 @@ func TestAutoWalkFailureDetection(t *testing.T) {
 	room2 := mapper.NewRoom("Target Room", "A target location.", []string{"south"})
 	
 	worldMap.AddOrUpdateRoom(room1)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(room2)
+	worldMap.LinkRooms()
 	worldMap.CurrentRoomID = room1.ID
 	
 	// Create a bad link (exit exists but destination is wrong)
@@ -139,6 +142,7 @@ func TestAutoWalkFailureRemovesExit(t *testing.T) {
 	// Create a room with an invalid exit
 	room1 := mapper.NewRoom("Test Room", "A test location.", []string{"north", "south"})
 	worldMap.AddOrUpdateRoom(room1)
+	worldMap.LinkRooms()
 	worldMap.CurrentRoomID = room1.ID
 	
 	m := Model{

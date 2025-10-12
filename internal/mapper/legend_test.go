@@ -16,14 +16,19 @@ func TestRenderMapWithLegend(t *testing.T) {
 
 	// Add rooms and link them
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(north)
+	m.LinkRooms()
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(south)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 
 	// Create a legend mapping
 	legend := map[string]int{
@@ -60,10 +65,13 @@ func TestRenderMapWithoutLegend(t *testing.T) {
 
 	// Add rooms and link them
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(north)
+	m.LinkRooms()
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 
 	// Render map without legend
 	rendered, _ := m.RenderMap(30, 15)
@@ -105,22 +113,31 @@ func TestFormatMapPanelWithLegend(t *testing.T) {
 
 	// Build the map
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(north)
+	m.LinkRooms()
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(south)
+	m.LinkRooms()
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	m.SetLastDirection("east")
 	m.AddOrUpdateRoom(east)
+	m.LinkRooms()
 	m.SetLastDirection("west")
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	m.SetLastDirection("west")
 	m.AddOrUpdateRoom(west)
+	m.LinkRooms()
 	m.SetLastDirection("east")
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 
 	// Create legend
 	legend := map[string]int{

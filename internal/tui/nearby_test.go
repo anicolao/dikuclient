@@ -26,30 +26,41 @@ func TestNearbyCommand(t *testing.T) {
 
 	// Add all rooms to the map
 	m.worldMap.AddOrUpdateRoom(center)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("north")
 	m.worldMap.AddOrUpdateRoom(north)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("north")
 	m.worldMap.AddOrUpdateRoom(farNorth)
+	m.worldMap.LinkRooms()
 	
 	// Go back to center
 	m.worldMap.SetLastDirection("south")
 	m.worldMap.AddOrUpdateRoom(north)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("south")
 	m.worldMap.AddOrUpdateRoom(center)
+	m.worldMap.LinkRooms()
 	
 	// Add other rooms
 	m.worldMap.SetLastDirection("south")
 	m.worldMap.AddOrUpdateRoom(south)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("north")
 	m.worldMap.AddOrUpdateRoom(center)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("east")
 	m.worldMap.AddOrUpdateRoom(east)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("west")
 	m.worldMap.AddOrUpdateRoom(center)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("west")
 	m.worldMap.AddOrUpdateRoom(west)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("east")
 	m.worldMap.AddOrUpdateRoom(center)
+	m.worldMap.LinkRooms()
 
 	// Execute the /nearby command
 	savedPrompt := m.output[len(m.output)-1]
@@ -159,6 +170,7 @@ func TestNearbyCommandNoNearbyRooms(t *testing.T) {
 	// Create a single isolated room
 	room := mapper.NewRoom("Isolated Room", "A lonely room.", []string{})
 	m.worldMap.AddOrUpdateRoom(room)
+	m.worldMap.LinkRooms()
 
 	// Execute the /nearby command
 	savedPrompt := m.output[len(m.output)-1]

@@ -83,8 +83,11 @@ func TestGoCommandNumericSelection(t *testing.T) {
 	room3 := mapper.NewRoom("Market Square", "A busy market.", []string{"east"})
 
 	worldMap.AddOrUpdateRoom(room1)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(room2)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(room3)
+	worldMap.LinkRooms()
 	worldMap.CurrentRoomID = room3.ID // Start at market
 
 	// Link the rooms so there's a path
@@ -133,8 +136,11 @@ func TestGoCommandNumericSelectionFromPreviousSearch(t *testing.T) {
 	room3 := mapper.NewRoom("Market Square", "A busy market.", []string{"east"})
 
 	worldMap.AddOrUpdateRoom(room1)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(room2)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(room3)
+	worldMap.LinkRooms()
 	worldMap.CurrentRoomID = room3.ID
 
 	m := Model{
@@ -185,7 +191,9 @@ func TestGoCommandInvalidNumericSelection(t *testing.T) {
 	room2 := mapper.NewRoom("Market Square", "A busy market.", []string{"south"})
 
 	worldMap.AddOrUpdateRoom(room1)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(room2)
+	worldMap.LinkRooms()
 	worldMap.CurrentRoomID = room2.ID
 
 	m := Model{
@@ -262,8 +270,11 @@ func TestPointCommandNumericSelection(t *testing.T) {
 	room3 := mapper.NewRoom("Market Square", "A busy market.", []string{"east"})
 
 	worldMap.AddOrUpdateRoom(room1)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(room2)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(room3)
+	worldMap.LinkRooms()
 	worldMap.CurrentRoomID = room3.ID
 
 	// Link the rooms
@@ -312,8 +323,11 @@ func TestWayfindCommandNumericSelection(t *testing.T) {
 	room3 := mapper.NewRoom("Market Square", "A busy market.", []string{"east"})
 
 	worldMap.AddOrUpdateRoom(room1)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(room2)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(room3)
+	worldMap.LinkRooms()
 	worldMap.CurrentRoomID = room3.ID
 
 	// Link the rooms
@@ -362,8 +376,11 @@ func TestWayfindOutputFormat(t *testing.T) {
 	room3 := mapper.NewRoom("Inner Sanctum", "The innermost chamber.", []string{"south"})
 
 	worldMap.AddOrUpdateRoom(room1)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(room2)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(room3)
+	worldMap.LinkRooms()
 	worldMap.CurrentRoomID = room1.ID
 
 	// Link the rooms

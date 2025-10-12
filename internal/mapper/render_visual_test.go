@@ -79,11 +79,17 @@ func createTestMap() *Map {
 
 	// Add all rooms
 	m.AddOrUpdateRoom(square)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(north)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(tower)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(south)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(east)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(west)
+	m.LinkRooms()
 
 	// Set square as current
 	m.CurrentRoomID = square.ID

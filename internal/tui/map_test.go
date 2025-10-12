@@ -31,10 +31,15 @@ func TestMapPanelRendering(t *testing.T) {
 
 	// Add rooms
 	worldMap.AddOrUpdateRoom(center)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(north)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(south)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(east)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(west)
+	worldMap.LinkRooms()
 	worldMap.CurrentRoomID = center.ID
 
 	// Set the map in the model
@@ -104,7 +109,9 @@ func TestMapPanelWithVerticalExits(t *testing.T) {
 	upper.UpdateExit("down", ground.ID)
 
 	worldMap.AddOrUpdateRoom(ground)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(upper)
+	worldMap.LinkRooms()
 	worldMap.CurrentRoomID = ground.ID
 
 	m.worldMap = worldMap
@@ -140,9 +147,13 @@ func TestMapPanelWithConnectionLines(t *testing.T) {
 	west.UpdateExit("east", center.ID)
 
 	worldMap.AddOrUpdateRoom(center)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(north)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(south)
+	worldMap.LinkRooms()
 	worldMap.AddOrUpdateRoom(west)
+	worldMap.LinkRooms()
 	worldMap.CurrentRoomID = center.ID
 
 	m.worldMap = worldMap

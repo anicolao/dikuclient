@@ -1579,11 +1579,15 @@ func (m *Model) detectAndUpdateRoom() {
 			// Create or update room in map
 			room := mapper.NewRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
 
-			// Set the movement direction
+			// Set the movement direction BEFORE adding room
 			m.worldMap.SetLastDirection(m.pendingMovement)
 			m.pendingMovement = ""
 
+			// Add room (without automatic linking)
 			m.worldMap.AddOrUpdateRoom(room)
+			
+			// Now create the directional link from previous to current room
+			m.worldMap.LinkRooms()
 
 			// Save map periodically (every room visit)
 			m.worldMap.Save()
@@ -1641,11 +1645,15 @@ func (m *Model) detectAndUpdateRoom() {
 	// Create or update room in map
 	room := mapper.NewRoom(roomInfo.Title, roomInfo.Description, roomInfo.Exits)
 
-	// Set the movement direction
+	// Set the movement direction BEFORE adding room
 	m.worldMap.SetLastDirection(m.pendingMovement)
 	m.pendingMovement = ""
 
+	// Add room (without automatic linking)
 	m.worldMap.AddOrUpdateRoom(room)
+	
+	// Now create the directional link from previous to current room
+	m.worldMap.LinkRooms()
 
 	// Save map periodically (every room visit)
 	m.worldMap.Save()

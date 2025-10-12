@@ -52,10 +52,15 @@ func demoSimpleCross(t *testing.T) {
 
 	// Add to map
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(north)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(south)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(east)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(west)
+	m.LinkRooms()
 	m.CurrentRoomID = center.ID
 
 	// Render
@@ -86,10 +91,15 @@ func demoTempleComplex(t *testing.T) {
 
 	// Add to map
 	m.AddOrUpdateRoom(entrance)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(hall)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(sanctum)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(tower)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(crypt)
+	m.LinkRooms()
 	m.CurrentRoomID = hall.ID
 
 	// Render
@@ -125,6 +135,7 @@ func demoLinearPath(t *testing.T) {
 	// Add to map
 	for _, room := range rooms {
 		m.AddOrUpdateRoom(room)
+	m.LinkRooms()
 	}
 	m.CurrentRoomID = rooms[3].ID // Middle room
 
@@ -185,6 +196,7 @@ func demoLargeArea(t *testing.T) {
 	for y := 0; y < 3; y++ {
 		for x := 0; x < 3; x++ {
 			m.AddOrUpdateRoom(grid[y][x])
+	m.LinkRooms()
 		}
 	}
 	m.CurrentRoomID = grid[1][1].ID // Center room
@@ -250,9 +262,13 @@ func TestAdjacentNotConnectedDemo(t *testing.T) {
 
 	// Add rooms
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(north)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(south)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(west)
+	m.LinkRooms()
 	m.CurrentRoomID = center.ID
 
 	// Render

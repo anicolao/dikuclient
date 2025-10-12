@@ -27,46 +27,57 @@ room6 := NewRoom("South Fountain", "A fountain to the south.", []string{"north"}
 
 // Build the map starting from Center Plaza
 m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 
 // Go north to Room2
 m.SetLastDirection("north")
 m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 
 // Go north to Room4
 m.SetLastDirection("north")
 m.AddOrUpdateRoom(room4)
+	m.LinkRooms()
 
 // Return to Room2
 m.SetLastDirection("south")
 m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 
 // Return to Center Plaza
 m.SetLastDirection("south")
 m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 
 // Go east to Room3
 m.SetLastDirection("east")
 m.AddOrUpdateRoom(room3)
+	m.LinkRooms()
 
 // Return to Center Plaza
 m.SetLastDirection("west")
 m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 
 // Go west to Room5
 m.SetLastDirection("west")
 m.AddOrUpdateRoom(room5)
+	m.LinkRooms()
 
 // Return to Center Plaza
 m.SetLastDirection("east")
 m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 
 // Go south to Room6
 m.SetLastDirection("south")
 m.AddOrUpdateRoom(room6)
+	m.LinkRooms()
 
 // Return to Center Plaza (our final position)
 m.SetLastDirection("north")
 m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 
 // Now test FindNearbyRooms from Center Plaza
 t.Log("=== Testing FindNearbyRooms ===")
@@ -136,14 +147,19 @@ north := NewRoom("North", "The north room.", []string{"south"})
 south := NewRoom("South", "The south room.", []string{"north"})
 
 m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 m.SetLastDirection("north")
 m.AddOrUpdateRoom(north)
+	m.LinkRooms()
 m.SetLastDirection("south")
 m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 m.SetLastDirection("south")
 m.AddOrUpdateRoom(south)
+	m.LinkRooms()
 m.SetLastDirection("north")
 m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 
 // Find nearby rooms
 nearby := m.FindNearbyRooms(5)

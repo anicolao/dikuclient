@@ -24,18 +24,25 @@ func TestLegendCommand(t *testing.T) {
 
 	// Add all rooms to the map
 	m.worldMap.AddOrUpdateRoom(center)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("north")
 	m.worldMap.AddOrUpdateRoom(north)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("south")
 	m.worldMap.AddOrUpdateRoom(center)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("south")
 	m.worldMap.AddOrUpdateRoom(south)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("north")
 	m.worldMap.AddOrUpdateRoom(center)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("east")
 	m.worldMap.AddOrUpdateRoom(east)
+	m.worldMap.LinkRooms()
 	m.worldMap.SetLastDirection("west")
 	m.worldMap.AddOrUpdateRoom(center)
+	m.worldMap.LinkRooms()
 
 	// Execute the /legend command
 	savedPrompt := m.output[len(m.output)-1]

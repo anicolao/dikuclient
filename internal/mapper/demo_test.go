@@ -14,12 +14,14 @@ func TestMapperDemo(t *testing.T) {
 	t.Log("1. Visiting Temple Square...")
 	room1 := NewRoom("Temple Square", "A large temple square with ancient stones.", []string{"north", "east"})
 	m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 	t.Logf("   Room ID: %s", room1.ID)
 
 	t.Log("2. Moving north to Temple Hall...")
 	m.SetLastDirection("north")
 	room2 := NewRoom("Temple Hall", "A grand hall inside the temple. Torches line the walls.", []string{"south", "north", "west"})
 	m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 	t.Logf("   Temple Square north exit now points to: %s", m.Rooms[room1.ID].Exits["north"])
 	t.Logf("   Temple Hall south exit now points to: %s", m.Rooms[room2.ID].Exits["south"])
 
@@ -27,6 +29,7 @@ func TestMapperDemo(t *testing.T) {
 	m.SetLastDirection("north")
 	room3 := NewRoom("Inner Sanctum", "The innermost chamber of the temple. Very sacred.", []string{"south"})
 	m.AddOrUpdateRoom(room3)
+	m.LinkRooms()
 
 	t.Log("4. Testing pathfinding from Inner Sanctum back to Temple Square...")
 	path := m.FindPath(room1.ID)
@@ -135,11 +138,13 @@ func ExampleMap() {
 	// Add first room
 	room1 := NewRoom("Starting Room", "You are in a small room.", []string{"north"})
 	m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 
 	// Move north and add second room
 	m.SetLastDirection("north")
 	room2 := NewRoom("Northern Room", "You are in a larger room.", []string{"south", "east"})
 	m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 
 	// Find path back to start
 	path := m.FindPath(room1.ID)

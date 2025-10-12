@@ -32,10 +32,15 @@ func TestRenderMapBasic(t *testing.T) {
 
 	// Add rooms to map
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(north)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(south)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(east)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(west)
+	m.LinkRooms()
 
 	// Set center as current room
 	m.CurrentRoomID = center.ID
@@ -93,6 +98,7 @@ func TestGetVerticalExits(t *testing.T) {
 	// Test with up exit
 	room := NewRoom("Test Room", "A test room.", []string{"north", "up"})
 	m.AddOrUpdateRoom(room)
+	m.LinkRooms()
 	hasUp, hasDown = m.GetVerticalExits()
 	if !hasUp || hasDown {
 		t.Errorf("Expected only up exit, got up=%v down=%v", hasUp, hasDown)
@@ -102,6 +108,7 @@ func TestGetVerticalExits(t *testing.T) {
 	room2 := NewRoom("Test Room 2", "Another test room.", []string{"south", "down"})
 	m.CurrentRoomID = room2.ID
 	m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 	hasUp, hasDown = m.GetVerticalExits()
 	if hasUp || !hasDown {
 		t.Errorf("Expected only down exit, got up=%v down=%v", hasUp, hasDown)
@@ -111,6 +118,7 @@ func TestGetVerticalExits(t *testing.T) {
 	room3 := NewRoom("Test Room 3", "A third test room.", []string{"up", "down"})
 	m.CurrentRoomID = room3.ID
 	m.AddOrUpdateRoom(room3)
+	m.LinkRooms()
 	hasUp, hasDown = m.GetVerticalExits()
 	if !hasUp || !hasDown {
 		t.Errorf("Expected both vertical exits, got up=%v down=%v", hasUp, hasDown)
@@ -153,7 +161,9 @@ func TestFormatMapPanel(t *testing.T) {
 
 	// Add rooms
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	m.AddOrUpdateRoom(north)
+	m.LinkRooms()
 
 	// Set center as current
 	m.CurrentRoomID = center.ID
@@ -181,15 +191,18 @@ func TestRenderMapWithUnexplored(t *testing.T) {
 	// Create and add center room
 	center := NewRoom("Town Square", "The bustling town square.", []string{"north", "south", "east", "west"})
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	
 	// Move north and add north gate
 	north := NewRoom("North Gate", "The northern gate.", []string{"south"})
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(north)
+	m.LinkRooms()
 	
 	// Move back south to center
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	
 	// Manually add unexplored exits to center
 	centerRoom := m.Rooms[center.ID]
@@ -231,15 +244,18 @@ func TestRenderMapWithEmptyStringExits(t *testing.T) {
 	// Create and add center room
 	center := NewRoom("Center", "The center room.", []string{"north", "south", "east", "west"})
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	
 	// Move north and add north room
 	north := NewRoom("North", "The north room.", []string{"south"})
 	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(north)
+	m.LinkRooms()
 	
 	// Move back south to center
 	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
 	
 	// Manually add unexplored exits with empty strings (as seen in real map data)
 	centerRoom := m.Rooms[center.ID]
@@ -275,18 +291,22 @@ func TestRenderMapLinear(t *testing.T) {
 	// Create a linear path by simulating movement: Room1 -> Room2 -> Room3
 	room1 := NewRoom("Room 1", "First room.", []string{"east"})
 	m.AddOrUpdateRoom(room1)
+	m.LinkRooms()
 	
 	room2 := NewRoom("Room 2", "Second room.", []string{"west", "east"})
 	m.SetLastDirection("east")
 	m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 	
 	room3 := NewRoom("Room 3", "Third room.", []string{"west"})
 	m.SetLastDirection("east")
 	m.AddOrUpdateRoom(room3)
+	m.LinkRooms()
 	
 	// Go back to room2
 	m.SetLastDirection("west")
 	m.AddOrUpdateRoom(room2)
+	m.LinkRooms()
 
 	// Render
 	rendered, title := m.RenderMap(40, 10)
