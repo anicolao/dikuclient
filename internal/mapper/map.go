@@ -127,8 +127,44 @@ func (m *Map) Save() error {
 
 // AddOrUpdateRoom adds a new room or updates an existing one
 func (m *Map) AddOrUpdateRoom(room *Room) {
-	if existing, exists := m.Rooms[room.ID]; exists {
-		// Room already exists, increment visit count
+	// Check if we're following a known exit from the current room
+	// If so, we might be revisiting an existing room
+	var knownDestID string
+	if m.CurrentRoomID != "" && m.LastDirection != "" {
+		if currentRoom, exists := m.Rooms[m.CurrentRoomID]; exists {
+			if destID, hasExit := currentRoom.Exits[m.LastDirection]; hasExit && destID != "" {
+				// We have a known destination for this exit
+				if _, destExists := m.Rooms[destID]; destExists {
+					// Verify the destination room matches the characteristics of the room we're entering
+					// Extract exits for comparison
+					exits := make([]string, 0, len(room.Exits))
+					for direction := range room.Exits {
+						exits = append(exits, direction)
+					}
+					baseID := GenerateRoomID(room.Title, room.Description, exits)
+					
+					// Extract base ID from destination room
+					destBaseID := destID
+					lastPipe := strings.LastIndex(destID, "|")
+					if lastPipe > 0 && lastPipe < len(destID)-1 {
+						suffix := destID[lastPipe+1:]
+						if _, err := fmt.Sscanf(suffix, "%d", new(int)); err == nil {
+							destBaseID = destID[:lastPipe]
+						}
+					}
+					
+					// If characteristics match, we're revisiting this known room
+					if baseID == destBaseID {
+						knownDestID = destID
+					}
+				}
+			}
+		}
+	}
+	
+	if knownDestID != "" {
+		// We're revisiting a known room via a known exit
+		existing := m.Rooms[knownDestID]
 		existing.VisitCount++
 
 		// Merge exits (keep existing mappings, add new ones)
@@ -137,12 +173,55 @@ func (m *Map) AddOrUpdateRoom(room *Room) {
 				existing.Exits[direction] = destID
 			}
 		}
-	} else {
-		// New room - add it to the map
-		m.Rooms[room.ID] = room
 		
-		// Add to room numbering if not already present
-		m.addToRoomNumbering(room.ID)
+		// Update the room object's ID to match the existing room
+		room.ID = knownDestID
+	} else {
+		// Either a new room or revisiting via an unknown path
+		// Extract exits from the room for ID generation
+		exits := make([]string, 0, len(room.Exits))
+		for direction := range room.Exits {
+			exits = append(exits, direction)
+		}
+		
+		// Calculate distance to room 0 for this room's position
+		distance := m.calculateDistanceToRoom0()
+		
+		// If we have a current room and can calculate distance, add 1 for the move to the new room
+		if m.CurrentRoomID != "" && distance >= 0 {
+			distance++
+		}
+		
+		// For the very first room (no current room), distance is 0 as it becomes room 0
+		if m.CurrentRoomID == "" && len(m.RoomNumbering) == 0 {
+			distance = 0
+		}
+		
+		// Generate room ID with distance - this is the unique identifier
+		newID := GenerateRoomIDWithDistance(room.Title, room.Description, exits, distance)
+		
+		// Check if room with this exact ID (including distance) already exists
+		if existing, exists := m.Rooms[newID]; exists {
+			// Room already exists at this distance, increment visit count
+			existing.VisitCount++
+
+			// Merge exits (keep existing mappings, add new ones)
+			for direction, destID := range room.Exits {
+				if _, hasExit := existing.Exits[direction]; !hasExit {
+					existing.Exits[direction] = destID
+				}
+			}
+			
+			// Update the room object's ID to match the existing room
+			room.ID = newID
+		} else {
+			// New room - add it to the map
+			room.ID = newID
+			m.Rooms[room.ID] = room
+			
+			// Add to room numbering if not already present
+			m.addToRoomNumbering(room.ID)
+		}
 	}
 
 	// Get the room from the map (whether new or existing)
@@ -438,6 +517,67 @@ func (m *Map) addToRoomNumbering(roomID string) {
 	}
 	// Add to the end
 	m.RoomNumbering = append(m.RoomNumbering, roomID)
+}
+
+// calculateDistanceToRoom0 calculates the BFS distance from the current room to room 0 (first room in numbering)
+// Returns -1 if room 0 doesn't exist or is unreachable
+func (m *Map) calculateDistanceToRoom0() int {
+	// If no rooms in numbering, there is no room 0
+	if len(m.RoomNumbering) == 0 {
+		return -1
+	}
+
+	// If no current room, we can't calculate distance
+	if m.CurrentRoomID == "" {
+		return -1
+	}
+
+	room0ID := m.RoomNumbering[0]
+
+	// If current room is room 0, distance is 0
+	if m.CurrentRoomID == room0ID {
+		return 0
+	}
+
+	// BFS to find shortest path from current room to room 0
+	type queueItem struct {
+		roomID   string
+		distance int
+	}
+
+	visited := make(map[string]bool)
+	queue := []queueItem{{roomID: m.CurrentRoomID, distance: 0}}
+	visited[m.CurrentRoomID] = true
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		room := m.Rooms[current.roomID]
+		if room == nil {
+			continue
+		}
+
+		// Check all exits
+		for _, destID := range room.Exits {
+			if destID == "" {
+				continue // Unknown destination
+			}
+
+			if destID == room0ID {
+				// Found room 0!
+				return current.distance + 1
+			}
+
+			if !visited[destID] {
+				visited[destID] = true
+				queue = append(queue, queueItem{roomID: destID, distance: current.distance + 1})
+			}
+		}
+	}
+
+	// Room 0 is not reachable from current room
+	return -1
 }
 
 // GetRoomNumber returns the durable room number for a given room ID

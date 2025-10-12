@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 )
@@ -16,8 +17,14 @@ type Room struct {
 }
 
 // GenerateRoomID creates a unique ID from title, first sentence, and exits
-// Returns human-readable format: "title|first_sentence|exits"
+// Returns human-readable format: "title|first_sentence|exits" or "title|first_sentence|exits|distance" if distance >= 0
 func GenerateRoomID(title, description string, exits []string) string {
+	return GenerateRoomIDWithDistance(title, description, exits, -1)
+}
+
+// GenerateRoomIDWithDistance creates a unique ID with optional distance to room 0
+// If distance >= 0, appends "|NNN" where NNN is the distance
+func GenerateRoomIDWithDistance(title, description string, exits []string, distance int) string {
 	// Extract first sentence from description
 	firstSentence := extractFirstSentence(description)
 
@@ -31,6 +38,11 @@ func GenerateRoomID(title, description string, exits []string) string {
 	combined := strings.ToLower(title) + "|" +
 		strings.ToLower(firstSentence) + "|" +
 		strings.Join(sortedExits, ",")
+
+	// Append distance if provided
+	if distance >= 0 {
+		combined += fmt.Sprintf("|%d", distance)
+	}
 
 	return combined
 }

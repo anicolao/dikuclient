@@ -178,23 +178,24 @@ func TestFormatMapPanel(t *testing.T) {
 func TestRenderMapWithUnexplored(t *testing.T) {
 	m := NewMap()
 
-	// Create a center room with some explored and some unexplored exits
+	// Create and add center room
 	center := NewRoom("Town Square", "The bustling town square.", []string{"north", "south", "east", "west"})
-	north := NewRoom("North Gate", "The northern gate.", []string{"south"})
-	
-	// Link center to north (explored)
-	center.UpdateExit("north", north.ID)
-	north.UpdateExit("south", center.ID)
-	
-	// Create unexplored exits (IDs but no actual rooms in the map yet)
-	center.UpdateExit("south", "unexplored-south-id")
-	center.UpdateExit("east", "unexplored-east-id")
-	center.UpdateExit("west", "unexplored-west-id")
-	
-	// Add only center and north rooms to the map
 	m.AddOrUpdateRoom(center)
+	
+	// Move north and add north gate
+	north := NewRoom("North Gate", "The northern gate.", []string{"south"})
+	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(north)
-	m.CurrentRoomID = center.ID
+	
+	// Move back south to center
+	m.SetLastDirection("south")
+	m.AddOrUpdateRoom(center)
+	
+	// Manually add unexplored exits to center
+	centerRoom := m.Rooms[center.ID]
+	centerRoom.UpdateExit("south", "")
+	centerRoom.UpdateExit("east", "")
+	centerRoom.UpdateExit("west", "")
 	
 	// Render the map
 	rendered, title := m.RenderMap(40, 15)
@@ -227,23 +228,24 @@ func TestRenderMapWithUnexplored(t *testing.T) {
 func TestRenderMapWithEmptyStringExits(t *testing.T) {
 	m := NewMap()
 
-	// Create a room with empty string exits (common pattern in actual map data)
+	// Create and add center room
 	center := NewRoom("Center", "The center room.", []string{"north", "south", "east", "west"})
-	north := NewRoom("North", "The north room.", []string{"south"})
-	
-	// Link center to north (explored)
-	center.UpdateExit("north", north.ID)
-	north.UpdateExit("south", center.ID)
-	
-	// Create unexplored exits with empty strings (as seen in real map data)
-	center.UpdateExit("south", "")
-	center.UpdateExit("east", "")
-	center.UpdateExit("west", "")
-	
-	// Add rooms to map
 	m.AddOrUpdateRoom(center)
+	
+	// Move north and add north room
+	north := NewRoom("North", "The north room.", []string{"south"})
+	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(north)
-	m.CurrentRoomID = center.ID
+	
+	// Move back south to center
+	m.SetLastDirection("south")
+	m.AddOrUpdateRoom(center)
+	
+	// Manually add unexplored exits with empty strings (as seen in real map data)
+	centerRoom := m.Rooms[center.ID]
+	centerRoom.UpdateExit("south", "")
+	centerRoom.UpdateExit("east", "")
+	centerRoom.UpdateExit("west", "")
 	
 	// Render the map
 	rendered, title := m.RenderMap(40, 15)
@@ -270,24 +272,21 @@ func TestRenderMapWithEmptyStringExits(t *testing.T) {
 func TestRenderMapLinear(t *testing.T) {
 	m := NewMap()
 
-	// Create a linear path: Room1 -> Room2 -> Room3
+	// Create a linear path by simulating movement: Room1 -> Room2 -> Room3
 	room1 := NewRoom("Room 1", "First room.", []string{"east"})
-	room2 := NewRoom("Room 2", "Second room.", []string{"west", "east"})
-	room3 := NewRoom("Room 3", "Third room.", []string{"west"})
-
-	// Link rooms
-	room1.UpdateExit("east", room2.ID)
-	room2.UpdateExit("west", room1.ID)
-	room2.UpdateExit("east", room3.ID)
-	room3.UpdateExit("west", room2.ID)
-
-	// Add to map
 	m.AddOrUpdateRoom(room1)
+	
+	room2 := NewRoom("Room 2", "Second room.", []string{"west", "east"})
+	m.SetLastDirection("east")
 	m.AddOrUpdateRoom(room2)
+	
+	room3 := NewRoom("Room 3", "Third room.", []string{"west"})
+	m.SetLastDirection("east")
 	m.AddOrUpdateRoom(room3)
-
-	// Set room2 as current
-	m.CurrentRoomID = room2.ID
+	
+	// Go back to room2
+	m.SetLastDirection("west")
+	m.AddOrUpdateRoom(room2)
 
 	// Render
 	rendered, title := m.RenderMap(40, 10)

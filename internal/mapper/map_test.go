@@ -2,6 +2,7 @@ package mapper
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -244,6 +245,77 @@ func TestFindNearbyRoomsNoCurrentRoom(t *testing.T) {
 
 	if nearby != nil {
 		t.Errorf("Expected nil when no current room, got %d rooms", len(nearby))
+	}
+}
+
+func TestRoomIDWithDistance(t *testing.T) {
+	m := NewMap()
+
+	// Create first room with certain characteristics
+	room1 := NewRoom("Identical Room", "This room looks the same.", []string{"north", "south"})
+	m.AddOrUpdateRoom(room1)
+
+	// Move to another room
+	intermediate := NewRoom("Intermediate", "A connecting room.", []string{"north", "south"})
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(intermediate)
+
+	// Go back south to room1 - this should recognize it via the exit mapping
+	revisitRoom1 := NewRoom("Identical Room", "This room looks the same.", []string{"north", "south"})
+	m.SetLastDirection("south")
+	m.AddOrUpdateRoom(revisitRoom1)
+
+	// The revisited room should have the same ID as room1 (it IS room1)
+	if revisitRoom1.ID != room1.ID {
+		t.Errorf("Revisiting a room via known exit should yield the same ID. Room1: %s, Revisit: %s", room1.ID, revisitRoom1.ID)
+	}
+
+	// Verify distance is in the ID
+	if !strings.Contains(room1.ID, "|0") {
+		t.Errorf("Room1 should have distance 0 in ID, got: %s", room1.ID)
+	}
+
+	// Only 2 distinct rooms should exist (room1 and intermediate)
+	if len(m.Rooms) != 2 {
+		t.Errorf("Expected 2 rooms in map, got %d", len(m.Rooms))
+	}
+
+	t.Logf("Room1 ID: %s", room1.ID)
+	t.Logf("Revisit ID: %s", revisitRoom1.ID)
+	t.Logf("Intermediate ID: %s", intermediate.ID)
+}
+
+func TestRoomIDDistanceCalculation(t *testing.T) {
+	m := NewMap()
+
+	// Build a simple path to test distance calculation
+	room0 := NewRoom("Start", "The starting room.", []string{"north"})
+	m.AddOrUpdateRoom(room0)
+
+	room1 := NewRoom("Room 1", "One step away.", []string{"south", "north"})
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(room1)
+
+	room2 := NewRoom("Room 2", "Two steps away.", []string{"south", "north"})
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(room2)
+
+	room3 := NewRoom("Room 3", "Three steps away.", []string{"south"})
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(room3)
+
+	// Verify distances in IDs
+	if !strings.HasSuffix(room0.ID, "|0") {
+		t.Errorf("Room0 should end with |0, got: %s", room0.ID)
+	}
+	if !strings.HasSuffix(room1.ID, "|1") {
+		t.Errorf("Room1 should end with |1, got: %s", room1.ID)
+	}
+	if !strings.HasSuffix(room2.ID, "|2") {
+		t.Errorf("Room2 should end with |2, got: %s", room2.ID)
+	}
+	if !strings.HasSuffix(room3.ID, "|3") {
+		t.Errorf("Room3 should end with |3, got: %s", room3.ID)
 	}
 }
 
