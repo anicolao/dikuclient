@@ -79,6 +79,11 @@ type Model struct {
 	historySearchIndex     int                // Current position in search results
 	isSplit                bool               // Whether the main viewport is split
 	splitViewport          viewport.Model     // Second viewport for tracking live output when split
+	descriptionViewport    viewport.Model     // Description viewport stuck to top (for Barsoom rooms)
+	currentRoomDescription string             // Current room description to display in top split
+	hasDescriptionSplit    bool               // Whether description split is active
+	currentBarsoomTitle    string             // Title of current Barsoom room (for title bar)
+	currentBarsoomExits    []string           // Exits of current Barsoom room (for title bar)
 	lastRenderedGameOutput string             // Last rendered game output (for testing)
 	lastRenderedSidebar    string             // Last rendered sidebar (for testing)
 	pendingCommands        []string           // Queue of commands to send (from triggers, aliases, or /go)
@@ -523,6 +528,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.splitViewport.Width = mainWidth
 		m.splitViewport.Height = (m.height - headerHeight) / 3
 
+		// Set up description viewport dimensions
+		m.descriptionViewport.Width = mainWidth
+		m.descriptionViewport.Height = 6 // Fixed height for description
+
 		// Update viewport sizes for 4 panels
 		panelHeight := (m.height - headerHeight - 8) / 4
 		m.inventoryViewport.Width = sidebarWidth - 4 // Account for borders and padding
@@ -590,6 +599,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if i == len(lines)-1 && line == "" {
 				continue
 			}
+			
+			// Check if this is a Barsoom marker line and suppress it
+			cleanLine := stripANSI(line)
+			trimmedLine := strings.TrimSpace(cleanLine)
+			// Match --< or >-- (with or without exits on the same line)
+			if trimmedLine == "--<" || strings.HasPrefix(trimmedLine, ">--") {
+				// Add to recentOutput for parsing but not to display output
+				m.recentOutput = append(m.recentOutput, line)
+				continue
+			}
+			
 			m.output = append(m.output, line)
 			m.recentOutput = append(m.recentOutput, line)
 
@@ -603,8 +623,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.detectXPEvents(line)
 
 			// Check for recall command (which causes teleportation)
-			// Strip ANSI codes and check if line contains 'recall'
-			cleanLine := stripANSI(line)
+			// cleanLine already defined above
 			if strings.Contains(strings.ToLower(cleanLine), "recall") {
 				// Set flag to skip next room detection to avoid creating bad links
 				m.skipNextRoomDetection = true
@@ -997,7 +1016,16 @@ func (m *Model) renderMainContent() string {
 
 	// Build title for main window with current room and exits
 	mainTitle := ""
-	if m.worldMap != nil {
+	
+	// Use Barsoom room info if available (updated in real-time)
+	if m.hasDescriptionSplit && m.currentBarsoomTitle != "" {
+		exitsStr := strings.Join(m.currentBarsoomExits, ", ")
+		if exitsStr == "" {
+			exitsStr = "none"
+		}
+		mainTitle = m.currentBarsoomTitle + " [" + exitsStr + "]"
+	} else if m.worldMap != nil {
+		// Fall back to map's current room (only updates on movement)
 		currentRoom := m.worldMap.GetCurrentRoom()
 		if currentRoom != nil {
 			exitList := make([]string, 0, len(currentRoom.Exits))
@@ -1032,7 +1060,114 @@ func (m *Model) renderMainContent() string {
 
 	var gameOutput string
 
-	if m.isSplit {
+	if m.hasDescriptionSplit && m.isSplit {
+		// Three-way split: description at top, scrollable in middle, live at bottom
+		descHeight := 8 // Fixed height for description
+		liveHeight := actualContentHeight / 4 // Live output takes 1/4
+		scrollHeight := actualContentHeight - descHeight - liveHeight - 2 // -2 for separator borders
+		
+		// Adjust viewport heights
+		m.descriptionViewport.Height = descHeight - 2
+		m.viewport.Height = scrollHeight - 1
+		m.splitViewport.Height = liveHeight - 2
+		
+		// Top viewport (description - stuck to top)
+		descBorderStyle := lipgloss.NewStyle().
+			BorderStyle(customBorder).
+			BorderForeground(lipgloss.Color("62")).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderBottom(false)
+		
+		m.descriptionViewport.SetContent(m.currentRoomDescription)
+		m.descriptionViewport.GotoTop() // Always at top
+		descView := descBorderStyle.
+			Width(mainWidth).
+			Height(descHeight).
+			Render(m.descriptionViewport.View())
+		
+		// Middle viewport (user's scrolled position)
+		midBorder := lipgloss.RoundedBorder()
+		midBorder.Top = strings.Repeat("─", mainWidth+10)
+		midBorder.TopLeft = "├"
+		
+		midBorderStyle := lipgloss.NewStyle().
+			BorderStyle(midBorder).
+			BorderForeground(lipgloss.Color("62")).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderBottom(false)
+		
+		midView := midBorderStyle.
+			Width(mainWidth).
+			Height(scrollHeight).
+			Render(m.viewport.View())
+		
+		// Bottom viewport (live output - always at bottom)
+		bottomBorder := lipgloss.RoundedBorder()
+		bottomBorder.Top = strings.Repeat("─", mainWidth+10)
+		bottomBorder.TopLeft = "├"
+		
+		bottomBorderStyle := lipgloss.NewStyle().
+			BorderStyle(bottomBorder).
+			BorderForeground(lipgloss.Color("62")).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderBottom(true)
+		
+		bottomView := bottomBorderStyle.
+			Width(mainWidth).
+			Height(liveHeight).
+			Render(m.splitViewport.View())
+		
+		gameOutput = lipgloss.JoinVertical(lipgloss.Left, descView, midView, bottomView)
+	} else if m.hasDescriptionSplit {
+		// Two-way split with description at top
+		descHeight := 8
+		mainHeight := actualContentHeight - descHeight - 1 // -1 for separator border
+		
+		m.descriptionViewport.Height = descHeight - 2
+		m.viewport.Height = mainHeight - 2
+		
+		// Top viewport (description)
+		descBorderStyle := lipgloss.NewStyle().
+			BorderStyle(customBorder).
+			BorderForeground(lipgloss.Color("62")).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderBottom(false)
+		
+		m.descriptionViewport.SetContent(m.currentRoomDescription)
+		m.descriptionViewport.GotoTop()
+		descView := descBorderStyle.
+			Width(mainWidth).
+			Height(descHeight).
+			Render(m.descriptionViewport.View())
+		
+		// Bottom viewport (main content)
+		bottomBorder := lipgloss.RoundedBorder()
+		bottomBorder.Top = strings.Repeat("─", mainWidth+10)
+		bottomBorder.TopLeft = "├"
+		
+		bottomBorderStyle := lipgloss.NewStyle().
+			BorderStyle(bottomBorder).
+			BorderForeground(lipgloss.Color("62")).
+			BorderTop(true).
+			BorderLeft(true).
+			BorderRight(false).
+			BorderBottom(true)
+		
+		bottomView := bottomBorderStyle.
+			Width(mainWidth).
+			Height(mainHeight).
+			Render(m.viewport.View())
+		
+		gameOutput = lipgloss.JoinVertical(lipgloss.Left, descView, bottomView)
+	} else if m.isSplit {
 		// Split mode: 2/3 for user scrolled position, 1/3 for live output at bottom
 		// When stacking two boxes vertically, we need to account for the extra border line
 		// where they meet (the separator between them)
@@ -1365,8 +1500,109 @@ func (m *Model) savePasswordForWebClient(password string) {
 
 // detectAndUpdateRoom tries to parse room information from recent output
 func (m *Model) detectAndUpdateRoom() {
-	// Only detect rooms when we have a pending movement (user just moved)
+	if len(m.recentOutput) < 3 {
+		return // Need at least a few lines to detect a room
+	}
+
+	// Always check for Barsoom rooms (they have clear delimiters)
+	// For Barsoom rooms, we update the description split on every output
+	barsoomRoomInfo := mapper.ParseBarsoomRoomOnly(m.recentOutput, m.mapDebug)
+	if barsoomRoomInfo != nil && barsoomRoomInfo.Title != "" {
+		// Update description split for Barsoom room
+		if barsoomRoomInfo.IsBarsoomRoom {
+			// Store current Barsoom room info for title bar
+			m.currentBarsoomTitle = barsoomRoomInfo.Title
+			m.currentBarsoomExits = barsoomRoomInfo.Exits
+			
+			// Format the description for display (no title, no exits - those are in title bar)
+			descLines := []string{
+				"",
+			}
+			
+			// Wrap description text at reasonable width (e.g., 80 chars)
+			// Limit to 4 lines to fit in the description viewport
+			descText := barsoomRoomInfo.Description
+			if len(descText) > 0 {
+				words := strings.Fields(descText)
+				currentLine := "  " // Indent
+				lineCount := 0
+				maxLines := 4
+				truncated := false
+				
+				for _, word := range words {
+					if lineCount >= maxLines {
+						truncated = true
+						break
+					}
+					
+					if len(currentLine)+len(word)+1 > 80 {
+						descLines = append(descLines, currentLine)
+						lineCount++
+						currentLine = "  " + word
+					} else {
+						if currentLine == "  " {
+							currentLine += word
+						} else {
+							currentLine += " " + word
+						}
+					}
+				}
+				
+				if currentLine != "  " && lineCount < maxLines {
+					if truncated {
+						currentLine += " ..."
+					}
+					descLines = append(descLines, currentLine)
+				} else if truncated && len(descLines) > 0 {
+					// Add ... to the last line if we truncated
+					lastIdx := len(descLines) - 1
+					descLines[lastIdx] += " ..."
+				}
+			}
+			descLines = append(descLines, "")
+			m.currentRoomDescription = strings.Join(descLines, "\n")
+			m.hasDescriptionSplit = true
+		}
+
+		// If we have a pending movement, update the map
+		if m.pendingMovement != "" {
+			// Skip room detection if flag is set (e.g., after recall teleport)
+			if m.skipNextRoomDetection {
+				m.skipNextRoomDetection = false
+				m.pendingMovement = "" // Clear pending movement
+				if m.mapDebug {
+					m.output = append(m.output, "\x1b[90m[Mapper: Skipped room detection due to recall]\x1b[0m")
+				}
+				return
+			}
+
+			// Create or update room in map
+			room := mapper.NewRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
+
+			// Set the movement direction
+			m.worldMap.SetLastDirection(m.pendingMovement)
+			m.pendingMovement = ""
+
+			m.worldMap.AddOrUpdateRoom(room)
+
+			// Save map periodically (every room visit)
+			m.worldMap.Save()
+
+			// Notify user that room was added (only if debug enabled)
+			if m.mapDebug {
+				m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, barsoomRoomInfo.Exits))
+			}
+		}
+		return
+	}
+
+	// For non-Barsoom rooms, only detect when we have a pending movement
 	if m.pendingMovement == "" {
+		// Clear description split if no Barsoom room
+		m.hasDescriptionSplit = false
+		m.currentRoomDescription = ""
+		m.currentBarsoomTitle = ""
+		m.currentBarsoomExits = nil
 		return
 	}
 
@@ -1380,11 +1616,7 @@ func (m *Model) detectAndUpdateRoom() {
 		return
 	}
 
-	if len(m.recentOutput) < 3 {
-		return // Need at least a few lines to detect a room
-	}
-
-	// Try to parse room info from recent output
+	// Try to parse room info from recent output (non-Barsoom)
 	roomInfo := mapper.ParseRoomInfo(m.recentOutput, m.mapDebug)
 
 	// Only display debug info if mapDebug flag is enabled
@@ -1399,6 +1631,12 @@ func (m *Model) detectAndUpdateRoom() {
 	if roomInfo == nil || roomInfo.Title == "" {
 		return // No valid room detected
 	}
+
+	// Not a Barsoom room, clear description split
+	m.hasDescriptionSplit = false
+	m.currentRoomDescription = ""
+	m.currentBarsoomTitle = ""
+	m.currentBarsoomExits = nil
 
 	// Create or update room in map
 	room := mapper.NewRoom(roomInfo.Title, roomInfo.Description, roomInfo.Exits)

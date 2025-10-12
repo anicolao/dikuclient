@@ -75,6 +75,218 @@ func TestParseRoomInfo(t *testing.T) {
 	}
 }
 
+func TestParseRoomInfo_BarsoomFormat(t *testing.T) {
+	// Test Barsoom MUD format with --< and >-- markers
+	// New format: exits are on the same line as >--
+	lines := []string{
+		"119H 110V 3674X 0.00% 77C T:56 Exits:EW>",
+		"--<",
+		"Temple Square",
+		"    You are standing in a large temple square. The ancient stones",
+		"speak of a glorious past.",
+		">-- Exits:NSE",
+	}
+
+	info := ParseRoomInfo(lines, false)
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil")
+	}
+
+	if info.Title != "Temple Square" {
+		t.Errorf("Title = %q, want %q", info.Title, "Temple Square")
+	}
+
+	expectedDesc := "You are standing in a large temple square. The ancient stones speak of a glorious past."
+	if info.Description != expectedDesc {
+		t.Errorf("Description = %q, want %q", info.Description, expectedDesc)
+	}
+
+	if len(info.Exits) != 3 {
+		t.Errorf("Got %d exits, want 3", len(info.Exits))
+	}
+
+	expectedExits := map[string]bool{"north": true, "south": true, "east": true}
+	for _, exit := range info.Exits {
+		if !expectedExits[exit] {
+			t.Errorf("Unexpected exit: %q", exit)
+		}
+	}
+
+	// Verify that Barsoom-specific fields are set
+	if !info.IsBarsoomRoom {
+		t.Error("Expected IsBarsoomRoom to be true")
+	}
+
+	if info.BarsoomStartIdx != 1 {
+		t.Errorf("BarsoomStartIdx = %d, want 1", info.BarsoomStartIdx)
+	}
+
+	if info.BarsoomEndIdx != 5 {
+		t.Errorf("BarsoomEndIdx = %d, want 5", info.BarsoomEndIdx)
+	}
+}
+
+func TestParseRoomInfo_BarsoomFormatMultipleParagraphs(t *testing.T) {
+	// Test Barsoom format with multiple description paragraphs
+	// New format: exits are on the same line as >--
+	lines := []string{
+		"119H 110V 3674X 0.00% 77C T:56 Exits:EW>",
+		"--<",
+		"Ancient Library",
+		"Towering shelves filled with ancient tomes line the walls of this grand library.",
+		"The musty smell of old parchment fills the air.",
+		"",
+		"A large reading table sits in the center of the room, covered with open books.",
+		">-- Exits:W",
+	}
+
+	info := ParseRoomInfo(lines, false)
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil")
+	}
+
+	if info.Title != "Ancient Library" {
+		t.Errorf("Title = %q, want %q", info.Title, "Ancient Library")
+	}
+
+	expectedDesc := "Towering shelves filled with ancient tomes line the walls of this grand library. The musty smell of old parchment fills the air. A large reading table sits in the center of the room, covered with open books."
+	if info.Description != expectedDesc {
+		t.Errorf("Description = %q, want %q", info.Description, expectedDesc)
+	}
+
+	if !info.IsBarsoomRoom {
+		t.Error("Expected IsBarsoomRoom to be true")
+	}
+	
+	// Verify exits
+	if len(info.Exits) != 1 {
+		t.Errorf("Got %d exits, want 1", len(info.Exits))
+	}
+	if len(info.Exits) > 0 && info.Exits[0] != "west" {
+		t.Errorf("Exit = %q, want %q", info.Exits[0], "west")
+	}
+}
+
+func TestParseRoomInfo_BarsoomFormatMultipleRooms(t *testing.T) {
+	// Test that backward search finds the most recent room when multiple rooms are present
+	// New format: exits are on the same line as >--
+	lines := []string{
+		// Old room that should NOT be detected
+		"119H 110V 3674X 0.00% 77C T:56 Exits:NS>",
+		"--<",
+		"Old Temple",
+		"An ancient temple.",
+		">-- Exits:NS",
+		"",
+		// Some movement output
+		"You move north.",
+		"",
+		// New room that SHOULD be detected (most recent)
+		"120H 110V 3600X 0.00% 77C T:57 Exits:EW>",
+		"--<",
+		"Temple Square",
+		"You are standing in a large temple square. The ancient stones speak of a glorious past.",
+		">-- Exits:EW",
+	}
+
+	info := ParseRoomInfo(lines, false)
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil")
+	}
+
+	// Should find the most recent room (Temple Square), not the old one
+	if info.Title != "Temple Square" {
+		t.Errorf("Title = %q, want %q (should find most recent room)", info.Title, "Temple Square")
+	}
+
+	expectedDesc := "You are standing in a large temple square. The ancient stones speak of a glorious past."
+	if info.Description != expectedDesc {
+		t.Errorf("Description = %q, want %q", info.Description, expectedDesc)
+	}
+
+	expectedExits := map[string]bool{"east": true, "west": true}
+	if len(info.Exits) != len(expectedExits) {
+		t.Errorf("Got %d exits, want %d", len(info.Exits), len(expectedExits))
+	}
+	for _, exit := range info.Exits {
+		if !expectedExits[exit] {
+			t.Errorf("Unexpected exit: %q", exit)
+		}
+	}
+
+	if !info.IsBarsoomRoom {
+		t.Error("Expected IsBarsoomRoom to be true")
+	}
+}
+
+func TestParseRoomInfo_BarsoomFormatNoExitsYet(t *testing.T) {
+	// Test Barsoom format when exits haven't arrived yet (just >-- without exits)
+	// This simulates the case where we receive the room description but the exits info hasn't come through yet
+	lines := []string{
+		"--<",
+		"Temple Square",
+		"You are standing in a large temple square.",
+		">--",
+	}
+
+	info := ParseRoomInfo(lines, false)
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil - should still parse room even without exits")
+	}
+
+	if info.Title != "Temple Square" {
+		t.Errorf("Title = %q, want %q", info.Title, "Temple Square")
+	}
+
+	expectedDesc := "You are standing in a large temple square."
+	if info.Description != expectedDesc {
+		t.Errorf("Description = %q, want %q", info.Description, expectedDesc)
+	}
+
+	// Exits should be empty when not on the >-- line
+	if len(info.Exits) != 0 {
+		t.Errorf("Expected no exits, got %v", info.Exits)
+	}
+
+	if !info.IsBarsoomRoom {
+		t.Error("Expected IsBarsoomRoom to be true")
+	}
+}
+
+func TestParseRoomInfo_BarsoomFormatExitsOnMarker(t *testing.T) {
+	// Test that exits are correctly parsed from the >-- marker line
+	// New format: exits are always on the same line as >--
+	lines := []string{
+		// Previous room's exit line in prompt (should be ignored)
+		"5H 100F 82V 0C T:16 Exits:NSD>",
+		"--<",
+		"Temple Square",
+		"You are standing in a large temple square.",
+		">-- Exits:NESW",
+		"A guard stands here.",
+	}
+
+	info := ParseRoomInfo(lines, false)
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil")
+	}
+
+	if info.Title != "Temple Square" {
+		t.Errorf("Title = %q, want %q", info.Title, "Temple Square")
+	}
+
+	// Should find exits from the >-- line, not from the prompt
+	expectedExits := map[string]bool{"north": true, "east": true, "south": true, "west": true}
+	if len(info.Exits) != len(expectedExits) {
+		t.Errorf("Got %d exits, want %d (should find exits on >-- line)", len(info.Exits), len(expectedExits))
+	}
+	for _, exit := range info.Exits {
+		if !expectedExits[exit] {
+			t.Errorf("Unexpected exit: %q", exit)
+		}
+	}
+}
+
 func TestDetectMovement(t *testing.T) {
 	tests := []struct {
 		input    string
