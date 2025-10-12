@@ -14,8 +14,7 @@ Barsoom MUD uses a special format for room descriptions:
 Temple Square
     You are standing in a large temple square. The ancient stones
 speak of a glorious past.
->--
-Exits: north, south, east
+>-- Exits:NSE
 ```
 
 ### Components:
@@ -23,8 +22,9 @@ Exits: north, south, east
 1. **Start Marker**: `--<` (alone on a line)
 2. **Room Title**: First non-empty line after the start marker
 3. **Room Description**: One or more paragraphs describing the room
-4. **End Marker**: `>--` (alone on a line)
-5. **Exits**: Listed after the end marker
+4. **End Marker with Exits**: `>-- Exits:...` (exits are on the same line as the end marker)
+   - Format: `>-- Exits:NESW` where letters indicate available directions
+   - N=North, S=South, E=East, W=West, U=Up, D=Down
 
 ## Features
 
@@ -37,7 +37,7 @@ The `--<` and `>--` markers are automatically suppressed from the display output
 --<
 Temple Square
     You are standing in a large temple square.
->--
+>-- Exits:NSE
 ```
 
 **Display:**
@@ -45,6 +45,8 @@ Temple Square
 Temple Square
     You are standing in a large temple square.
 ```
+
+Note: The markers `--<` and `>-- Exits:...` are hidden from the display.
 
 ### 2. Description Split Viewport
 

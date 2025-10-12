@@ -601,7 +601,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Check if this is a Barsoom marker line and suppress it
 			cleanLine := stripANSI(line)
 			trimmedLine := strings.TrimSpace(cleanLine)
-			if trimmedLine == "--<" || trimmedLine == ">--" {
+			// Match --< or >-- (with or without exits on the same line)
+			if trimmedLine == "--<" || strings.HasPrefix(trimmedLine, ">--") {
 				// Add to recentOutput for parsing but not to display output
 				m.recentOutput = append(m.recentOutput, line)
 				continue

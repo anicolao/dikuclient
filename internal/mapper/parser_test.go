@@ -77,14 +77,14 @@ func TestParseRoomInfo(t *testing.T) {
 
 func TestParseRoomInfo_BarsoomFormat(t *testing.T) {
 	// Test Barsoom MUD format with --< and >-- markers
+	// New format: exits are on the same line as >--
 	lines := []string{
 		"119H 110V 3674X 0.00% 77C T:56 Exits:EW>",
 		"--<",
 		"Temple Square",
 		"    You are standing in a large temple square. The ancient stones",
 		"speak of a glorious past.",
-		">--",
-		"Exits: north, south, east",
+		">-- Exits:NSE",
 	}
 
 	info := ParseRoomInfo(lines, false)
@@ -128,6 +128,7 @@ func TestParseRoomInfo_BarsoomFormat(t *testing.T) {
 
 func TestParseRoomInfo_BarsoomFormatMultipleParagraphs(t *testing.T) {
 	// Test Barsoom format with multiple description paragraphs
+	// New format: exits are on the same line as >--
 	lines := []string{
 		"119H 110V 3674X 0.00% 77C T:56 Exits:EW>",
 		"--<",
@@ -136,8 +137,7 @@ func TestParseRoomInfo_BarsoomFormatMultipleParagraphs(t *testing.T) {
 		"The musty smell of old parchment fills the air.",
 		"",
 		"A large reading table sits in the center of the room, covered with open books.",
-		">--",
-		"Exits: west",
+		">-- Exits:W",
 	}
 
 	info := ParseRoomInfo(lines, false)
@@ -157,18 +157,26 @@ func TestParseRoomInfo_BarsoomFormatMultipleParagraphs(t *testing.T) {
 	if !info.IsBarsoomRoom {
 		t.Error("Expected IsBarsoomRoom to be true")
 	}
+	
+	// Verify exits
+	if len(info.Exits) != 1 {
+		t.Errorf("Got %d exits, want 1", len(info.Exits))
+	}
+	if len(info.Exits) > 0 && info.Exits[0] != "west" {
+		t.Errorf("Exit = %q, want %q", info.Exits[0], "west")
+	}
 }
 
 func TestParseRoomInfo_BarsoomFormatMultipleRooms(t *testing.T) {
 	// Test that backward search finds the most recent room when multiple rooms are present
+	// New format: exits are on the same line as >--
 	lines := []string{
 		// Old room that should NOT be detected
 		"119H 110V 3674X 0.00% 77C T:56 Exits:NS>",
 		"--<",
 		"Old Temple",
 		"An ancient temple.",
-		">--",
-		"Exits: north, south",
+		">-- Exits:NS",
 		"",
 		// Some movement output
 		"You move north.",
@@ -178,8 +186,7 @@ func TestParseRoomInfo_BarsoomFormatMultipleRooms(t *testing.T) {
 		"--<",
 		"Temple Square",
 		"You are standing in a large temple square. The ancient stones speak of a glorious past.",
-		">--",
-		"Exits: east, west",
+		">-- Exits:EW",
 	}
 
 	info := ParseRoomInfo(lines, false)
@@ -213,8 +220,8 @@ func TestParseRoomInfo_BarsoomFormatMultipleRooms(t *testing.T) {
 }
 
 func TestParseRoomInfo_BarsoomFormatNoExitsYet(t *testing.T) {
-	// Test Barsoom format when exits haven't arrived yet
-	// This simulates the case where we receive the room description but the exits line hasn't come through yet
+	// Test Barsoom format when exits haven't arrived yet (just >-- without exits)
+	// This simulates the case where we receive the room description but the exits info hasn't come through yet
 	lines := []string{
 		"--<",
 		"Temple Square",
@@ -236,9 +243,9 @@ func TestParseRoomInfo_BarsoomFormatNoExitsYet(t *testing.T) {
 		t.Errorf("Description = %q, want %q", info.Description, expectedDesc)
 	}
 
-	// Exits may be empty if they haven't arrived yet - that's OK
-	if len(info.Exits) > 0 {
-		t.Logf("Exits found: %v (may be empty initially)", info.Exits)
+	// Exits should be empty when not on the >-- line
+	if len(info.Exits) != 0 {
+		t.Errorf("Expected no exits, got %v", info.Exits)
 	}
 
 	if !info.IsBarsoomRoom {
@@ -246,18 +253,17 @@ func TestParseRoomInfo_BarsoomFormatNoExitsYet(t *testing.T) {
 	}
 }
 
-func TestParseRoomInfo_BarsoomFormatExitsAfterMarker(t *testing.T) {
-	// Test that exits are correctly found AFTER the >-- marker, not before
+func TestParseRoomInfo_BarsoomFormatExitsOnMarker(t *testing.T) {
+	// Test that exits are correctly parsed from the >-- marker line
+	// New format: exits are always on the same line as >--
 	lines := []string{
-		// Previous room's exit line (should be ignored)
+		// Previous room's exit line in prompt (should be ignored)
 		"5H 100F 82V 0C T:16 Exits:NSD>",
 		"--<",
 		"Temple Square",
 		"You are standing in a large temple square.",
-		">--",
+		">-- Exits:NESW",
 		"A guard stands here.",
-		"",
-		"5H 100F 82V 0C T:15 Exits:NESW>", // This is the correct exits line
 	}
 
 	info := ParseRoomInfo(lines, false)
@@ -269,10 +275,10 @@ func TestParseRoomInfo_BarsoomFormatExitsAfterMarker(t *testing.T) {
 		t.Errorf("Title = %q, want %q", info.Title, "Temple Square")
 	}
 
-	// Should find exits from AFTER the >-- marker, not before
+	// Should find exits from the >-- line, not from the prompt
 	expectedExits := map[string]bool{"north": true, "east": true, "south": true, "west": true}
 	if len(info.Exits) != len(expectedExits) {
-		t.Errorf("Got %d exits, want %d (should find exits after >--, not before)", len(info.Exits), len(expectedExits))
+		t.Errorf("Got %d exits, want %d (should find exits on >-- line)", len(info.Exits), len(expectedExits))
 	}
 	for _, exit := range info.Exits {
 		if !expectedExits[exit] {

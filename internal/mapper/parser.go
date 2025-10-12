@@ -40,24 +40,38 @@ var directionAliases = map[string]string{
 }
 
 // parseBarsoomRoom attempts to parse a Barsoom MUD room format
-// Barsoom format: --< on a line, title on next line, description paragraphs, then >-- on a line
+// Barsoom format: --< on a line, title on next line, description paragraphs, then >-- Exits:... on a line
+// The exits are now always on the same line as the >-- marker
 // Searches backwards from the end to find the most recent complete room
 func parseBarsoomRoom(lines []string, enableDebug bool, debugInfo *strings.Builder) *RoomInfo {
 	// Search backwards from the end to find the most recent complete room
 	// Keep track of the end marker and start marker
 	endMarkerIdx := -1
 	startMarkerIdx := -1
+	var exits []string
 
-	// First, find the end marker >--
+	// First, find the end marker >-- (exits are on the same line)
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := stripANSI(lines[i])
 		line = strings.TrimSpace(line)
 
-		// Find the end marker >--
-		if line == ">--" {
+		// Find the end marker >-- (may have exits on the same line)
+		if strings.HasPrefix(line, ">--") {
 			endMarkerIdx = i
 			if enableDebug {
-				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found Barsoom end marker at index %d\n", i))
+				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found Barsoom end marker at index %d: %q\n", i, line))
+			}
+			
+			// Parse exits from the same line (format: ">-- Exits:NSD" or just ">--")
+			if len(line) > 3 {
+				// Remove the ">--" prefix and parse the rest
+				exitsPart := strings.TrimSpace(line[3:])
+				if parsedExits := parseExitsLine(exitsPart); len(parsedExits) > 0 {
+					exits = parsedExits
+					if enableDebug {
+						debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found exits on end marker line: %v\n", exits))
+					}
+				}
 			}
 			break
 		}
@@ -87,26 +101,6 @@ func parseBarsoomRoom(lines []string, enableDebug bool, debugInfo *strings.Build
 	if startMarkerIdx == -1 {
 		return nil // Not a complete Barsoom format room
 	}
-
-	// Now look for exits AFTER the end marker
-	var exits []string
-	for i := endMarkerIdx + 1; i < len(lines); i++ {
-		line := stripANSI(lines[i])
-		line = strings.TrimSpace(line)
-
-		if parsedExits := parseExitsLine(line); len(parsedExits) > 0 {
-			exits = parsedExits
-			if enableDebug {
-				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found exits line at index %d (after >--): %v\n", i, exits))
-			}
-			break
-		}
-	}
-
-	// Don't require exits - they may arrive later
-	// if len(exits) == 0 {
-	//     return nil // No exits found
-	// }
 
 	// Title is the first non-empty line after --<
 	var title string

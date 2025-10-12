@@ -11,14 +11,13 @@ func TestBarsoomMarkerSuppression(t *testing.T) {
 	model.width = 100
 	model.height = 40
 
-	// Simulate receiving Barsoom room output
+	// Simulate receiving Barsoom room output (new format: exits on >-- line)
 	barsoomOutput := `119H 110V 3674X 0.00% 77C T:56 Exits:EW>
 --<
 Temple Square
     You are standing in a large temple square. The ancient stones
 speak of a glorious past.
->--
-Exits: north, south, east`
+>-- Exits:NSE`
 
 	// Process the output through the model
 	updatedModel, _ := model.Update(mudMsg(barsoomOutput))
@@ -103,12 +102,12 @@ func TestBarsoomDescriptionUpdatesWithoutMovement(t *testing.T) {
 
 	// Simulate receiving Barsoom room output WITHOUT any movement command
 	// (i.e., pendingMovement should be empty)
+	// New format: exits on >-- line
 	barsoomOutput := `119H 110V 3674X 0.00% 77C T:56 Exits:EW>
 --<
 Temple Square
 You are standing in a large temple square.
->--
-Exits: north, south, east`
+>-- Exits:NSE`
 
 	// Process the output
 	updatedModel, _ := model.Update(mudMsg(barsoomOutput))

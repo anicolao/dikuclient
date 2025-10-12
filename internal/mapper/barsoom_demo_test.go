@@ -11,15 +11,14 @@ func TestBarsoomDemo(t *testing.T) {
 	fmt.Println("BARSOOM ROOM FORMAT DETECTION DEMO")
 	fmt.Println(strings.Repeat("=", 70))
 	
-	// Test 1: Basic Barsoom room
+	// Test 1: Basic Barsoom room (new format: exits on >-- line)
 	lines1 := []string{
 		"119H 110V 3674X 0.00% 77C T:56 Exits:EW>",
 		"--<",
 		"Temple Square",
 		"    You are standing in a large temple square. The ancient stones",
 		"speak of a glorious past.",
-		">--",
-		"Exits: north, south, east",
+		">-- Exits:NSE",
 	}
 	
 	fmt.Println("\nTest 1: Basic Barsoom Room")
@@ -72,7 +71,7 @@ func TestBarsoomDemo(t *testing.T) {
 	fmt.Println()
 	fmt.Println(strings.Repeat("-", 70))
 	
-	// Test 3: Barsoom room with multiple paragraphs
+	// Test 3: Barsoom room with multiple paragraphs (new format: exits on >-- line)
 	lines3 := []string{
 		"119H 110V 3674X 0.00% 77C T:56 Exits:EW>",
 		"--<",
@@ -81,8 +80,7 @@ func TestBarsoomDemo(t *testing.T) {
 		"The musty smell of old parchment fills the air.",
 		"",
 		"A large reading table sits in the center of the room, covered with open books.",
-		">--",
-		"Exits: west",
+		">-- Exits:W",
 	}
 	
 	fmt.Println("\nTest 3: Barsoom Room with Multiple Paragraphs")
