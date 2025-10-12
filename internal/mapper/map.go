@@ -129,8 +129,8 @@ func (m *Map) Save() error {
 // This method only adds the room to the map without creating exit links
 // Use LinkRooms to establish directional connections between rooms
 func (m *Map) AddOrUpdateRoom(room *Room) {
-	// Check if we're following a known exit from the current room
-	// If so, we might be revisiting an existing room
+	// Check if we're following a known exit - if so, use that destination's ID
+	// This handles backtracking correctly (going back to a room we've already visited)
 	var knownDestID string
 	if m.CurrentRoomID != "" && m.LastDirection != "" {
 		if currentRoom, exists := m.Rooms[m.CurrentRoomID]; exists {
@@ -145,7 +145,9 @@ func (m *Map) AddOrUpdateRoom(room *Room) {
 					}
 					baseID := GenerateRoomID(room.Title, room.Description, exits)
 					
-					// Extract base ID from destination room
+					// Extract base ID from destination room (for characteristic comparison only)
+					// We compare base characteristics to verify we're in the right room,
+					// but we preserve the FULL ID (including distance) for disambiguation
 					destBaseID := destID
 					lastPipe := strings.LastIndex(destID, "|")
 					if lastPipe > 0 && lastPipe < len(destID)-1 {
@@ -155,9 +157,15 @@ func (m *Map) AddOrUpdateRoom(room *Room) {
 						}
 					}
 					
-					// If characteristics match, we're revisiting this known room
+					// If base characteristics match, we're revisiting the same room
+					// IMPORTANT: We use the FULL destID (with distance) to maintain disambiguation
+					// This preserves the room's distance-based identity while allowing backtracking
 					if baseID == destBaseID {
-						knownDestID = destID
+						knownDestID = destID // destID includes distance - this is critical!
+					} else {
+						// Characteristics don't match - this is a different room
+						// despite following an exit (maybe the room changed or we misidentified it)
+						knownDestID = ""
 					}
 				}
 			}
@@ -166,6 +174,7 @@ func (m *Map) AddOrUpdateRoom(room *Room) {
 	
 	if knownDestID != "" {
 		// We're revisiting a known room via a known exit
+		// Use the existing room's ID (which includes its distance)
 		existing := m.Rooms[knownDestID]
 		existing.VisitCount++
 
@@ -200,6 +209,7 @@ func (m *Map) AddOrUpdateRoom(room *Room) {
 		}
 		
 		// Generate room ID with distance - this is the unique identifier
+		// Distance is ESSENTIAL for disambiguating otherwise identical rooms
 		newID := GenerateRoomIDWithDistance(room.Title, room.Description, exits, distance)
 		
 		// Check if room with this exact ID (including distance) already exists
