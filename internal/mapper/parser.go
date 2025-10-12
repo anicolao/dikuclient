@@ -138,6 +138,21 @@ func parseBarsoomRoom(lines []string, enableDebug bool, debugInfo *strings.Build
 	}
 }
 
+// ParseBarsoomRoomOnly attempts to parse only Barsoom MUD room format
+// This is called on every output to update the description split
+func ParseBarsoomRoomOnly(lines []string, enableDebug bool) *RoomInfo {
+	if len(lines) == 0 {
+		return nil
+	}
+
+	var debugInfo strings.Builder
+	if enableDebug {
+		debugInfo.WriteString("[MAPPER DEBUG] Checking for Barsoom room format:\n")
+	}
+
+	return parseBarsoomRoom(lines, enableDebug, &debugInfo)
+}
+
 // ParseRoomInfo attempts to parse room information from MUD output
 // It looks for a title line, description, and exits line
 // New heuristic: search backwards for previous prompt, then forwards for first indented line

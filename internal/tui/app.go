@@ -1488,8 +1488,85 @@ func (m *Model) savePasswordForWebClient(password string) {
 
 // detectAndUpdateRoom tries to parse room information from recent output
 func (m *Model) detectAndUpdateRoom() {
-	// Only detect rooms when we have a pending movement (user just moved)
+	if len(m.recentOutput) < 3 {
+		return // Need at least a few lines to detect a room
+	}
+
+	// Always check for Barsoom rooms (they have clear delimiters)
+	// For Barsoom rooms, we update the description split on every output
+	barsoomRoomInfo := mapper.ParseBarsoomRoomOnly(m.recentOutput, m.mapDebug)
+	if barsoomRoomInfo != nil && barsoomRoomInfo.Title != "" {
+		// Update description split for Barsoom room
+		if barsoomRoomInfo.IsBarsoomRoom {
+			// Format the description for display
+			descLines := []string{
+				"",
+				"\x1b[1;96m" + barsoomRoomInfo.Title + "\x1b[0m", // Bright cyan title
+				"",
+			}
+			// Wrap description text at reasonable width (e.g., 80 chars)
+			descText := barsoomRoomInfo.Description
+			if len(descText) > 0 {
+				words := strings.Fields(descText)
+				currentLine := "  " // Indent
+				for _, word := range words {
+					if len(currentLine)+len(word)+1 > 80 {
+						descLines = append(descLines, currentLine)
+						currentLine = "  " + word
+					} else {
+						if currentLine == "  " {
+							currentLine += word
+						} else {
+							currentLine += " " + word
+						}
+					}
+				}
+				if currentLine != "  " {
+					descLines = append(descLines, currentLine)
+				}
+			}
+			descLines = append(descLines, "")
+			m.currentRoomDescription = strings.Join(descLines, "\n")
+			m.hasDescriptionSplit = true
+		}
+
+		// If we have a pending movement, update the map
+		if m.pendingMovement != "" {
+			// Skip room detection if flag is set (e.g., after recall teleport)
+			if m.skipNextRoomDetection {
+				m.skipNextRoomDetection = false
+				m.pendingMovement = "" // Clear pending movement
+				if m.mapDebug {
+					m.output = append(m.output, "\x1b[90m[Mapper: Skipped room detection due to recall]\x1b[0m")
+				}
+				return
+			}
+
+			// Create or update room in map
+			room := mapper.NewRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
+
+			// Set the movement direction
+			m.worldMap.SetLastDirection(m.pendingMovement)
+			m.pendingMovement = ""
+
+			m.worldMap.AddOrUpdateRoom(room)
+
+			// Save map periodically (every room visit)
+			m.worldMap.Save()
+
+			// Notify user that room was added (only if debug enabled)
+			if m.mapDebug {
+				m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, barsoomRoomInfo.Exits))
+			}
+		}
+		return
+	}
+
+	// For non-Barsoom rooms, only detect when we have a pending movement
 	if m.pendingMovement == "" {
+		// Clear description split if no Barsoom room
+		m.hasDescriptionSplit = false
+		m.currentRoomDescription = ""
 		return
 	}
 
@@ -1503,11 +1580,7 @@ func (m *Model) detectAndUpdateRoom() {
 		return
 	}
 
-	if len(m.recentOutput) < 3 {
-		return // Need at least a few lines to detect a room
-	}
-
-	// Try to parse room info from recent output
+	// Try to parse room info from recent output (non-Barsoom)
 	roomInfo := mapper.ParseRoomInfo(m.recentOutput, m.mapDebug)
 
 	// Only display debug info if mapDebug flag is enabled
@@ -1523,43 +1596,9 @@ func (m *Model) detectAndUpdateRoom() {
 		return // No valid room detected
 	}
 
-	// If this is a Barsoom room, update the description split
-	if roomInfo.IsBarsoomRoom {
-		// Format the description for display
-		descLines := []string{
-			"",
-			"\x1b[1;96m" + roomInfo.Title + "\x1b[0m", // Bright cyan title
-			"",
-		}
-		// Wrap description text at reasonable width (e.g., 80 chars)
-		descText := roomInfo.Description
-		if len(descText) > 0 {
-			words := strings.Fields(descText)
-			currentLine := "  " // Indent
-			for _, word := range words {
-				if len(currentLine)+len(word)+1 > 80 {
-					descLines = append(descLines, currentLine)
-					currentLine = "  " + word
-				} else {
-					if currentLine == "  " {
-						currentLine += word
-					} else {
-						currentLine += " " + word
-					}
-				}
-			}
-			if currentLine != "  " {
-				descLines = append(descLines, currentLine)
-			}
-		}
-		descLines = append(descLines, "")
-		m.currentRoomDescription = strings.Join(descLines, "\n")
-		m.hasDescriptionSplit = true
-	} else {
-		// Not a Barsoom room, clear description split
-		m.hasDescriptionSplit = false
-		m.currentRoomDescription = ""
-	}
+	// Not a Barsoom room, clear description split
+	m.hasDescriptionSplit = false
+	m.currentRoomDescription = ""
 
 	// Create or update room in map
 	room := mapper.NewRoom(roomInfo.Title, roomInfo.Description, roomInfo.Exits)

@@ -94,3 +94,37 @@ Exits: north, south, east`
 		t.Error("Expected exits in output for regular room")
 	}
 }
+
+func TestBarsoomDescriptionUpdatesWithoutMovement(t *testing.T) {
+	// Verify that Barsoom description split updates even without movement
+	model := NewModel("localhost", 4000, nil, nil)
+	model.width = 100
+	model.height = 40
+
+	// Simulate receiving Barsoom room output WITHOUT any movement command
+	// (i.e., pendingMovement should be empty)
+	barsoomOutput := `119H 110V 3674X 0.00% 77C T:56 Exits:EW>
+--<
+Temple Square
+You are standing in a large temple square.
+>--
+Exits: north, south, east`
+
+	// Process the output
+	updatedModel, _ := model.Update(mudMsg(barsoomOutput))
+	m := updatedModel.(*Model)
+
+	// Even without movement, the description split should be active for Barsoom rooms
+	if !m.hasDescriptionSplit {
+		t.Error("Expected hasDescriptionSplit to be true for Barsoom room even without movement")
+	}
+
+	if m.currentRoomDescription == "" {
+		t.Error("Expected currentRoomDescription to be populated for Barsoom room even without movement")
+	}
+
+	// Verify the description contains the room title
+	if !strings.Contains(m.currentRoomDescription, "Temple Square") {
+		t.Error("Expected description to contain room title")
+	}
+}
