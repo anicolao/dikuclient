@@ -75,6 +75,90 @@ func TestParseRoomInfo(t *testing.T) {
 	}
 }
 
+func TestParseRoomInfo_BarsoomFormat(t *testing.T) {
+	// Test Barsoom MUD format with --< and >-- markers
+	lines := []string{
+		"119H 110V 3674X 0.00% 77C T:56 Exits:EW>",
+		"--<",
+		"Temple Square",
+		"    You are standing in a large temple square. The ancient stones",
+		"speak of a glorious past.",
+		">--",
+		"Exits: north, south, east",
+	}
+
+	info := ParseRoomInfo(lines, false)
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil")
+	}
+
+	if info.Title != "Temple Square" {
+		t.Errorf("Title = %q, want %q", info.Title, "Temple Square")
+	}
+
+	expectedDesc := "You are standing in a large temple square. The ancient stones speak of a glorious past."
+	if info.Description != expectedDesc {
+		t.Errorf("Description = %q, want %q", info.Description, expectedDesc)
+	}
+
+	if len(info.Exits) != 3 {
+		t.Errorf("Got %d exits, want 3", len(info.Exits))
+	}
+
+	expectedExits := map[string]bool{"north": true, "south": true, "east": true}
+	for _, exit := range info.Exits {
+		if !expectedExits[exit] {
+			t.Errorf("Unexpected exit: %q", exit)
+		}
+	}
+
+	// Verify that Barsoom-specific fields are set
+	if !info.IsBarsoomRoom {
+		t.Error("Expected IsBarsoomRoom to be true")
+	}
+
+	if info.BarsoomStartIdx != 1 {
+		t.Errorf("BarsoomStartIdx = %d, want 1", info.BarsoomStartIdx)
+	}
+
+	if info.BarsoomEndIdx != 5 {
+		t.Errorf("BarsoomEndIdx = %d, want 5", info.BarsoomEndIdx)
+	}
+}
+
+func TestParseRoomInfo_BarsoomFormatMultipleParagraphs(t *testing.T) {
+	// Test Barsoom format with multiple description paragraphs
+	lines := []string{
+		"119H 110V 3674X 0.00% 77C T:56 Exits:EW>",
+		"--<",
+		"Ancient Library",
+		"Towering shelves filled with ancient tomes line the walls of this grand library.",
+		"The musty smell of old parchment fills the air.",
+		"",
+		"A large reading table sits in the center of the room, covered with open books.",
+		">--",
+		"Exits: west",
+	}
+
+	info := ParseRoomInfo(lines, false)
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil")
+	}
+
+	if info.Title != "Ancient Library" {
+		t.Errorf("Title = %q, want %q", info.Title, "Ancient Library")
+	}
+
+	expectedDesc := "Towering shelves filled with ancient tomes line the walls of this grand library. The musty smell of old parchment fills the air. A large reading table sits in the center of the room, covered with open books."
+	if info.Description != expectedDesc {
+		t.Errorf("Description = %q, want %q", info.Description, expectedDesc)
+	}
+
+	if !info.IsBarsoomRoom {
+		t.Error("Expected IsBarsoomRoom to be true")
+	}
+}
+
 func TestDetectMovement(t *testing.T) {
 	tests := []struct {
 		input    string
