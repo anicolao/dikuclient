@@ -44,37 +44,37 @@ var directionAliases = map[string]string{
 // Searches backwards from the end to find the most recent complete room
 func parseBarsoomRoom(lines []string, enableDebug bool, debugInfo *strings.Builder) *RoomInfo {
 	// Search backwards from the end to find the most recent complete room
-	// Keep track of the last seen exits line, end marker, and start marker
-	var exits []string
-	exitsLineIdx := -1
+	// Keep track of the end marker and start marker
 	endMarkerIdx := -1
 	startMarkerIdx := -1
 
+	// First, find the end marker >--
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := stripANSI(lines[i])
 		line = strings.TrimSpace(line)
 
-		// Track the last (most recent) exits line we encounter
-		if exitsLineIdx == -1 {
-			if parsedExits := parseExitsLine(line); len(parsedExits) > 0 {
-				exits = parsedExits
-				exitsLineIdx = i
-				if enableDebug {
-					debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found exits line at index %d: %v\n", i, exits))
-				}
-			}
-		}
-
 		// Find the end marker >--
-		if endMarkerIdx == -1 && line == ">--" {
+		if line == ">--" {
 			endMarkerIdx = i
 			if enableDebug {
 				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found Barsoom end marker at index %d\n", i))
 			}
+			break
 		}
+	}
+
+	// If no end marker found, not a Barsoom room
+	if endMarkerIdx == -1 {
+		return nil
+	}
+
+	// Now search backwards from the end marker to find the start marker
+	for i := endMarkerIdx - 1; i >= 0; i-- {
+		line := stripANSI(lines[i])
+		line = strings.TrimSpace(line)
 
 		// Find the start marker --<
-		if endMarkerIdx != -1 && line == "--<" {
+		if line == "--<" {
 			startMarkerIdx = i
 			if enableDebug {
 				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found Barsoom start marker at index %d\n", i))
@@ -84,13 +84,29 @@ func parseBarsoomRoom(lines []string, enableDebug bool, debugInfo *strings.Build
 	}
 
 	// Validate we found a complete Barsoom room
-	if startMarkerIdx == -1 || endMarkerIdx == -1 {
+	if startMarkerIdx == -1 {
 		return nil // Not a complete Barsoom format room
 	}
 
-	if len(exits) == 0 {
-		return nil // No exits found
+	// Now look for exits AFTER the end marker
+	var exits []string
+	for i := endMarkerIdx + 1; i < len(lines); i++ {
+		line := stripANSI(lines[i])
+		line = strings.TrimSpace(line)
+
+		if parsedExits := parseExitsLine(line); len(parsedExits) > 0 {
+			exits = parsedExits
+			if enableDebug {
+				debugInfo.WriteString(fmt.Sprintf("[MAPPER DEBUG] Found exits line at index %d (after >--): %v\n", i, exits))
+			}
+			break
+		}
 	}
+
+	// Don't require exits - they may arrive later
+	// if len(exits) == 0 {
+	//     return nil // No exits found
+	// }
 
 	// Title is the first non-empty line after --<
 	var title string

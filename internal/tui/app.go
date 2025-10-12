@@ -1504,14 +1504,33 @@ func (m *Model) detectAndUpdateRoom() {
 				"\x1b[1;96m" + barsoomRoomInfo.Title + "\x1b[0m", // Bright cyan title
 				"",
 			}
+			
+			// Add exits if available
+			if len(barsoomRoomInfo.Exits) > 0 {
+				exitsStr := strings.Join(barsoomRoomInfo.Exits, ", ")
+				descLines = append(descLines, "\x1b[90mExits: "+exitsStr+"\x1b[0m") // Gray color for exits
+				descLines = append(descLines, "")
+			}
+			
 			// Wrap description text at reasonable width (e.g., 80 chars)
+			// Limit to 4 lines to fit in the description viewport
 			descText := barsoomRoomInfo.Description
 			if len(descText) > 0 {
 				words := strings.Fields(descText)
 				currentLine := "  " // Indent
+				lineCount := 0
+				maxLines := 4
+				truncated := false
+				
 				for _, word := range words {
+					if lineCount >= maxLines {
+						truncated = true
+						break
+					}
+					
 					if len(currentLine)+len(word)+1 > 80 {
 						descLines = append(descLines, currentLine)
+						lineCount++
 						currentLine = "  " + word
 					} else {
 						if currentLine == "  " {
@@ -1521,8 +1540,16 @@ func (m *Model) detectAndUpdateRoom() {
 						}
 					}
 				}
-				if currentLine != "  " {
+				
+				if currentLine != "  " && lineCount < maxLines {
+					if truncated {
+						currentLine += " ..."
+					}
 					descLines = append(descLines, currentLine)
+				} else if truncated && len(descLines) > 0 {
+					// Add ... to the last line if we truncated
+					lastIdx := len(descLines) - 1
+					descLines[lastIdx] += " ..."
 				}
 			}
 			descLines = append(descLines, "")

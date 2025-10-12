@@ -212,6 +212,75 @@ func TestParseRoomInfo_BarsoomFormatMultipleRooms(t *testing.T) {
 	}
 }
 
+func TestParseRoomInfo_BarsoomFormatNoExitsYet(t *testing.T) {
+	// Test Barsoom format when exits haven't arrived yet
+	// This simulates the case where we receive the room description but the exits line hasn't come through yet
+	lines := []string{
+		"--<",
+		"Temple Square",
+		"You are standing in a large temple square.",
+		">--",
+	}
+
+	info := ParseRoomInfo(lines, false)
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil - should still parse room even without exits")
+	}
+
+	if info.Title != "Temple Square" {
+		t.Errorf("Title = %q, want %q", info.Title, "Temple Square")
+	}
+
+	expectedDesc := "You are standing in a large temple square."
+	if info.Description != expectedDesc {
+		t.Errorf("Description = %q, want %q", info.Description, expectedDesc)
+	}
+
+	// Exits may be empty if they haven't arrived yet - that's OK
+	if len(info.Exits) > 0 {
+		t.Logf("Exits found: %v (may be empty initially)", info.Exits)
+	}
+
+	if !info.IsBarsoomRoom {
+		t.Error("Expected IsBarsoomRoom to be true")
+	}
+}
+
+func TestParseRoomInfo_BarsoomFormatExitsAfterMarker(t *testing.T) {
+	// Test that exits are correctly found AFTER the >-- marker, not before
+	lines := []string{
+		// Previous room's exit line (should be ignored)
+		"5H 100F 82V 0C T:16 Exits:NSD>",
+		"--<",
+		"Temple Square",
+		"You are standing in a large temple square.",
+		">--",
+		"A guard stands here.",
+		"",
+		"5H 100F 82V 0C T:15 Exits:NESW>", // This is the correct exits line
+	}
+
+	info := ParseRoomInfo(lines, false)
+	if info == nil {
+		t.Fatal("ParseRoomInfo returned nil")
+	}
+
+	if info.Title != "Temple Square" {
+		t.Errorf("Title = %q, want %q", info.Title, "Temple Square")
+	}
+
+	// Should find exits from AFTER the >-- marker, not before
+	expectedExits := map[string]bool{"north": true, "east": true, "south": true, "west": true}
+	if len(info.Exits) != len(expectedExits) {
+		t.Errorf("Got %d exits, want %d (should find exits after >--, not before)", len(info.Exits), len(expectedExits))
+	}
+	for _, exit := range info.Exits {
+		if !expectedExits[exit] {
+			t.Errorf("Unexpected exit: %q", exit)
+		}
+	}
+}
+
 func TestDetectMovement(t *testing.T) {
 	tests := []struct {
 		input    string
