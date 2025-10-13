@@ -376,12 +376,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Check if this is a movement command
 				if movement := mapper.DetectMovement(command); movement != "" {
-					// Only set pendingMovement if we don't already have one pending
-					// This prevents a second movement command from overwriting the first before it's processed
-					if m.pendingMovement == "" {
-						m.pendingMovement = movement
-						m.pendingMovementTimestamp = time.Now()
-					}
+					// Set the new pendingMovement, replacing any previous value
+					// The previous pendingMovement should have been used to link the previous room
+					m.pendingMovement = movement
+					m.pendingMovementTimestamp = time.Now()
 					// Clear map legend on movement
 					m.mapLegend = nil
 					m.mapLegendRooms = nil
@@ -1596,7 +1594,7 @@ func (m *Model) detectAndUpdateRoom() {
 
 			// Set the movement direction BEFORE adding room
 			m.worldMap.SetLastDirection(m.pendingMovement)
-			m.pendingMovement = ""
+			// DON'T clear pendingMovement here - it will be cleared when the next movement command is sent
 
 			// Add room (without automatic linking)
 			m.worldMap.AddOrUpdateRoom(room)
@@ -1665,7 +1663,7 @@ func (m *Model) detectAndUpdateRoom() {
 
 	// Set the movement direction BEFORE adding room
 	m.worldMap.SetLastDirection(m.pendingMovement)
-	m.pendingMovement = ""
+	// DON'T clear pendingMovement here - it will be cleared when the next movement command is sent
 
 	// Add room (without automatic linking)
 	m.worldMap.AddOrUpdateRoom(room)
@@ -3046,12 +3044,10 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 				// Check if this is a movement command
 				if movement := mapper.DetectMovement(command); movement != "" {
-					// Only set pendingMovement if we don't already have one pending
-					// This prevents a second movement command from overwriting the first before it's processed
-					if m.pendingMovement == "" {
-						m.pendingMovement = movement
-						m.pendingMovementTimestamp = time.Now()
-					}
+					// Set the new pendingMovement, replacing any previous value
+					// The previous pendingMovement should have been used to link the previous room
+					m.pendingMovement = movement
+					m.pendingMovementTimestamp = time.Now()
 					// Clear map legend on movement
 					m.mapLegend = nil
 					m.mapLegendRooms = nil
