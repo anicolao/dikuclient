@@ -10,7 +10,7 @@ The fundamental principle of this mapper is that a room's identity is defined no
 -   **Format:** `title|first_sentence|exits|distance`
 -   **Example:** If a room titled "A Fork in the Road" is discovered 5 steps from the start, its ID might be `a fork in the road|the path splits here.|north,south|5`. If an identical-looking room is found 12 steps from the start, it is treated as a completely separate entity with the ID `a fork in the road|the path splits here.|north,south|12`.
 
-This means the map is not a representation of the "true" physical layout of the MUD world, but rather a graph of the player's specific exploration path.
+The map represents the explored portion of the MUD's world graph. Since there is no way to be certain if two rooms with identical descriptions are the same physical room, the mapper treats rooms that are reachable via different length paths from the starting room as distinct entities. This provides an accurate map of the explored areas under this constraint.
 
 ## 2. Distance Calculation: Incremental Path Length
 
@@ -25,12 +25,11 @@ The `distance` component of the room ID is calculated incrementally based on the
 The `AddOrUpdateRoom` function is the core of the mapping logic. Its intended behavior is as follows:
 
 1.  **Parse Room Info:** When new MUD output is processed, the client parses it to get the current room's title, description, and exits.
-2.  **Handle Backtracking:** The system first checks if the player is simply moving back to the previous room.
-    -   It looks at the `PreviousRoomID` and the `LastDirection` of movement.
-    -   It checks if the previous room has a known exit in that direction pointing to a destination.
-    -   It compares the "base ID" (ID without distance) of the parsed room with the base ID of that known destination.
-    -   If they match, it concludes the player has returned to a known, connected room. It updates the `CurrentRoomID` to this existing room's full ID (preserving its original distance) and does not create a new room.
-3.  **Process as a New Room:** If the backtracking check does not find a match, the system treats it as a new room discovery.
+2.  **Handle Revisiting Rooms (Backtracking):** A room can only be revisited by following a "tentative link". When moving from Room A to Room B, a tentative link is created from Room B back to Room A's full ID (`...|distance`).
+    -   When the player moves, the system checks if the `LastDirection` from the current room corresponds to a tentative link.
+    -   If it does, the client checks if the newly parsed room's content and distance (current distance +/- 1) are consistent with the room ID stored in the tentative link.
+    -   If they are consistent, the link is ratified, and the player's `CurrentRoomID` is updated to the existing room's ID. No new room is created.
+3.  **Process as a New Room:** If the move does not correspond to a valid tentative link, the system treats it as a new room discovery.
     -   It calculates the new room's distance by taking the current room's distance and adding 1.
     -   It generates a new, unique room ID using this new distance (`title|...|distance`).
     -   It adds this new room to the map's collection of rooms.
