@@ -9,7 +9,7 @@ import (
 func TestRenderMapBasic(t *testing.T) {
 	m := NewMap()
 
-	// Create a simple cross-shaped map
+	// Create a simple cross-shaped map by simulating movement
 	//     N
 	//   W C E
 	//     S
@@ -19,27 +19,40 @@ func TestRenderMapBasic(t *testing.T) {
 	east := NewRoom("East Room", "You are in the east room.", []string{"west"})
 	west := NewRoom("West Room", "You are in the west room.", []string{"east"})
 
-	// Link rooms
-	center.UpdateExit("north", north.ID)
-	center.UpdateExit("south", south.ID)
-	center.UpdateExit("east", east.ID)
-	center.UpdateExit("west", west.ID)
-
-	north.UpdateExit("south", center.ID)
-	south.UpdateExit("north", center.ID)
-	east.UpdateExit("west", center.ID)
-	west.UpdateExit("east", center.ID)
-
-	// Add rooms to map
+	// Add rooms to map by simulating movement
 	m.AddOrUpdateRoom(center)
 	m.LinkRooms()
+	
+	m.SetLastDirection("north")
 	m.AddOrUpdateRoom(north)
 	m.LinkRooms()
+	
+	m.SetLastDirection("south")
+	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
+	
+	m.SetLastDirection("south")
 	m.AddOrUpdateRoom(south)
 	m.LinkRooms()
+	
+	m.SetLastDirection("north")
+	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
+	
+	m.SetLastDirection("east")
 	m.AddOrUpdateRoom(east)
 	m.LinkRooms()
+	
+	m.SetLastDirection("west")
+	m.AddOrUpdateRoom(center)
+	m.LinkRooms()
+	
+	m.SetLastDirection("west")
 	m.AddOrUpdateRoom(west)
+	m.LinkRooms()
+	
+	m.SetLastDirection("east")
+	m.AddOrUpdateRoom(center)
 	m.LinkRooms()
 
 	// Set center as current room

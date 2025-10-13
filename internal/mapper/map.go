@@ -181,23 +181,30 @@ func (m *Map) AddOrUpdateRoom(room *Room) {
 		// Update the room object's ID to match the existing room
 		room.ID = knownDestID
 	} else {
-		// New room or revisiting via different path - calculate distance
+		// New room - calculate distance incrementally
 		exits := make([]string, 0, len(room.Exits))
 		for direction := range room.Exits {
 			exits = append(exits, direction)
 		}
 		
-		// Calculate distance to room 0 for this room's position
-		distance := m.calculateDistanceToRoom0()
-		
-		// If we have a current room and can calculate distance, add 1 for the move to the new room
-		if m.CurrentRoomID != "" && distance >= 0 {
-			distance++
-		}
-		
-		// For the very first room (no current room), distance is 0 as it becomes room 0
-		if m.CurrentRoomID == "" && len(m.RoomNumbering) == 0 {
+		// Calculate distance incrementally: current room's distance + 1
+		// This is more efficient than BFS and creates the tree structure naturally
+		var distance int
+		if m.CurrentRoomID == "" || len(m.RoomNumbering) == 0 {
+			// First room is room 0 at distance 0
 			distance = 0
+		} else {
+			// Extract distance from current room's ID
+			currentDistance := m.extractDistanceFromRoomID(m.CurrentRoomID)
+			if currentDistance >= 0 {
+				distance = currentDistance + 1
+			} else {
+				// Fallback to BFS if we can't extract distance (shouldn't happen)
+				distance = m.calculateDistanceToRoom0()
+				if m.CurrentRoomID != "" && distance >= 0 {
+					distance++
+				}
+			}
 		}
 		
 		// Generate room ID with distance - this is the unique identifier
@@ -593,6 +600,21 @@ func (m *Map) calculateDistanceToRoom0() int {
 	}
 
 	// Room 0 is not reachable from current room
+	return -1
+}
+
+// extractDistanceFromRoomID extracts the distance value from a room ID
+// Room IDs have format "title|first_sentence|exits|distance"
+// Returns -1 if distance cannot be extracted
+func (m *Map) extractDistanceFromRoomID(roomID string) int {
+	lastPipe := strings.LastIndex(roomID, "|")
+	if lastPipe > 0 && lastPipe < len(roomID)-1 {
+		suffix := roomID[lastPipe+1:]
+		var distance int
+		if _, err := fmt.Sscanf(suffix, "%d", &distance); err == nil {
+			return distance
+		}
+	}
 	return -1
 }
 
