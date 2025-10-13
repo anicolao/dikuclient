@@ -1582,22 +1582,24 @@ func (m *Model) detectAndUpdateRoom() {
 			return
 		}
 
-		// Create or update room in map
+		// Create room with base characteristics (no distance yet)
 		room := mapper.NewRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
-
-		// Add room to map IMMEDIATELY when detected (without linking)
-		m.worldMap.AddOrUpdateRoom(room)
 		
-		// Check if we've already processed this exact room (to avoid duplicate processing from buffered output)
-		// Must check AFTER AddOrUpdateRoom because that's when the distance is added to room.ID
-		if room.ID == m.lastProcessedBarsoomID {
+		// Check if we've already processed this room (BEFORE adding to map)
+		// Compare base room ID to prevent duplicate processing
+		baseRoomID := room.ID
+		if baseRoomID == m.lastProcessedBarsoomID {
 			if m.mapDebug {
 				m.output = append(m.output, fmt.Sprintf("\x1b[90m[Mapper: Skipping duplicate Barsoom room '%s']\x1b[0m", room.Title))
 			}
 			return
 		}
 		
-		m.lastProcessedBarsoomID = room.ID
+		// Add room to map IMMEDIATELY when detected (without linking)
+		m.worldMap.AddOrUpdateRoom(room)
+		
+		// Store the base room ID to prevent duplicate processing
+		m.lastProcessedBarsoomID = baseRoomID
 		
 		// If we have a pending movement, create the directional link
 		if m.pendingMovement != "" {
