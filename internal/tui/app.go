@@ -1587,19 +1587,21 @@ func (m *Model) detectAndUpdateRoom() {
 			// Create or update room in map
 			room := mapper.NewRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
 
+			// Set the movement direction BEFORE adding room
+			m.worldMap.SetLastDirection(m.pendingMovement)
+
+			// Add room (without automatic linking)
+			// This will set room.ID to include distance
+			m.worldMap.AddOrUpdateRoom(room)
+			
 			// Check if we've already processed this exact room (to avoid duplicate processing from buffered output)
+			// Must check AFTER AddOrUpdateRoom because that's when the distance is added to room.ID
 			if room.ID == m.lastProcessedBarsoomID {
 				if m.mapDebug {
 					m.output = append(m.output, fmt.Sprintf("\x1b[90m[Mapper: Skipping duplicate Barsoom room '%s']\x1b[0m", room.Title))
 				}
 				return
 			}
-
-			// Set the movement direction BEFORE adding room
-			m.worldMap.SetLastDirection(m.pendingMovement)
-
-			// Add room (without automatic linking)
-			m.worldMap.AddOrUpdateRoom(room)
 			
 			// Now create the directional link from previous to current room
 			m.worldMap.LinkRooms()
