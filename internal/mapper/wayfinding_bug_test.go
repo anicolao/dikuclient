@@ -97,3 +97,68 @@ func TestWayfindingBug(t *testing.T) {
 		t.Errorf("  Expected: east → %s", marketPlaza.ID)
 	}
 }
+
+// TestWayfindingBugFromActualMap reproduces the ACTUAL bug by simulating what happened
+// The user's map shows that Market Plaza.east → Temple Plaza (should be north)
+// and Temple Plaza.west → Market Plaza (should be south)
+// This suggests rooms were linked with the wrong direction
+func TestWayfindingBugFromActualMap(t *testing.T) {
+	t.Log("=== Simulating what actually happened based on user's map file ===")
+	
+	// What if the rooms were detected ONE STEP LATE?
+	// E.g., Market Plaza is detected when user types "w" instead of when user types "s"
+	
+	m := NewMap()
+	
+	// Room 0: Temple - detected immediately
+	temple := NewRoom("The Temple of the Jeddak",
+		"You are in the southern end of the temple hall of Lesser Helium's great temple.",
+		[]string{"down", "north", "south"})
+	m.AddOrUpdateRoom(temple)
+	m.LinkRooms()
+	t.Logf("Added temple: %s", temple.ID)
+	
+	// User types "s" but Temple Plaza is NOT detected yet
+	// (or maybe pendingMovement gets cleared/overwritten)
+	
+	// User types "s" again, NOW Temple Plaza is detected
+	// But LastDirection is "s" from the SECOND command
+	templePlaza := NewRoom("The Temple Plaza",
+		"You are standing on the temple plaza of Lesser Helium.",
+		[]string{"east", "north", "south", "west"})
+	m.SetLastDirection("south")
+	m.AddOrUpdateRoom(templePlaza)
+	m.LinkRooms()
+	t.Logf("Added Temple Plaza with direction 'south': %s", templePlaza.ID)
+	
+	// User types "w", Market Plaza is detected
+	// But we're still at Temple Plaza in the mapper's view!
+	marketPlaza := NewRoom("Market Plaza",
+		"You are standing on the market plaza, the heart of Lesser Helium.",
+		[]string{"east", "north", "south", "west"})
+	m.SetLastDirection("west")  // This is WRONG! Should be "south"
+	m.AddOrUpdateRoom(marketPlaza)
+	m.LinkRooms()
+	t.Logf("Added Market Plaza with direction 'west' (WRONG!): %s", marketPlaza.ID)
+	
+	// User types "w", Main Concourse is detected
+	mainConcourse := NewRoom("Main Concourse",
+		"You are on the main concourse of Lesser Helium.",
+		[]string{"east", "north", "south", "west"})
+	m.SetLastDirection("west")  // This is correct
+	m.AddOrUpdateRoom(mainConcourse)
+	m.LinkRooms()
+	t.Logf("Added Main Concourse with direction 'west': %s", mainConcourse.ID)
+	
+	// Check the links - they should match the user's broken map
+	t.Log("\n=== Checking if links match user's broken map ===")
+	t.Logf("Temple Plaza → west → %s (expected Market Plaza)", m.Rooms[templePlaza.ID].Exits["west"])
+	t.Logf("Market Plaza → east → %s (expected Temple Plaza)", m.Rooms[marketPlaza.ID].Exits["east"])
+	
+	if m.Rooms[templePlaza.ID].Exits["west"] == marketPlaza.ID {
+		t.Log("✓ Bug reproduced! Temple Plaza.west → Market Plaza (should be south)")
+	}
+	if m.Rooms[marketPlaza.ID].Exits["east"] == templePlaza.ID {
+		t.Log("✓ Bug reproduced! Market Plaza.east → Temple Plaza (should be north)")
+	}
+}

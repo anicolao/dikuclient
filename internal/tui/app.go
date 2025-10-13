@@ -84,6 +84,7 @@ type Model struct {
 	hasDescriptionSplit    bool               // Whether description split is active
 	currentBarsoomTitle    string             // Title of current Barsoom room (for title bar)
 	currentBarsoomExits    []string           // Exits of current Barsoom room (for title bar)
+	lastProcessedBarsoomID string             // ID of last processed Barsoom room (to avoid duplicate processing)
 	lastRenderedGameOutput string             // Last rendered game output (for testing)
 	lastRenderedSidebar    string             // Last rendered sidebar (for testing)
 	pendingCommands        []string           // Queue of commands to send (from triggers, aliases, or /go)
@@ -1579,6 +1580,14 @@ func (m *Model) detectAndUpdateRoom() {
 			// Create or update room in map
 			room := mapper.NewRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
 
+			// Check if we've already processed this exact room (to avoid duplicate processing from buffered output)
+			if room.ID == m.lastProcessedBarsoomID {
+				if m.mapDebug {
+					m.output = append(m.output, fmt.Sprintf("\x1b[90m[Mapper: Skipping duplicate Barsoom room '%s']\x1b[0m", room.Title))
+				}
+				return
+			}
+
 			// Set the movement direction BEFORE adding room
 			m.worldMap.SetLastDirection(m.pendingMovement)
 			m.pendingMovement = ""
@@ -1591,6 +1600,9 @@ func (m *Model) detectAndUpdateRoom() {
 
 			// Save map periodically (every room visit)
 			m.worldMap.Save()
+
+			// Track that we've processed this room
+			m.lastProcessedBarsoomID = room.ID
 
 			// Notify user that room was added (only if debug enabled)
 			if m.mapDebug {
