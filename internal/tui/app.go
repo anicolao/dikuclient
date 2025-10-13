@@ -85,6 +85,7 @@ type Model struct {
 	currentBarsoomTitle    string             // Title of current Barsoom room (for title bar)
 	currentBarsoomExits    []string           // Exits of current Barsoom room (for title bar)
 	lastProcessedBarsoomID string             // ID of last processed Barsoom room (to avoid duplicate processing)
+	pendingMovementTimestamp time.Time       // When pendingMovement was set
 	lastRenderedGameOutput string             // Last rendered game output (for testing)
 	lastRenderedSidebar    string             // Last rendered sidebar (for testing)
 	pendingCommands        []string           // Queue of commands to send (from triggers, aliases, or /go)
@@ -375,7 +376,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				// Check if this is a movement command
 				if movement := mapper.DetectMovement(command); movement != "" {
-					m.pendingMovement = movement
+					// Only set pendingMovement if we don't already have one pending
+					// This prevents a second movement command from overwriting the first before it's processed
+					if m.pendingMovement == "" {
+						m.pendingMovement = movement
+						m.pendingMovementTimestamp = time.Now()
+					}
 					// Clear map legend on movement
 					m.mapLegend = nil
 					m.mapLegendRooms = nil
@@ -3040,7 +3046,12 @@ func (m *Model) handleHistorySearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 				// Check if this is a movement command
 				if movement := mapper.DetectMovement(command); movement != "" {
-					m.pendingMovement = movement
+					// Only set pendingMovement if we don't already have one pending
+					// This prevents a second movement command from overwriting the first before it's processed
+					if m.pendingMovement == "" {
+						m.pendingMovement = movement
+						m.pendingMovementTimestamp = time.Now()
+					}
 					// Clear map legend on movement
 					m.mapLegend = nil
 					m.mapLegendRooms = nil
