@@ -1572,53 +1572,51 @@ func (m *Model) detectAndUpdateRoom() {
 			m.hasDescriptionSplit = true
 		}
 
-		// If we have a pending movement, update the map
+		// Skip room detection if flag is set (e.g., after recall teleport)
+		if m.skipNextRoomDetection {
+			m.skipNextRoomDetection = false
+			m.pendingMovement = "" // Clear pending movement
+			if m.mapDebug {
+				m.output = append(m.output, "\x1b[90m[Mapper: Skipped room detection due to recall]\x1b[0m")
+			}
+			return
+		}
+
+		// Create or update room in map
+		room := mapper.NewRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
+
+		// Add room to map IMMEDIATELY when detected (without linking)
+		m.worldMap.AddOrUpdateRoom(room)
+		
+		// Check if we've already processed this exact room (to avoid duplicate processing from buffered output)
+		// Must check AFTER AddOrUpdateRoom because that's when the distance is added to room.ID
+		if room.ID == m.lastProcessedBarsoomID {
+			if m.mapDebug {
+				m.output = append(m.output, fmt.Sprintf("\x1b[90m[Mapper: Skipping duplicate Barsoom room '%s']\x1b[0m", room.Title))
+			}
+			return
+		}
+		
+		m.lastProcessedBarsoomID = room.ID
+		
+		// If we have a pending movement, create the directional link
 		if m.pendingMovement != "" {
-			// Skip room detection if flag is set (e.g., after recall teleport)
-			if m.skipNextRoomDetection {
-				m.skipNextRoomDetection = false
-				m.pendingMovement = "" // Clear pending movement
-				if m.mapDebug {
-					m.output = append(m.output, "\x1b[90m[Mapper: Skipped room detection due to recall]\x1b[0m")
-				}
-				return
-			}
-
-			// Create or update room in map
-			room := mapper.NewRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
-
-			// Set the movement direction BEFORE adding room
+			// Set the movement direction BEFORE linking
 			m.worldMap.SetLastDirection(m.pendingMovement)
-
-			// Add room (without automatic linking)
-			// This will set room.ID to include distance
-			m.worldMap.AddOrUpdateRoom(room)
-			
-			// Check if we've already processed this exact room (to avoid duplicate processing from buffered output)
-			// Must check AFTER AddOrUpdateRoom because that's when the distance is added to room.ID
-			if room.ID == m.lastProcessedBarsoomID {
-				if m.mapDebug {
-					m.output = append(m.output, fmt.Sprintf("\x1b[90m[Mapper: Skipping duplicate Barsoom room '%s']\x1b[0m", room.Title))
-				}
-				return
-			}
 			
 			// Now create the directional link from previous to current room
 			m.worldMap.LinkRooms()
 
 			// Clear pendingMovement after successfully linking room
 			m.pendingMovement = ""
+		}
+		
+		// Save map periodically (every room visit)
+		m.worldMap.Save()
 
-			// Save map periodically (every room visit)
-			m.worldMap.Save()
-
-			// Track that we've processed this room
-			m.lastProcessedBarsoomID = room.ID
-
-			// Notify user that room was added (only if debug enabled)
-			if m.mapDebug {
-				m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, barsoomRoomInfo.Exits))
-			}
+		// Notify user that room was added (only if debug enabled)
+		if m.mapDebug {
+			m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, barsoomRoomInfo.Exits))
 		}
 		return
 	}

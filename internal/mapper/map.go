@@ -171,12 +171,8 @@ func (m *Map) AddOrUpdateRoom(room *Room) {
 		existing := m.Rooms[knownDestID]
 		existing.VisitCount++
 
-		// Merge exits (keep existing mappings, add new ones)
-		for direction, destID := range room.Exits {
-			if _, hasExit := existing.Exits[direction]; !hasExit {
-				existing.Exits[direction] = destID
-			}
-		}
+		// Do NOT merge exits here - exits are only set via LinkRooms
+		// This prevents the bug where a newly detected room's exits overwrite the current room's exits
 		
 		// Update the room object's ID to match the existing room
 		room.ID = knownDestID
@@ -216,12 +212,8 @@ func (m *Map) AddOrUpdateRoom(room *Room) {
 			// Room already exists at this distance, increment visit count
 			existing.VisitCount++
 
-			// Merge exits (keep existing mappings, add new ones)
-			for direction, destID := range room.Exits {
-				if _, hasExit := existing.Exits[direction]; !hasExit {
-					existing.Exits[direction] = destID
-				}
-			}
+			// Do NOT merge exits here - exits are only set via LinkRooms
+			// This prevents the bug where a newly detected room's exits overwrite the current room's exits
 			
 			// Update the room object's ID to match the existing room
 			room.ID = newID
