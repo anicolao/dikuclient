@@ -922,13 +922,9 @@ func (m *Model) updateViewport() {
 		m.viewport.SetContent(content)
 		m.lastViewportContent = content
 
-		// If force scroll flag is set, scroll to bottom regardless of other conditions
-		if m.forceScrollToBottom {
-			m.viewport.GotoBottom()
-			m.forceScrollToBottom = false
-		} else if !m.isSplit {
-			// If not in split mode or if viewport is already at bottom, go to bottom
-			// This preserves scroll position when in split mode
+		// If not in split mode or if viewport is already at bottom, go to bottom
+		// This preserves scroll position when in split mode
+		if !m.isSplit {
 			m.viewport.GotoBottom()
 		} else if wasAtBottom {
 			// If user was already at bottom and new content arrived, exit split mode
@@ -939,10 +935,6 @@ func (m *Model) updateViewport() {
 		// Update split viewport content (always stays at bottom for live tracking)
 		m.splitViewport.SetContent(content)
 		m.splitViewport.GotoBottom()
-	} else if m.forceScrollToBottom {
-		// Content hasn't changed but we need to scroll to bottom (e.g., description split activated)
-		m.viewport.GotoBottom()
-		m.forceScrollToBottom = false
 	}
 
 	// Log TUI content if logging enabled
@@ -1082,6 +1074,12 @@ func (m *Model) renderMainContent() string {
 		m.viewport.Height = scrollHeight - 1
 		m.splitViewport.Height = liveHeight - 2
 		
+		// If force scroll flag is set, scroll to bottom after height adjustment
+		if m.forceScrollToBottom {
+			m.viewport.GotoBottom()
+			m.forceScrollToBottom = false
+		}
+		
 		// Top viewport (description - stuck to top)
 		descBorderStyle := lipgloss.NewStyle().
 			BorderStyle(customBorder).
@@ -1142,6 +1140,12 @@ func (m *Model) renderMainContent() string {
 		
 		m.descriptionViewport.Height = descHeight - 2
 		m.viewport.Height = mainHeight - 2
+		
+		// If force scroll flag is set, scroll to bottom after height adjustment
+		if m.forceScrollToBottom {
+			m.viewport.GotoBottom()
+			m.forceScrollToBottom = false
+		}
 		
 		// Top viewport (description)
 		descBorderStyle := lipgloss.NewStyle().
