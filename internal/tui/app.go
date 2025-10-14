@@ -90,6 +90,7 @@ type Model struct {
 	pendingCommands        []string           // Queue of commands to send (from triggers, aliases, or /go)
 	commandQueueActive     bool               // Currently processing command queue
 	lastViewportContent    string             // Last content set on viewport (to avoid unnecessary updates)
+	forceScrollToBottom    bool               // Force viewport to scroll to bottom on next update
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -1064,7 +1065,7 @@ func (m *Model) renderMainContent() string {
 
 	if m.hasDescriptionSplit && m.isSplit {
 		// Three-way split: description at top, scrollable in middle, live at bottom
-		descHeight := 8 // Fixed height for description
+		descHeight := 6 // Fixed height for description
 		liveHeight := actualContentHeight / 4 // Live output takes 1/4
 		scrollHeight := actualContentHeight - descHeight - liveHeight - 2 // -2 for separator borders
 		
@@ -1072,6 +1073,12 @@ func (m *Model) renderMainContent() string {
 		m.descriptionViewport.Height = descHeight - 2
 		m.viewport.Height = scrollHeight - 1
 		m.splitViewport.Height = liveHeight - 2
+		
+		// If force scroll flag is set, scroll to bottom after height adjustment
+		if m.forceScrollToBottom {
+			m.viewport.GotoBottom()
+			m.forceScrollToBottom = false
+		}
 		
 		// Top viewport (description - stuck to top)
 		descBorderStyle := lipgloss.NewStyle().
@@ -1128,11 +1135,17 @@ func (m *Model) renderMainContent() string {
 		gameOutput = lipgloss.JoinVertical(lipgloss.Left, descView, midView, bottomView)
 	} else if m.hasDescriptionSplit {
 		// Two-way split with description at top
-		descHeight := 8
+		descHeight := 6
 		mainHeight := actualContentHeight - descHeight - 1 // -1 for separator border
 		
 		m.descriptionViewport.Height = descHeight - 2
 		m.viewport.Height = mainHeight - 2
+		
+		// If force scroll flag is set, scroll to bottom after height adjustment
+		if m.forceScrollToBottom {
+			m.viewport.GotoBottom()
+			m.forceScrollToBottom = false
+		}
 		
 		// Top viewport (description)
 		descBorderStyle := lipgloss.NewStyle().
@@ -1572,7 +1585,15 @@ func (m *Model) detectAndUpdateRoom() {
 			}
 			descLines = append(descLines, "")
 			m.currentRoomDescription = strings.Join(descLines, "\n")
-			m.hasDescriptionSplit = true
+			
+			// If description split is being activated for the first time, scroll viewport to bottom
+			if !m.hasDescriptionSplit {
+				m.hasDescriptionSplit = true
+				// Request scroll to bottom on next viewport update (after SetContent)
+				m.forceScrollToBottom = true
+			} else {
+				m.hasDescriptionSplit = true
+			}
 		}
 
 		// Skip room detection if flag is set (e.g., after recall teleport)
