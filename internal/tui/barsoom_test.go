@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -129,5 +130,108 @@ You are standing in a large temple square.
 	
 	if len(m.currentBarsoomExits) != 3 {
 		t.Errorf("Expected 3 exits, got %d", len(m.currentBarsoomExits))
+	}
+}
+
+func TestBarsoomModePersistedInMap(t *testing.T) {
+	// Verify that BarsoomMode is persisted in the map
+	model := NewModel("localhost", 4001, nil, nil)
+	model.width = 100
+	model.height = 40
+
+	// Reset for clean test
+	model.barsoomMode = false
+	model.worldMap.BarsoomMode = false
+
+	// Verify initially false
+	if model.barsoomMode {
+		t.Error("Expected barsoomMode to be false initially")
+	}
+	if model.worldMap.BarsoomMode {
+		t.Error("Expected worldMap.BarsoomMode to be false initially")
+	}
+
+	// Simulate receiving Barsoom room output
+	barsoomOutput := `119H 110V 3674X 0.00% 77C T:56 Exits:EW>
+--<
+Temple Square
+You are standing in a large temple square.
+>-- Exits:NSE`
+
+	// Process the output
+	updatedModel, _ := model.Update(mudMsg(barsoomOutput))
+	m := updatedModel.(*Model)
+
+	// Verify BarsoomMode is set in both model and map
+	if !m.barsoomMode {
+		t.Error("Expected barsoomMode to be true after seeing --< marker")
+	}
+	if !m.worldMap.BarsoomMode {
+		t.Error("Expected worldMap.BarsoomMode to be true after seeing --< marker")
+	}
+}
+
+func TestBarsoomModeSwitching(t *testing.T) {
+	// Verify that once we see --< marker, we switch to Barsoom mode permanently
+	model := NewModel("localhost", 4000, nil, nil)
+	model.width = 100
+	model.height = 40
+
+	// Reset barsoomMode for this test (in case a previous test or saved map had it set)
+	model.barsoomMode = false
+	model.worldMap.BarsoomMode = false
+
+	// Simulate receiving Barsoom room output
+	barsoomOutput := `119H 110V 3674X 0.00% 77C T:56 Exits:EW>
+--<
+Temple Square
+You are standing in a large temple square.
+>-- Exits:NSE`
+
+	// Process the output
+	updatedModel, _ := model.Update(mudMsg(barsoomOutput))
+	m := updatedModel.(*Model)
+
+	// After seeing --<, Barsoom mode should be true
+	if !m.barsoomMode {
+		t.Error("Expected barsoomMode to be true after seeing --< marker")
+	}
+
+	// Verify that Barsoom room info is set
+	if m.currentBarsoomTitle != "Temple Square" {
+		t.Errorf("Expected currentBarsoomTitle to be 'Temple Square', got %q", m.currentBarsoomTitle)
+	}
+
+	// Verify description split is set initially
+	if !m.hasDescriptionSplit {
+		t.Error("Expected hasDescriptionSplit to be true after receiving Barsoom room")
+	}
+
+	// Now send enough regular output to push the Barsoom markers out of recentOutput buffer
+	// recentOutput is limited to 30 lines, so send more than 30 lines of regular output
+	regularLines := make([]string, 35)
+	for i := 0; i < 35; i++ {
+		regularLines[i] = fmt.Sprintf("Regular line %d", i)
+	}
+	regularOutput := strings.Join(regularLines, "\n")
+
+	// Process the regular output
+	updatedModel2, _ := m.Update(mudMsg(regularOutput))
+	m2 := updatedModel2.(*Model)
+
+	// Barsoom mode should still be true
+	if !m2.barsoomMode {
+		t.Error("Expected barsoomMode to remain true")
+	}
+
+	// After enough regular output, the description split should be cleared
+	// because the Barsoom markers are no longer in recentOutput
+	if m2.hasDescriptionSplit {
+		t.Error("Expected hasDescriptionSplit to be false after Barsoom markers pushed out of buffer")
+	}
+
+	// Verify that the Barsoom title is cleared
+	if m2.currentBarsoomTitle != "" {
+		t.Errorf("Expected currentBarsoomTitle to be empty, got %q", m2.currentBarsoomTitle)
 	}
 }

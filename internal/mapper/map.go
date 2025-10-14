@@ -16,6 +16,7 @@ type Map struct {
 	PreviousRoomID string           `json:"previous_room_id"` // ID of previous room (for linking)
 	LastDirection  string           `json:"last_direction"`   // Last movement direction
 	RoomNumbering  []string         `json:"room_numbering"`   // Ordered list of room IDs for durable numbering
+	BarsoomMode    bool             `json:"barsoom_mode"`     // Whether this MUD uses Barsoom room format
 	mapPath        string           // Path to the map file (not serialized)
 }
 
@@ -26,7 +27,7 @@ func NewMap() *Map {
 	}
 }
 
-// GetMapPath returns the path to the map file
+// GetMapPath returns the path to the map file (legacy function for backward compatibility)
 func GetMapPath() (string, error) {
 	var configDir string
 
@@ -48,9 +49,43 @@ func GetMapPath() (string, error) {
 	return filepath.Join(configDir, "map.json"), nil
 }
 
-// Load loads the map from disk
+// GetMapPathForServer returns the path to the map file for a specific server
+func GetMapPathForServer(host string, port int) (string, error) {
+	var configDir string
+
+	// Check for environment variable override
+	if envConfigDir := os.Getenv("DIKUCLIENT_CONFIG_DIR"); envConfigDir != "" {
+		configDir = envConfigDir
+	} else {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %w", err)
+		}
+		configDir = filepath.Join(homeDir, ".config", "dikuclient")
+	}
+
+	if err := os.MkdirAll(configDir, 0700); err != nil {
+		return "", fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	// Create filename: map.<hostname>.<port>.json
+	filename := fmt.Sprintf("map.%s.%d.json", host, port)
+	return filepath.Join(configDir, filename), nil
+}
+
+// Load loads the map from disk (legacy function for backward compatibility)
 func Load() (*Map, error) {
 	mapPath, err := GetMapPath()
+	if err != nil {
+		return nil, err
+	}
+
+	return LoadFromPath(mapPath)
+}
+
+// LoadForServer loads the map for a specific server from disk
+func LoadForServer(host string, port int) (*Map, error) {
+	mapPath, err := GetMapPathForServer(host, port)
 	if err != nil {
 		return nil, err
 	}

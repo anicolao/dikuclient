@@ -84,6 +84,7 @@ type Model struct {
 	hasDescriptionSplit    bool               // Whether description split is active
 	currentBarsoomTitle    string             // Title of current Barsoom room (for title bar)
 	currentBarsoomExits    []string           // Exits of current Barsoom room (for title bar)
+	barsoomMode            bool               // True if we've ever seen --< marker (switch to Barsoom parsing only)
 	lastRenderedGameOutput string             // Last rendered game output (for testing)
 	lastRenderedSidebar    string             // Last rendered sidebar (for testing)
 	pendingCommands        []string           // Queue of commands to send (from triggers, aliases, or /go)
@@ -135,8 +136,8 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 	vp := viewport.New(0, 0)
 	// Don't apply any style to viewport - let ANSI codes pass through naturally
 
-	// Load or create world map
-	worldMap, err := mapper.Load()
+	// Load or create world map for this specific server
+	worldMap, err := mapper.LoadForServer(host, port)
 	if err != nil {
 		// If we can't load the map, create a new one
 		worldMap = mapper.NewMap()
@@ -215,6 +216,7 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		historySearchIndex:   0,
 		isSplit:              false,
 		splitViewport:        splitVp,
+		barsoomMode:          worldMap.BarsoomMode, // Load Barsoom mode from map
 	}
 }
 
@@ -1510,6 +1512,15 @@ func (m *Model) detectAndUpdateRoom() {
 	if barsoomRoomInfo != nil && barsoomRoomInfo.Title != "" {
 		// Update description split for Barsoom room
 		if barsoomRoomInfo.IsBarsoomRoom {
+			// Switch to Barsoom mode permanently once we see --< marker
+			if !m.barsoomMode {
+				m.barsoomMode = true
+				m.worldMap.BarsoomMode = true // Persist Barsoom mode in map
+				if m.mapDebug {
+					m.output = append(m.output, "\x1b[92m[Mapper: Switched to Barsoom room parsing mode]\x1b[0m")
+				}
+			}
+			
 			// Store current Barsoom room info for title bar
 			m.currentBarsoomTitle = barsoomRoomInfo.Title
 			m.currentBarsoomExits = barsoomRoomInfo.Exits
@@ -1564,38 +1575,48 @@ func (m *Model) detectAndUpdateRoom() {
 			m.hasDescriptionSplit = true
 		}
 
-		// If we have a pending movement, update the map
-		if m.pendingMovement != "" {
-			// Skip room detection if flag is set (e.g., after recall teleport)
-			if m.skipNextRoomDetection {
-				m.skipNextRoomDetection = false
-				m.pendingMovement = "" // Clear pending movement
-				if m.mapDebug {
-					m.output = append(m.output, "\x1b[90m[Mapper: Skipped room detection due to recall]\x1b[0m")
-				}
-				return
+		// Skip room detection if flag is set (e.g., after recall teleport)
+		if m.skipNextRoomDetection {
+			m.skipNextRoomDetection = false
+			m.pendingMovement = "" // Clear pending movement
+			if m.mapDebug {
+				m.output = append(m.output, "\x1b[90m[Mapper: Skipped room detection due to recall]\x1b[0m")
 			}
+			return
+		}
 
-			// Create or update room in map
-			room := mapper.NewRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
+		// Create or update room in map (use full description for Barsoom rooms)
+		// Always add the current room to the map when we see it
+		room := mapper.NewBarsoomRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
 
-			// Set the movement direction
+		// Set the movement direction if we have a pending movement (for linking)
+		if m.pendingMovement != "" {
 			m.worldMap.SetLastDirection(m.pendingMovement)
 			m.pendingMovement = ""
+		}
 
-			m.worldMap.AddOrUpdateRoom(room)
+		m.worldMap.AddOrUpdateRoom(room)
 
-			// Save map periodically (every room visit)
-			m.worldMap.Save()
+		// Save map periodically (every room visit)
+		m.worldMap.Save()
 
-			// Notify user that room was added (only if debug enabled)
-			if m.mapDebug {
-				m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, barsoomRoomInfo.Exits))
-			}
+		// Notify user that room was added (only if debug enabled)
+		if m.mapDebug {
+			m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, barsoomRoomInfo.Exits))
 		}
 		return
 	}
 
+	// If we're in Barsoom mode, only use Barsoom parsing (no heuristics)
+	if m.barsoomMode {
+		// Clear description split if no Barsoom room detected
+		m.hasDescriptionSplit = false
+		m.currentRoomDescription = ""
+		m.currentBarsoomTitle = ""
+		m.currentBarsoomExits = nil
+		return
+	}
+	
 	// For non-Barsoom rooms, only detect when we have a pending movement
 	if m.pendingMovement == "" {
 		// Clear description split if no Barsoom room

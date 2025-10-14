@@ -73,3 +73,58 @@ func TestRoomMatchesSearch(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateBarsoomRoomID(t *testing.T) {
+	title := "Temple Square"
+	description := "You are standing in a large temple square. The ancient stones speak of a glorious past."
+	exits := []string{"north", "south", "east"}
+
+	// Generate IDs using both methods
+	regularID := GenerateRoomID(title, description, exits)
+	barsoomID := GenerateBarsoomRoomID(title, description, exits)
+
+	// Regular ID should use first sentence
+	expectedRegularID := "temple square|you are standing in a large temple square.|east,north,south"
+	if regularID != expectedRegularID {
+		t.Errorf("GenerateRoomID() = %q, want %q", regularID, expectedRegularID)
+	}
+
+	// Barsoom ID should use full description
+	expectedBarsoomID := "temple square|you are standing in a large temple square. the ancient stones speak of a glorious past.|east,north,south"
+	if barsoomID != expectedBarsoomID {
+		t.Errorf("GenerateBarsoomRoomID() = %q, want %q", barsoomID, expectedBarsoomID)
+	}
+
+	// They should be different because Barsoom uses full description
+	if regularID == barsoomID {
+		t.Error("Regular and Barsoom IDs should be different (full description vs first sentence)")
+	}
+}
+
+func TestNewBarsoomRoom(t *testing.T) {
+	title := "Temple Square"
+	description := "You are standing in a large temple square. The ancient stones speak of a glorious past."
+	exits := []string{"north", "south", "east"}
+
+	room := NewBarsoomRoom(title, description, exits)
+
+	// Verify the room ID uses full description
+	expectedID := "temple square|you are standing in a large temple square. the ancient stones speak of a glorious past.|east,north,south"
+	if room.ID != expectedID {
+		t.Errorf("NewBarsoomRoom ID = %q, want %q", room.ID, expectedID)
+	}
+
+	// Verify other fields
+	if room.Title != title {
+		t.Errorf("Title = %q, want %q", room.Title, title)
+	}
+
+	if room.Description != description {
+		t.Errorf("Description = %q, want %q", room.Description, description)
+	}
+
+	expectedFirstSentence := "You are standing in a large temple square."
+	if room.FirstSentence != expectedFirstSentence {
+		t.Errorf("FirstSentence = %q, want %q", room.FirstSentence, expectedFirstSentence)
+	}
+}
