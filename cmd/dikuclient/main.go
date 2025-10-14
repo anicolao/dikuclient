@@ -360,7 +360,11 @@ func selectServerOrCharacter(cfg *config.Config, passwordStore *config.PasswordS
 	if len(characters) > 0 {
 		fmt.Println("\nCharacters:")
 		for _, char := range characters {
-			fmt.Printf("  %d. %s on %s:%d\n", optionNum, char.Name, char.Host, char.Port)
+			displayName := char.Username
+			if displayName == "" {
+				displayName = "(unnamed)"
+			}
+			fmt.Printf("  %d. %s on %s:%d\n", optionNum, displayName, char.Host, char.Port)
 			optionNum++
 		}
 	}
@@ -418,7 +422,7 @@ func selectServerOrCharacter(cfg *config.Config, passwordStore *config.PasswordS
 		char := characters[idx]
 		password := passwordStore.GetPassword(char.Host, char.Port, char.Username)
 		account := &config.Account{
-			Name:     char.Name,
+			Name:     char.Username,
 			Host:     char.Host,
 			Port:     char.Port,
 			Username: char.Username,
@@ -461,9 +465,9 @@ func selectOrCreateCharacter(cfg *config.Config, passwordStore *config.PasswordS
 	if len(characters) > 0 {
 		fmt.Println("\nExisting characters:")
 		for _, char := range characters {
-			displayName := char.Name
-			if char.Username != "" {
-				displayName = fmt.Sprintf("%s (%s)", char.Name, char.Username)
+			displayName := char.Username
+			if displayName == "" {
+				displayName = "(unnamed)"
 			}
 			fmt.Printf("  %d. %s\n", optionNum, displayName)
 			optionNum++
@@ -498,7 +502,7 @@ func selectOrCreateCharacter(cfg *config.Config, passwordStore *config.PasswordS
 		char := characters[idx]
 		password := passwordStore.GetPassword(char.Host, char.Port, char.Username)
 		return &config.Account{
-			Name:     char.Name,
+			Name:     char.Username,
 			Host:     char.Host,
 			Port:     char.Port,
 			Username: char.Username,
@@ -559,14 +563,7 @@ func createNewServer(cfg *config.Config, reader *bufio.Reader) (*config.Server, 
 }
 
 func createNewCharacter(cfg *config.Config, passwordStore *config.PasswordStore, server *config.Server, reader *bufio.Reader) (*config.Account, error) {
-	fmt.Print("\nEnter character name (optional): ")
-	name, err := reader.ReadString('\n')
-	if err != nil {
-		return nil, err
-	}
-	name = strings.TrimSpace(name)
-	
-	fmt.Print("Enter username (optional): ")
+	fmt.Print("\nEnter username (optional): ")
 	username, err := reader.ReadString('\n')
 	if err != nil {
 		return nil, err
@@ -584,10 +581,9 @@ func createNewCharacter(cfg *config.Config, passwordStore *config.PasswordStore,
 		password = strings.TrimSpace(passwordInput)
 	}
 	
-	// If character has a name, save it by default
-	if name != "" {
+	// If character has a username, save it by default
+	if username != "" {
 		character := config.Character{
-			Name:     name,
 			Host:     server.Host,
 			Port:     server.Port,
 			Username: username,
@@ -606,14 +602,14 @@ func createNewCharacter(cfg *config.Config, passwordStore *config.PasswordStore,
 		}
 		
 		if passwordStore.IsReadOnly() {
-			fmt.Printf("Character '%s' saved. Password will be captured automatically during login.\n", name)
+			fmt.Printf("Character '%s' saved. Password will be captured automatically during login.\n", username)
 		} else {
-			fmt.Printf("Character '%s' saved.\n", name)
+			fmt.Printf("Character '%s' saved.\n", username)
 		}
 	}
 	
 	return &config.Account{
-		Name:     name,
+		Name:     username,
 		Host:     server.Host,
 		Port:     server.Port,
 		Username: username,

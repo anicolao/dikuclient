@@ -24,11 +24,8 @@ You'll be presented with:
 When connecting to a new server, you'll be prompted to:
 - Enter the hostname
 - Enter the port (default: 4000)
-- Choose whether to save the account
-- If saving, provide:
-  - Account name (for easy identification)
-  - Username (optional, for auto-login)
-  - Password (optional, for auto-login)
+- Username (optional, for auto-login and identification)
+- Password (optional, for auto-login)
 
 ### Save While Connecting
 
@@ -39,9 +36,9 @@ Connect to a server and save the account in one command:
 ```
 
 This will prompt you for:
-- Account name
-- Username (optional)
-- Password (optional)
+- Account name (for easy identification)
+- Username (optional, for auto-login)
+- Password (optional, for auto-login)
 
 ### Example Session
 
@@ -52,6 +49,8 @@ Enter username (optional): mycharacter
 Enter password (optional): mypassword
 Account 'AardMUD' saved successfully.
 ```
+
+Note: If you don't provide a username, you can still connect to the server but won't have saved credentials for auto-login.
 
 ## Using Saved Accounts
 

@@ -331,7 +331,6 @@ func TestAddAndGetCharacter(t *testing.T) {
 
 	// Add a character
 	character := Character{
-		Name:     "TestChar",
 		Host:     "mud.example.com",
 		Port:     4000,
 		Username: "testuser",
@@ -352,12 +351,12 @@ func TestAddAndGetCharacter(t *testing.T) {
 		t.Fatalf("Expected 1 character, got %d", len(cfg2.Characters))
 	}
 
-	retrieved, err := cfg2.GetCharacter("TestChar", "mud.example.com", 4000)
+	retrieved, err := cfg2.GetCharacter("testuser", "mud.example.com", 4000)
 	if err != nil {
 		t.Fatalf("Failed to get character: %v", err)
 	}
 
-	if retrieved.Name != character.Name || retrieved.Host != character.Host ||
+	if retrieved.Host != character.Host ||
 		retrieved.Port != character.Port || retrieved.Username != character.Username {
 		t.Errorf("Character mismatch: expected %+v, got %+v", character, retrieved)
 	}
@@ -374,21 +373,18 @@ func TestListCharactersForServer(t *testing.T) {
 
 	// Add characters for different servers
 	char1 := Character{
-		Name:     "Char1",
 		Host:     "server1.com",
 		Port:     4000,
 		Username: "user1",
 	}
 
 	char2 := Character{
-		Name:     "Char2",
 		Host:     "server1.com",
 		Port:     4000,
 		Username: "user2",
 	}
 
 	char3 := Character{
-		Name:     "Char3",
 		Host:     "server2.com",
 		Port:     4000,
 		Username: "user3",
@@ -428,7 +424,6 @@ func TestDeleteServer(t *testing.T) {
 	}
 
 	char := Character{
-		Name:     "TestChar",
 		Host:     "mud.example.com",
 		Port:     4000,
 		Username: "testuser",
@@ -470,14 +465,12 @@ func TestDeleteCharacter(t *testing.T) {
 
 	// Add characters
 	char1 := Character{
-		Name:     "Char1",
 		Host:     "mud.example.com",
 		Port:     4000,
 		Username: "user1",
 	}
 
 	char2 := Character{
-		Name:     "Char2",
 		Host:     "mud.example.com",
 		Port:     4000,
 		Username: "user2",
@@ -487,7 +480,7 @@ func TestDeleteCharacter(t *testing.T) {
 	cfg.AddCharacter(char2)
 
 	// Delete one character
-	err = cfg.DeleteCharacter("Char1", "mud.example.com", 4000)
+	err = cfg.DeleteCharacter("user1", "mud.example.com", 4000)
 	if err != nil {
 		t.Fatalf("Failed to delete character: %v", err)
 	}
@@ -502,13 +495,55 @@ func TestDeleteCharacter(t *testing.T) {
 		t.Errorf("Expected 1 character after delete, got %d", len(cfg2.Characters))
 	}
 
-	_, err = cfg2.GetCharacter("Char1", "mud.example.com", 4000)
+	_, err = cfg2.GetCharacter("user1", "mud.example.com", 4000)
 	if err == nil {
 		t.Errorf("Expected error getting deleted character")
 	}
 
-	_, err = cfg2.GetCharacter("Char2", "mud.example.com", 4000)
+	_, err = cfg2.GetCharacter("user2", "mud.example.com", 4000)
 	if err != nil {
-		t.Errorf("Expected to find Char2, got error: %v", err)
+		t.Errorf("Expected to find user2, got error: %v", err)
+	}
+}
+
+func TestCharacterWithEmptyUsername(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "accounts.json")
+
+	cfg, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Add a character without username
+	char := Character{
+		Host:     "mud.example.com",
+		Port:     4000,
+		Username: "",
+	}
+
+	err = cfg.AddCharacter(char)
+	if err != nil {
+		t.Fatalf("Failed to add character: %v", err)
+	}
+
+	// Load config and verify
+	cfg2, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if len(cfg2.Characters) != 1 {
+		t.Fatalf("Expected 1 character, got %d", len(cfg2.Characters))
+	}
+
+	// List all characters to verify empty username is handled
+	chars := cfg2.ListCharactersForServer("mud.example.com", 4000)
+	if len(chars) != 1 {
+		t.Fatalf("Expected 1 character for server, got %d", len(chars))
+	}
+
+	if chars[0].Username != "" {
+		t.Errorf("Expected empty username, got: %s", chars[0].Username)
 	}
 }
