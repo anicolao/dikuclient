@@ -84,6 +84,7 @@ type Model struct {
 	hasDescriptionSplit    bool               // Whether description split is active
 	currentBarsoomTitle    string             // Title of current Barsoom room (for title bar)
 	currentBarsoomExits    []string           // Exits of current Barsoom room (for title bar)
+	barsoomMode            bool               // True if we've ever seen --< marker (switch to Barsoom parsing only)
 	lastRenderedGameOutput string             // Last rendered game output (for testing)
 	lastRenderedSidebar    string             // Last rendered sidebar (for testing)
 	pendingCommands        []string           // Queue of commands to send (from triggers, aliases, or /go)
@@ -1510,6 +1511,14 @@ func (m *Model) detectAndUpdateRoom() {
 	if barsoomRoomInfo != nil && barsoomRoomInfo.Title != "" {
 		// Update description split for Barsoom room
 		if barsoomRoomInfo.IsBarsoomRoom {
+			// Switch to Barsoom mode permanently once we see --< marker
+			if !m.barsoomMode {
+				m.barsoomMode = true
+				if m.mapDebug {
+					m.output = append(m.output, "\x1b[92m[Mapper: Switched to Barsoom room parsing mode]\x1b[0m")
+				}
+			}
+			
 			// Store current Barsoom room info for title bar
 			m.currentBarsoomTitle = barsoomRoomInfo.Title
 			m.currentBarsoomExits = barsoomRoomInfo.Exits
@@ -1576,8 +1585,8 @@ func (m *Model) detectAndUpdateRoom() {
 				return
 			}
 
-			// Create or update room in map
-			room := mapper.NewRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
+			// Create or update room in map (use full description for Barsoom rooms)
+			room := mapper.NewBarsoomRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
 
 			// Set the movement direction
 			m.worldMap.SetLastDirection(m.pendingMovement)
@@ -1596,6 +1605,16 @@ func (m *Model) detectAndUpdateRoom() {
 		return
 	}
 
+	// If we're in Barsoom mode, only use Barsoom parsing (no heuristics)
+	if m.barsoomMode {
+		// Clear description split if no Barsoom room detected
+		m.hasDescriptionSplit = false
+		m.currentRoomDescription = ""
+		m.currentBarsoomTitle = ""
+		m.currentBarsoomExits = nil
+		return
+	}
+	
 	// For non-Barsoom rooms, only detect when we have a pending movement
 	if m.pendingMovement == "" {
 		// Clear description split if no Barsoom room

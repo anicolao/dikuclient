@@ -35,6 +35,25 @@ func GenerateRoomID(title, description string, exits []string) string {
 	return combined
 }
 
+// GenerateBarsoomRoomID creates a unique ID using the full description
+// For Barsoom rooms, we use the entire description to disambiguate rooms
+// Returns human-readable format: "title|full_description|exits"
+func GenerateBarsoomRoomID(title, description string, exits []string) string {
+	// Sort exits for consistent ID generation
+	sortedExits := make([]string, len(exits))
+	copy(sortedExits, exits)
+	sort.Strings(sortedExits)
+
+	// Combine elements in human-readable format
+	// Use lowercase for consistency but keep it readable
+	// Use full description instead of just first sentence
+	combined := strings.ToLower(title) + "|" +
+		strings.ToLower(description) + "|" +
+		strings.Join(sortedExits, ",")
+
+	return combined
+}
+
 // extractFirstSentence extracts the first sentence from a description
 func extractFirstSentence(description string) string {
 	description = strings.TrimSpace(description)
@@ -62,6 +81,29 @@ func extractFirstSentence(description string) string {
 func NewRoom(title, description string, exits []string) *Room {
 	firstSentence := extractFirstSentence(description)
 	id := GenerateRoomID(title, description, exits)
+
+	room := &Room{
+		ID:            id,
+		Title:         title,
+		Description:   description,
+		FirstSentence: firstSentence,
+		Exits:         make(map[string]string),
+		VisitCount:    1,
+	}
+
+	// Initialize exits with unknown destinations
+	for _, direction := range exits {
+		room.Exits[direction] = ""
+	}
+
+	return room
+}
+
+// NewBarsoomRoom creates a new Room with generated ID using full description
+// For Barsoom rooms, we use the entire description to disambiguate rooms
+func NewBarsoomRoom(title, description string, exits []string) *Room {
+	firstSentence := extractFirstSentence(description)
+	id := GenerateBarsoomRoomID(title, description, exits)
 
 	room := &Room{
 		ID:            id,
