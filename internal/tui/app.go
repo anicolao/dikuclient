@@ -136,8 +136,8 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 	vp := viewport.New(0, 0)
 	// Don't apply any style to viewport - let ANSI codes pass through naturally
 
-	// Load or create world map
-	worldMap, err := mapper.Load()
+	// Load or create world map for this specific server
+	worldMap, err := mapper.LoadForServer(host, port)
 	if err != nil {
 		// If we can't load the map, create a new one
 		worldMap = mapper.NewMap()
@@ -216,6 +216,7 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		historySearchIndex:   0,
 		isSplit:              false,
 		splitViewport:        splitVp,
+		barsoomMode:          worldMap.BarsoomMode, // Load Barsoom mode from map
 	}
 }
 
@@ -1514,6 +1515,7 @@ func (m *Model) detectAndUpdateRoom() {
 			// Switch to Barsoom mode permanently once we see --< marker
 			if !m.barsoomMode {
 				m.barsoomMode = true
+				m.worldMap.BarsoomMode = true // Persist Barsoom mode in map
 				if m.mapDebug {
 					m.output = append(m.output, "\x1b[92m[Mapper: Switched to Barsoom room parsing mode]\x1b[0m")
 				}

@@ -314,3 +314,68 @@ func TestFindNearbyRoomsMaxDistance(t *testing.T) {
 		}
 	}
 }
+
+func TestGetMapPathForServer(t *testing.T) {
+	// Test that GetMapPathForServer generates the correct filename
+	path, err := GetMapPathForServer("mud.arctic.org", 2700)
+	if err != nil {
+		t.Fatalf("GetMapPathForServer failed: %v", err)
+	}
+
+	// Path should contain map.mud.arctic.org.2700.json
+	expectedName := "map.mud.arctic.org.2700.json"
+	if filepath.Base(path) != expectedName {
+		t.Errorf("Path basename %q does not match %q", filepath.Base(path), expectedName)
+	}
+
+	// Test with different server
+	path2, err := GetMapPathForServer("localhost", 4000)
+	if err != nil {
+		t.Fatalf("GetMapPathForServer failed: %v", err)
+	}
+
+	expectedName2 := "map.localhost.4000.json"
+	if filepath.Base(path2) != expectedName2 {
+		t.Errorf("Path basename %q does not match %q", filepath.Base(path2), expectedName2)
+	}
+
+	// Paths should be different
+	if path == path2 {
+		t.Error("Different servers should have different map paths")
+	}
+}
+
+func TestBarsoomModePersistence(t *testing.T) {
+	// Test that BarsoomMode is persisted in the map
+	tmpDir := t.TempDir()
+	mapPath := filepath.Join(tmpDir, "test_barsoom_map.json")
+
+	// Create a map with BarsoomMode enabled
+	m := NewMap()
+	m.mapPath = mapPath
+	m.BarsoomMode = true
+
+	room1 := NewBarsoomRoom("Temple Square", "You are standing in a large temple square. The ancient stones speak of a glorious past.", []string{"north", "south"})
+	m.AddOrUpdateRoom(room1)
+
+	// Save the map
+	if err := m.Save(); err != nil {
+		t.Fatalf("Failed to save map: %v", err)
+	}
+
+	// Load the map
+	loaded, err := LoadFromPath(mapPath)
+	if err != nil {
+		t.Fatalf("Failed to load map: %v", err)
+	}
+
+	// Verify BarsoomMode was persisted
+	if !loaded.BarsoomMode {
+		t.Error("Expected BarsoomMode to be true after loading")
+	}
+
+	// Verify the room was loaded
+	if len(loaded.Rooms) != 1 {
+		t.Errorf("Expected 1 room, got %d", len(loaded.Rooms))
+	}
+}

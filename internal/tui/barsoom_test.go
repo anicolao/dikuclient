@@ -133,16 +133,53 @@ You are standing in a large temple square.
 	}
 }
 
+func TestBarsoomModePersistedInMap(t *testing.T) {
+	// Verify that BarsoomMode is persisted in the map
+	model := NewModel("localhost", 4001, nil, nil)
+	model.width = 100
+	model.height = 40
+
+	// Reset for clean test
+	model.barsoomMode = false
+	model.worldMap.BarsoomMode = false
+
+	// Verify initially false
+	if model.barsoomMode {
+		t.Error("Expected barsoomMode to be false initially")
+	}
+	if model.worldMap.BarsoomMode {
+		t.Error("Expected worldMap.BarsoomMode to be false initially")
+	}
+
+	// Simulate receiving Barsoom room output
+	barsoomOutput := `119H 110V 3674X 0.00% 77C T:56 Exits:EW>
+--<
+Temple Square
+You are standing in a large temple square.
+>-- Exits:NSE`
+
+	// Process the output
+	updatedModel, _ := model.Update(mudMsg(barsoomOutput))
+	m := updatedModel.(*Model)
+
+	// Verify BarsoomMode is set in both model and map
+	if !m.barsoomMode {
+		t.Error("Expected barsoomMode to be true after seeing --< marker")
+	}
+	if !m.worldMap.BarsoomMode {
+		t.Error("Expected worldMap.BarsoomMode to be true after seeing --< marker")
+	}
+}
+
 func TestBarsoomModeSwitching(t *testing.T) {
 	// Verify that once we see --< marker, we switch to Barsoom mode permanently
 	model := NewModel("localhost", 4000, nil, nil)
 	model.width = 100
 	model.height = 40
 
-	// Initially, Barsoom mode should be false
-	if model.barsoomMode {
-		t.Error("Expected barsoomMode to be false initially")
-	}
+	// Reset barsoomMode for this test (in case a previous test or saved map had it set)
+	model.barsoomMode = false
+	model.worldMap.BarsoomMode = false
 
 	// Simulate receiving Barsoom room output
 	barsoomOutput := `119H 110V 3674X 0.00% 77C T:56 Exits:EW>
