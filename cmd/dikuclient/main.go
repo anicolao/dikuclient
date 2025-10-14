@@ -77,6 +77,10 @@ func main() {
 	var finalPort int
 	var username, password string
 
+	// Check if web mode has specified a server for character selection
+	webServer := os.Getenv("DIKUCLIENT_WEB_SERVER")
+	webPort := os.Getenv("DIKUCLIENT_WEB_PORT")
+	
 	if *accountName != "" {
 		// Use saved account
 		account, err := cfg.GetAccount(*accountName)
@@ -129,6 +133,38 @@ func main() {
 			// This prevents escape codes from being displayed literally
 			os.Stdout.Sync()
 		}
+	} else if webServer != "" && webPort != "" {
+		// Web mode with server specified - show character selection for that server
+		portNum, err := strconv.Atoi(webPort)
+		if err != nil {
+			fmt.Printf("Error: invalid web port: %v\n", err)
+			os.Exit(1)
+		}
+		
+		server := &config.Server{
+			Name: fmt.Sprintf("%s:%s", webServer, webPort),
+			Host: webServer,
+			Port: portNum,
+		}
+		
+		reader := bufio.NewReader(os.Stdin)
+		account, err := selectOrCreateCharacter(cfg, passwordStore, server, reader)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
+		}
+		if account == nil {
+			// User cancelled
+			return
+		}
+		finalHost = account.Host
+		finalPort = account.Port
+		username = account.Username
+		password = passwordStore.GetPassword(account.Host, account.Port, account.Username)
+
+		// Flush output before TUI initialization
+		// This prevents escape codes from being displayed literally
+		os.Stdout.Sync()
 	} else {
 		// No host or account specified - show interactive menu
 		account, err := selectOrCreateAccount(cfg, passwordStore)
@@ -269,21 +305,32 @@ func promptForAccountDetails(host string, port int, passwordStore *config.Passwo
 func selectOrCreateAccount(cfg *config.Config, passwordStore *config.PasswordStore) (*config.Account, error) {
 	reader := bufio.NewReader(os.Stdin)
 	
-	// Step 1: Select server
-	server, err := selectOrCreateServer(cfg, reader)
+	// Step 1: Select server or character
+	selection, err := selectServerOrCharacter(cfg, passwordStore, reader)
 	if err != nil {
 		return nil, err
 	}
-	if server == nil {
+	if selection == nil {
 		// User cancelled
 		return nil, nil
 	}
 	
-	// Step 2: Select character for the chosen server
-	return selectOrCreateCharacter(cfg, passwordStore, server, reader)
+	// If a character was directly selected, return it
+	if selection.account != nil {
+		return selection.account, nil
+	}
+	
+	// Otherwise, go to character selection for the server
+	return selectOrCreateCharacter(cfg, passwordStore, selection.server, reader)
 }
 
-func selectOrCreateServer(cfg *config.Config, reader *bufio.Reader) (*config.Server, error) {
+// serverOrCharacterSelection represents either a server or a direct character selection
+type serverOrCharacterSelection struct {
+	server  *config.Server
+	account *config.Account
+}
+
+func selectServerOrCharacter(cfg *config.Config, passwordStore *config.PasswordStore, reader *bufio.Reader) (*serverOrCharacterSelection, error) {
 	servers := cfg.ListServers()
 	characters := cfg.ListCharacters()
 	accounts := cfg.ListAccounts() // Legacy accounts
@@ -352,35 +399,41 @@ func selectOrCreateServer(cfg *config.Config, reader *bufio.Reader) (*config.Ser
 
 	// Add a new server
 	if choice == 1 {
-		return createNewServer(cfg, reader)
+		server, err := createNewServer(cfg, reader)
+		if err != nil {
+			return nil, err
+		}
+		return &serverOrCharacterSelection{server: server}, nil
 	}
 	
 	// Select an existing server
 	if choice >= serverStartIdx && choice < serverEndIdx {
 		idx := choice - serverStartIdx
-		return &servers[idx], nil
+		return &serverOrCharacterSelection{server: &servers[idx]}, nil
 	}
 	
-	// Select a character (and implicitly its server)
+	// Select a character directly - return account for immediate connection
 	if choice >= charStartIdx && choice < charEndIdx {
 		idx := choice - charStartIdx
 		char := characters[idx]
-		return &config.Server{
-			Name: fmt.Sprintf("%s:%d", char.Host, char.Port),
-			Host: char.Host,
-			Port: char.Port,
-		}, nil
+		password := passwordStore.GetPassword(char.Host, char.Port, char.Username)
+		account := &config.Account{
+			Name:     char.Name,
+			Host:     char.Host,
+			Port:     char.Port,
+			Username: char.Username,
+			Password: password,
+		}
+		return &serverOrCharacterSelection{account: account}, nil
 	}
 	
-	// Select a legacy account (convert to server)
+	// Select a legacy account - return account for immediate connection
 	if choice >= accountStartIdx && choice < accountEndIdx {
 		idx := choice - accountStartIdx
 		acc := accounts[idx]
-		return &config.Server{
-			Name: acc.Name,
-			Host: acc.Host,
-			Port: acc.Port,
-		}, nil
+		password := passwordStore.GetPassword(acc.Host, acc.Port, acc.Username)
+		acc.Password = password
+		return &serverOrCharacterSelection{account: &acc}, nil
 	}
 	
 	// Exit

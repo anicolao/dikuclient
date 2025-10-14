@@ -334,14 +334,6 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 	// Build command arguments
 	args := []string{}
 	
-	// Check if server/port are specified for this session
-	serverInfo := h.GetSessionServer(sharedSession.sessionID)
-	if serverInfo != nil && serverInfo.Host != "" && serverInfo.Port != "" {
-		// Direct connection mode with server specified
-		args = append(args, "--host", serverInfo.Host, "--port", serverInfo.Port)
-		log.Printf("Starting TUI with direct connection to %s:%s", serverInfo.Host, serverInfo.Port)
-	}
-	
 	if h.enableLogs {
 		args = append(args, "--log-all")
 	}
@@ -373,6 +365,15 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 	// Add passwords from memory as environment variable
 	if passwordsEnv := h.getPasswordsEnv(sharedSession.sessionID); passwordsEnv != "" {
 		envVars = append(envVars, fmt.Sprintf("DIKUCLIENT_WEB_PASSWORDS=%s", passwordsEnv))
+	}
+	
+	// Check if server/port are specified for this session (for direct character selection)
+	serverInfo := h.GetSessionServer(sharedSession.sessionID)
+	if serverInfo != nil && serverInfo.Host != "" && serverInfo.Port != "" {
+		envVars = append(envVars, 
+			fmt.Sprintf("DIKUCLIENT_WEB_SERVER=%s", serverInfo.Host),
+			fmt.Sprintf("DIKUCLIENT_WEB_PORT=%s", serverInfo.Port))
+		log.Printf("Starting TUI with character selection for %s:%s", serverInfo.Host, serverInfo.Port)
 	}
 	
 	cmd.Env = append(os.Environ(), envVars...)
