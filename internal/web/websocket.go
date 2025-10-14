@@ -32,6 +32,12 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+// SessionServerInfo holds server connection details for a session
+type SessionServerInfo struct {
+	Host string
+	Port string
+}
+
 // WebSocketHandler handles WebSocket connections
 type WebSocketHandler struct {
 	sessions       map[*websocket.Conn]*ClientConnection
@@ -43,6 +49,8 @@ type WebSocketHandler struct {
 	port           int // Server port for generating share URLs
 	passwordStore  map[string]map[string]string // sessionID -> (account -> password), kept in memory only
 	passwordMu     sync.RWMutex
+	sessionServers map[string]*SessionServerInfo // sessionID -> server info
+	sessionServerMu sync.RWMutex
 }
 
 // SharedSession represents a shared PTY session that multiple clients can connect to
@@ -104,6 +112,7 @@ func NewWebSocketHandlerWithLogging(enableLogs bool) *WebSocketHandler {
 		sharedSessions: make(map[string]*SharedSession),
 		enableLogs:     enableLogs,
 		passwordStore:  make(map[string]map[string]string),
+		sessionServers: make(map[string]*SessionServerInfo),
 	}
 }
 
@@ -124,6 +133,23 @@ func (h *WebSocketHandler) GetSessionID() string {
 // SetPort sets the server port for generating share URLs
 func (h *WebSocketHandler) SetPort(port int) {
 	h.port = port
+}
+
+// SetSessionServer stores server connection info for a session
+func (h *WebSocketHandler) SetSessionServer(sessionID, host, port string) {
+	h.sessionServerMu.Lock()
+	defer h.sessionServerMu.Unlock()
+	h.sessionServers[sessionID] = &SessionServerInfo{
+		Host: host,
+		Port: port,
+	}
+}
+
+// GetSessionServer retrieves server connection info for a session
+func (h *WebSocketHandler) GetSessionServer(sessionID string) *SessionServerInfo {
+	h.sessionServerMu.RLock()
+	defer h.sessionServerMu.RUnlock()
+	return h.sessionServers[sessionID]
 }
 
 // HandleWebSocket handles WebSocket connections
@@ -305,8 +331,9 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 		}
 	}
 
-	// Build command arguments - no host/port, just optional logging
+	// Build command arguments
 	args := []string{}
+	
 	if h.enableLogs {
 		args = append(args, "--log-all")
 	}
@@ -338,6 +365,15 @@ func (h *WebSocketHandler) startSharedTUI(sharedSession *SharedSession, initialS
 	// Add passwords from memory as environment variable
 	if passwordsEnv := h.getPasswordsEnv(sharedSession.sessionID); passwordsEnv != "" {
 		envVars = append(envVars, fmt.Sprintf("DIKUCLIENT_WEB_PASSWORDS=%s", passwordsEnv))
+	}
+	
+	// Check if server/port are specified for this session (for direct character selection)
+	serverInfo := h.GetSessionServer(sharedSession.sessionID)
+	if serverInfo != nil && serverInfo.Host != "" && serverInfo.Port != "" {
+		envVars = append(envVars, 
+			fmt.Sprintf("DIKUCLIENT_WEB_SERVER=%s", serverInfo.Host),
+			fmt.Sprintf("DIKUCLIENT_WEB_PORT=%s", serverInfo.Port))
+		log.Printf("Starting TUI with character selection for %s:%s", serverInfo.Host, serverInfo.Port)
 	}
 	
 	cmd.Env = append(os.Environ(), envVars...)

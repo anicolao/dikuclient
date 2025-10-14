@@ -77,12 +77,22 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 
 	// Check if session ID is provided
 	sessionID := r.URL.Query().Get("id")
+	
+	// Check for server and port parameters
+	server := r.URL.Query().Get("server")
+	port := r.URL.Query().Get("port")
 
 	if sessionID == "" {
 		// No session ID in URL - check for last session cookie
 		if cookie, err := r.Cookie("dikuclient_last_session"); err == nil && cookie.Value != "" {
-			// Redirect to last used session
+			// Redirect to last used session (preserve server/port if provided)
 			redirectURL := fmt.Sprintf("/?id=%s", cookie.Value)
+			if server != "" {
+				redirectURL += fmt.Sprintf("&server=%s", server)
+			}
+			if port != "" {
+				redirectURL += fmt.Sprintf("&port=%s", port)
+			}
 			http.Redirect(w, r, redirectURL, http.StatusFound)
 			log.Printf("Redirecting to last session: %s", cookie.Value)
 			return
@@ -91,6 +101,12 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		// No cookie or empty cookie - generate a new GUID and redirect
 		newSessionID := uuid.New().String()
 		redirectURL := fmt.Sprintf("/?id=%s", newSessionID)
+		if server != "" {
+			redirectURL += fmt.Sprintf("&server=%s", server)
+		}
+		if port != "" {
+			redirectURL += fmt.Sprintf("&port=%s", port)
+		}
 		http.Redirect(w, r, redirectURL, http.StatusFound)
 		log.Printf("New session created: %s", newSessionID)
 		return
@@ -101,6 +117,12 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		// Generate a new GUID and redirect
 		newSessionID := uuid.New().String()
 		redirectURL := fmt.Sprintf("/?id=%s", newSessionID)
+		if server != "" {
+			redirectURL += fmt.Sprintf("&server=%s", server)
+		}
+		if port != "" {
+			redirectURL += fmt.Sprintf("&port=%s", port)
+		}
 		http.Redirect(w, r, redirectURL, http.StatusFound)
 		log.Printf("New session created (explicit): %s", newSessionID)
 		return
@@ -108,7 +130,13 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 
 	// Session ID provided - use it directly without validation
 	// This allows users to share URLs with specific session IDs
-	log.Printf("Using session ID from URL: %s", sessionID)
+	if server != "" && port != "" {
+		log.Printf("Using session ID from URL with server %s:%s: %s", server, port, sessionID)
+		// Store server/port in session metadata
+		s.handler.SetSessionServer(sessionID, server, port)
+	} else {
+		log.Printf("Using session ID from URL: %s", sessionID)
+	}
 
 	// Serve the static index.html file
 	http.ServeFile(w, r, filepath.Join("web", "static", "index.html"))
