@@ -7,7 +7,22 @@ import (
 	"path/filepath"
 )
 
-// Account represents a saved MUD account
+// Server represents a MUD server
+type Server struct {
+	Name string `json:"name"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
+// Character represents a character on a specific server
+type Character struct {
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+}
+
+// Account represents a saved MUD account (legacy - kept for backward compatibility)
 // Note: Password is NOT stored in accounts.json, it's stored separately in .passwords file
 type Account struct {
 	Name     string `json:"name"`
@@ -19,9 +34,11 @@ type Account struct {
 
 // Config represents the application configuration
 type Config struct {
-	Accounts       []Account `json:"accounts"`
-	DefaultAccount string    `json:"default_account,omitempty"`
-	configPath     string    // Path to the config file (for testing)
+	Servers        []Server    `json:"servers,omitempty"`
+	Characters     []Character `json:"characters,omitempty"`
+	Accounts       []Account   `json:"accounts"` // Legacy field for backward compatibility
+	DefaultAccount string      `json:"default_account,omitempty"`
+	configPath     string      // Path to the config file (for testing)
 }
 
 // GetConfigPath returns the path to the configuration file
@@ -141,4 +158,112 @@ func (c *Config) DeleteAccount(name string) error {
 // ListAccounts returns all saved accounts
 func (c *Config) ListAccounts() []Account {
 	return c.Accounts
+}
+
+// AddServer adds a new server to the configuration
+func (c *Config) AddServer(server Server) error {
+	// Check if server with same name already exists
+	for i, existing := range c.Servers {
+		if existing.Name == server.Name {
+			// Update existing server
+			c.Servers[i] = server
+			return c.SaveConfig()
+		}
+	}
+
+	// Add new server
+	c.Servers = append(c.Servers, server)
+	return c.SaveConfig()
+}
+
+// GetServer retrieves a server by name
+func (c *Config) GetServer(name string) (*Server, error) {
+	for _, server := range c.Servers {
+		if server.Name == name {
+			return &server, nil
+		}
+	}
+	return nil, fmt.Errorf("server '%s' not found", name)
+}
+
+// ListServers returns all saved servers
+func (c *Config) ListServers() []Server {
+	return c.Servers
+}
+
+// DeleteServer removes a server from the configuration
+func (c *Config) DeleteServer(name string) error {
+	for i, server := range c.Servers {
+		if server.Name == name {
+			c.Servers = append(c.Servers[:i], c.Servers[i+1:]...)
+			// Also delete all characters for this server
+			c.Characters = filterCharactersByServer(c.Characters, server.Host, server.Port)
+			return c.SaveConfig()
+		}
+	}
+	return fmt.Errorf("server '%s' not found", name)
+}
+
+// AddCharacter adds a new character to the configuration
+func (c *Config) AddCharacter(character Character) error {
+	// Check if character with same name and server already exists
+	for i, existing := range c.Characters {
+		if existing.Name == character.Name && existing.Host == character.Host && existing.Port == character.Port {
+			// Update existing character
+			c.Characters[i] = character
+			return c.SaveConfig()
+		}
+	}
+
+	// Add new character
+	c.Characters = append(c.Characters, character)
+	return c.SaveConfig()
+}
+
+// GetCharacter retrieves a character by name and server
+func (c *Config) GetCharacter(name string, host string, port int) (*Character, error) {
+	for _, character := range c.Characters {
+		if character.Name == name && character.Host == host && character.Port == port {
+			return &character, nil
+		}
+	}
+	return nil, fmt.Errorf("character '%s' not found on %s:%d", name, host, port)
+}
+
+// ListCharacters returns all saved characters
+func (c *Config) ListCharacters() []Character {
+	return c.Characters
+}
+
+// ListCharactersForServer returns all characters for a specific server
+func (c *Config) ListCharactersForServer(host string, port int) []Character {
+	var characters []Character
+	for _, char := range c.Characters {
+		if char.Host == host && char.Port == port {
+			characters = append(characters, char)
+		}
+	}
+	return characters
+}
+
+// DeleteCharacter removes a character from the configuration
+func (c *Config) DeleteCharacter(name string, host string, port int) error {
+	for i, character := range c.Characters {
+		if character.Name == name && character.Host == host && character.Port == port {
+			c.Characters = append(c.Characters[:i], c.Characters[i+1:]...)
+			return c.SaveConfig()
+		}
+	}
+	return fmt.Errorf("character '%s' not found on %s:%d", name, host, port)
+}
+
+// Helper function to filter out characters for a specific server
+func filterCharactersByServer(characters []Character, host string, port int) []Character {
+	var filtered []Character
+	for _, char := range characters {
+		if char.Host != host || char.Port != port {
+			filtered = append(filtered, char)
+		}
+	}
+	return filtered
 }

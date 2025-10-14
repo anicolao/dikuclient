@@ -267,25 +267,77 @@ func promptForAccountDetails(host string, port int, passwordStore *config.Passwo
 }
 
 func selectOrCreateAccount(cfg *config.Config, passwordStore *config.PasswordStore) (*config.Account, error) {
-	accounts := cfg.ListAccounts()
-
-	fmt.Println("\nDikuMUD Client - Account Selection")
-	fmt.Println("===================================")
-
-	if len(accounts) > 0 {
-		fmt.Println("\nSaved accounts:")
-		for i, account := range accounts {
-			fmt.Printf("  %d. %s (%s:%d)\n", i+1, account.Name, account.Host, account.Port)
-		}
-		fmt.Printf("  %d. Connect to new server\n", len(accounts)+1)
-		fmt.Printf("  %d. Exit\n", len(accounts)+2)
-	} else {
-		fmt.Println("\nNo saved accounts found.")
-		fmt.Println("  1. Connect to new server")
-		fmt.Println("  2. Exit")
-	}
-
 	reader := bufio.NewReader(os.Stdin)
+	
+	// Step 1: Select server
+	server, err := selectOrCreateServer(cfg, reader)
+	if err != nil {
+		return nil, err
+	}
+	if server == nil {
+		// User cancelled
+		return nil, nil
+	}
+	
+	// Step 2: Select character for the chosen server
+	return selectOrCreateCharacter(cfg, passwordStore, server, reader)
+}
+
+func selectOrCreateServer(cfg *config.Config, reader *bufio.Reader) (*config.Server, error) {
+	servers := cfg.ListServers()
+	characters := cfg.ListCharacters()
+	accounts := cfg.ListAccounts() // Legacy accounts
+
+	fmt.Println("\nDikuMUD Client - Server Selection")
+	fmt.Println("==================================")
+
+	optionNum := 1
+	
+	// Option 1: Add a new server
+	fmt.Printf("  %d. Add a new server\n", optionNum)
+	optionNum++
+	
+	// List all servers
+	serverStartIdx := optionNum
+	if len(servers) > 0 {
+		fmt.Println("\nServers:")
+		for _, server := range servers {
+			fmt.Printf("  %d. %s (%s:%d)\n", optionNum, server.Name, server.Host, server.Port)
+			optionNum++
+		}
+	}
+	serverEndIdx := optionNum
+	
+	// List all characters with their servers
+	charStartIdx := optionNum
+	if len(characters) > 0 {
+		fmt.Println("\nCharacters:")
+		for _, char := range characters {
+			fmt.Printf("  %d. %s on %s:%d\n", optionNum, char.Name, char.Host, char.Port)
+			optionNum++
+		}
+	}
+	charEndIdx := optionNum
+	
+	// List legacy accounts (for backward compatibility)
+	accountStartIdx := optionNum
+	if len(accounts) > 0 {
+		fmt.Println("\nLegacy accounts:")
+		for _, account := range accounts {
+			displayName := account.Name
+			if account.Username != "" {
+				displayName = fmt.Sprintf("%s (%s)", account.Name, account.Username)
+			}
+			fmt.Printf("  %d. %s (%s:%d)\n", optionNum, displayName, account.Host, account.Port)
+			optionNum++
+		}
+	}
+	accountEndIdx := optionNum
+	
+	// Exit option
+	fmt.Printf("  %d. Exit\n", optionNum)
+	exitOption := optionNum
+
 	fmt.Print("\nSelect option: ")
 	input, err := reader.ReadString('\n')
 	if err != nil {
@@ -298,28 +350,222 @@ func selectOrCreateAccount(cfg *config.Config, passwordStore *config.PasswordSto
 		return nil, fmt.Errorf("invalid choice")
 	}
 
-	if len(accounts) > 0 {
-		if choice >= 1 && choice <= len(accounts) {
-			// Use existing account
-			return &accounts[choice-1], nil
-		} else if choice == len(accounts)+1 {
-			// Create new connection
-			return createNewAccount(cfg, passwordStore, reader)
-		} else if choice == len(accounts)+2 {
-			// Exit
-			return nil, nil
-		}
-	} else {
-		if choice == 1 {
-			// Create new connection
-			return createNewAccount(cfg, passwordStore, reader)
-		} else if choice == 2 {
-			// Exit
-			return nil, nil
-		}
+	// Add a new server
+	if choice == 1 {
+		return createNewServer(cfg, reader)
+	}
+	
+	// Select an existing server
+	if choice >= serverStartIdx && choice < serverEndIdx {
+		idx := choice - serverStartIdx
+		return &servers[idx], nil
+	}
+	
+	// Select a character (and implicitly its server)
+	if choice >= charStartIdx && choice < charEndIdx {
+		idx := choice - charStartIdx
+		char := characters[idx]
+		return &config.Server{
+			Name: fmt.Sprintf("%s:%d", char.Host, char.Port),
+			Host: char.Host,
+			Port: char.Port,
+		}, nil
+	}
+	
+	// Select a legacy account (convert to server)
+	if choice >= accountStartIdx && choice < accountEndIdx {
+		idx := choice - accountStartIdx
+		acc := accounts[idx]
+		return &config.Server{
+			Name: acc.Name,
+			Host: acc.Host,
+			Port: acc.Port,
+		}, nil
+	}
+	
+	// Exit
+	if choice == exitOption {
+		return nil, nil
 	}
 
 	return nil, fmt.Errorf("invalid choice")
+}
+
+func selectOrCreateCharacter(cfg *config.Config, passwordStore *config.PasswordStore, server *config.Server, reader *bufio.Reader) (*config.Account, error) {
+	characters := cfg.ListCharactersForServer(server.Host, server.Port)
+	
+	fmt.Printf("\nCharacter Selection for %s (%s:%d)\n", server.Name, server.Host, server.Port)
+	fmt.Println("====================================")
+	
+	optionNum := 1
+	
+	// Option 1: Create a new character
+	fmt.Printf("  %d. Create a new character\n", optionNum)
+	optionNum++
+	
+	// List existing characters
+	charStartIdx := optionNum
+	if len(characters) > 0 {
+		fmt.Println("\nExisting characters:")
+		for _, char := range characters {
+			displayName := char.Name
+			if char.Username != "" {
+				displayName = fmt.Sprintf("%s (%s)", char.Name, char.Username)
+			}
+			fmt.Printf("  %d. %s\n", optionNum, displayName)
+			optionNum++
+		}
+	}
+	charEndIdx := optionNum
+	
+	// Back option
+	fmt.Printf("  %d. Back to server selection\n", optionNum)
+	backOption := optionNum
+	
+	fmt.Print("\nSelect option: ")
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	input = strings.TrimSpace(input)
+	
+	choice, err := strconv.Atoi(input)
+	if err != nil {
+		return nil, fmt.Errorf("invalid choice")
+	}
+	
+	// Create a new character
+	if choice == 1 {
+		return createNewCharacter(cfg, passwordStore, server, reader)
+	}
+	
+	// Select an existing character
+	if choice >= charStartIdx && choice < charEndIdx {
+		idx := choice - charStartIdx
+		char := characters[idx]
+		password := passwordStore.GetPassword(char.Host, char.Port, char.Username)
+		return &config.Account{
+			Name:     char.Name,
+			Host:     char.Host,
+			Port:     char.Port,
+			Username: char.Username,
+			Password: password,
+		}, nil
+	}
+	
+	// Back to server selection
+	if choice == backOption {
+		return selectOrCreateAccount(cfg, passwordStore)
+	}
+	
+	return nil, fmt.Errorf("invalid choice")
+}
+
+func createNewServer(cfg *config.Config, reader *bufio.Reader) (*config.Server, error) {
+	fmt.Print("\nEnter server name: ")
+	name, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	name = strings.TrimSpace(name)
+	
+	fmt.Print("Enter hostname: ")
+	host, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	host = strings.TrimSpace(host)
+	
+	fmt.Print("Enter port (default 4000): ")
+	portStr, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	portStr = strings.TrimSpace(portStr)
+	port := 4000
+	if portStr != "" {
+		port, err = strconv.Atoi(portStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid port: %w", err)
+		}
+	}
+	
+	server := config.Server{
+		Name: name,
+		Host: host,
+		Port: port,
+	}
+	
+	// Save the server
+	if err := cfg.AddServer(server); err != nil {
+		return nil, fmt.Errorf("failed to save server: %w", err)
+	}
+	
+	fmt.Printf("Server '%s' saved.\n", name)
+	return &server, nil
+}
+
+func createNewCharacter(cfg *config.Config, passwordStore *config.PasswordStore, server *config.Server, reader *bufio.Reader) (*config.Account, error) {
+	fmt.Print("\nEnter character name (optional): ")
+	name, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	name = strings.TrimSpace(name)
+	
+	fmt.Print("Enter username (optional): ")
+	username, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	username = strings.TrimSpace(username)
+	
+	var password string
+	// Only prompt for password in non-web mode
+	if !passwordStore.IsReadOnly() {
+		fmt.Print("Enter password (optional): ")
+		passwordInput, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		password = strings.TrimSpace(passwordInput)
+	}
+	
+	// If character has a name, save it by default
+	if name != "" {
+		character := config.Character{
+			Name:     name,
+			Host:     server.Host,
+			Port:     server.Port,
+			Username: username,
+		}
+		
+		if err := cfg.AddCharacter(character); err != nil {
+			return nil, fmt.Errorf("failed to save character: %w", err)
+		}
+		
+		// Save password separately (only in non-web mode)
+		if password != "" && !passwordStore.IsReadOnly() {
+			passwordStore.SetPassword(server.Host, server.Port, username, password)
+			if err := passwordStore.Save(); err != nil {
+				return nil, fmt.Errorf("failed to save password: %w", err)
+			}
+		}
+		
+		if passwordStore.IsReadOnly() {
+			fmt.Printf("Character '%s' saved. Password will be captured automatically during login.\n", name)
+		} else {
+			fmt.Printf("Character '%s' saved.\n", name)
+		}
+	}
+	
+	return &config.Account{
+		Name:     name,
+		Host:     server.Host,
+		Port:     server.Port,
+		Username: username,
+		Password: password,
+	}, nil
 }
 
 func createNewAccount(cfg *config.Config, passwordStore *config.PasswordStore, reader *bufio.Reader) (*config.Account, error) {
