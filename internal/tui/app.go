@@ -1064,7 +1064,7 @@ func (m *Model) renderMainContent() string {
 
 	if m.hasDescriptionSplit && m.isSplit {
 		// Three-way split: description at top, scrollable in middle, live at bottom
-		descHeight := 8 // Fixed height for description
+		descHeight := 6 // Fixed height for description
 		liveHeight := actualContentHeight / 4 // Live output takes 1/4
 		scrollHeight := actualContentHeight - descHeight - liveHeight - 2 // -2 for separator borders
 		
@@ -1128,7 +1128,7 @@ func (m *Model) renderMainContent() string {
 		gameOutput = lipgloss.JoinVertical(lipgloss.Left, descView, midView, bottomView)
 	} else if m.hasDescriptionSplit {
 		// Two-way split with description at top
-		descHeight := 8
+		descHeight := 6
 		mainHeight := actualContentHeight - descHeight - 1 // -1 for separator border
 		
 		m.descriptionViewport.Height = descHeight - 2
@@ -1572,7 +1572,15 @@ func (m *Model) detectAndUpdateRoom() {
 			}
 			descLines = append(descLines, "")
 			m.currentRoomDescription = strings.Join(descLines, "\n")
-			m.hasDescriptionSplit = true
+			
+			// If description split is being activated for the first time, scroll viewport to bottom
+			if !m.hasDescriptionSplit {
+				m.hasDescriptionSplit = true
+				// Scroll the main viewport to the bottom so content is fully visible
+				m.viewport.GotoBottom()
+			} else {
+				m.hasDescriptionSplit = true
+			}
 		}
 
 		// Skip room detection if flag is set (e.g., after recall teleport)

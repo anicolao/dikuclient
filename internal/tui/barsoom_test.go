@@ -235,3 +235,50 @@ You are standing in a large temple square.
 		t.Errorf("Expected currentBarsoomTitle to be empty, got %q", m2.currentBarsoomTitle)
 	}
 }
+
+func TestBarsoomDescriptionHeightAndScroll(t *testing.T) {
+	// Verify that description viewport height is correct and viewport scrolls to bottom
+	model := NewModel("localhost", 4000, nil, nil)
+	model.width = 100
+	model.height = 40
+
+	// Reset barsoomMode for this test
+	model.barsoomMode = false
+	model.worldMap.BarsoomMode = false
+
+	// Add some output so we can verify scrolling behavior
+	for i := 0; i < 20; i++ {
+		model.output = append(model.output, fmt.Sprintf("Line %d", i))
+	}
+	model.updateViewport()
+
+	// Simulate receiving Barsoom room output
+	barsoomOutput := `119H 110V 3674X 0.00% 77C T:56 Exits:EW>
+--<
+Temple Square
+You are standing in a large temple square.
+>-- Exits:NSE`
+
+	// Process the output
+	updatedModel, _ := model.Update(mudMsg(barsoomOutput))
+	m := updatedModel.(*Model)
+
+	// Verify description split is active
+	if !m.hasDescriptionSplit {
+		t.Error("Expected hasDescriptionSplit to be true after receiving Barsoom room")
+	}
+
+	// Verify viewport is at bottom after description split is activated
+	if !m.viewport.AtBottom() {
+		t.Error("Expected viewport to be scrolled to bottom when description split is first activated")
+	}
+
+	// Verify description viewport height is set correctly (6 total height - 2 for borders = 4 content lines)
+	// This is checked in renderMainContent, so we need to render to verify
+	m.renderMainContent()
+	
+	// The descriptionViewport.Height should be 4 (6 - 2 for borders)
+	if m.descriptionViewport.Height != 4 {
+		t.Errorf("Expected descriptionViewport.Height to be 4, got %d", m.descriptionViewport.Height)
+	}
+}
