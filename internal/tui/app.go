@@ -1573,34 +1573,34 @@ func (m *Model) detectAndUpdateRoom() {
 			m.hasDescriptionSplit = true
 		}
 
-		// If we have a pending movement, update the map
-		if m.pendingMovement != "" {
-			// Skip room detection if flag is set (e.g., after recall teleport)
-			if m.skipNextRoomDetection {
-				m.skipNextRoomDetection = false
-				m.pendingMovement = "" // Clear pending movement
-				if m.mapDebug {
-					m.output = append(m.output, "\x1b[90m[Mapper: Skipped room detection due to recall]\x1b[0m")
-				}
-				return
+		// Skip room detection if flag is set (e.g., after recall teleport)
+		if m.skipNextRoomDetection {
+			m.skipNextRoomDetection = false
+			m.pendingMovement = "" // Clear pending movement
+			if m.mapDebug {
+				m.output = append(m.output, "\x1b[90m[Mapper: Skipped room detection due to recall]\x1b[0m")
 			}
+			return
+		}
 
-			// Create or update room in map (use full description for Barsoom rooms)
-			room := mapper.NewBarsoomRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
+		// Create or update room in map (use full description for Barsoom rooms)
+		// Always add the current room to the map when we see it
+		room := mapper.NewBarsoomRoom(barsoomRoomInfo.Title, barsoomRoomInfo.Description, barsoomRoomInfo.Exits)
 
-			// Set the movement direction
+		// Set the movement direction if we have a pending movement (for linking)
+		if m.pendingMovement != "" {
 			m.worldMap.SetLastDirection(m.pendingMovement)
 			m.pendingMovement = ""
+		}
 
-			m.worldMap.AddOrUpdateRoom(room)
+		m.worldMap.AddOrUpdateRoom(room)
 
-			// Save map periodically (every room visit)
-			m.worldMap.Save()
+		// Save map periodically (every room visit)
+		m.worldMap.Save()
 
-			// Notify user that room was added (only if debug enabled)
-			if m.mapDebug {
-				m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, barsoomRoomInfo.Exits))
-			}
+		// Notify user that room was added (only if debug enabled)
+		if m.mapDebug {
+			m.output = append(m.output, fmt.Sprintf("\x1b[92m[Mapper: Added room '%s' with exits: %v]\x1b[0m", room.Title, barsoomRoomInfo.Exits))
 		}
 		return
 	}
