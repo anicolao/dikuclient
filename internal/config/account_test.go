@@ -230,3 +230,285 @@ func TestGetConfigPathWithEnvVar(t *testing.T) {
 		t.Errorf("Account from custom config doesn't match")
 	}
 }
+
+func TestAddAndGetServer(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "accounts.json")
+
+	cfg, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Add a server
+	server := Server{
+		Name: "TestServer",
+		Host: "mud.example.com",
+		Port: 4000,
+	}
+
+	err = cfg.AddServer(server)
+	if err != nil {
+		t.Fatalf("Failed to add server: %v", err)
+	}
+
+	// Load config and verify
+	cfg2, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if len(cfg2.Servers) != 1 {
+		t.Fatalf("Expected 1 server, got %d", len(cfg2.Servers))
+	}
+
+	retrieved, err := cfg2.GetServer("TestServer")
+	if err != nil {
+		t.Fatalf("Failed to get server: %v", err)
+	}
+
+	if retrieved.Name != server.Name || retrieved.Host != server.Host || retrieved.Port != server.Port {
+		t.Errorf("Server mismatch: expected %+v, got %+v", server, retrieved)
+	}
+}
+
+func TestUpdateServer(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "accounts.json")
+
+	cfg, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	server := Server{
+		Name: "TestServer",
+		Host: "mud1.example.com",
+		Port: 4000,
+	}
+
+	err = cfg.AddServer(server)
+	if err != nil {
+		t.Fatalf("Failed to add server: %v", err)
+	}
+
+	// Update the server
+	server.Host = "mud2.example.com"
+	server.Port = 4001
+
+	err = cfg.AddServer(server)
+	if err != nil {
+		t.Fatalf("Failed to update server: %v", err)
+	}
+
+	cfg2, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if len(cfg2.Servers) != 1 {
+		t.Fatalf("Expected 1 server after update, got %d", len(cfg2.Servers))
+	}
+
+	retrieved, err := cfg2.GetServer("TestServer")
+	if err != nil {
+		t.Fatalf("Failed to get server: %v", err)
+	}
+
+	if retrieved.Host != "mud2.example.com" || retrieved.Port != 4001 {
+		t.Errorf("Server not updated correctly: %+v", retrieved)
+	}
+}
+
+func TestAddAndGetCharacter(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "accounts.json")
+
+	cfg, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Add a character
+	character := Character{
+		Name:     "TestChar",
+		Host:     "mud.example.com",
+		Port:     4000,
+		Username: "testuser",
+	}
+
+	err = cfg.AddCharacter(character)
+	if err != nil {
+		t.Fatalf("Failed to add character: %v", err)
+	}
+
+	// Load config and verify
+	cfg2, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if len(cfg2.Characters) != 1 {
+		t.Fatalf("Expected 1 character, got %d", len(cfg2.Characters))
+	}
+
+	retrieved, err := cfg2.GetCharacter("TestChar", "mud.example.com", 4000)
+	if err != nil {
+		t.Fatalf("Failed to get character: %v", err)
+	}
+
+	if retrieved.Name != character.Name || retrieved.Host != character.Host ||
+		retrieved.Port != character.Port || retrieved.Username != character.Username {
+		t.Errorf("Character mismatch: expected %+v, got %+v", character, retrieved)
+	}
+}
+
+func TestListCharactersForServer(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "accounts.json")
+
+	cfg, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Add characters for different servers
+	char1 := Character{
+		Name:     "Char1",
+		Host:     "server1.com",
+		Port:     4000,
+		Username: "user1",
+	}
+
+	char2 := Character{
+		Name:     "Char2",
+		Host:     "server1.com",
+		Port:     4000,
+		Username: "user2",
+	}
+
+	char3 := Character{
+		Name:     "Char3",
+		Host:     "server2.com",
+		Port:     4000,
+		Username: "user3",
+	}
+
+	cfg.AddCharacter(char1)
+	cfg.AddCharacter(char2)
+	cfg.AddCharacter(char3)
+
+	// List characters for server1.com
+	chars := cfg.ListCharactersForServer("server1.com", 4000)
+	if len(chars) != 2 {
+		t.Fatalf("Expected 2 characters for server1.com, got %d", len(chars))
+	}
+
+	// List characters for server2.com
+	chars = cfg.ListCharactersForServer("server2.com", 4000)
+	if len(chars) != 1 {
+		t.Fatalf("Expected 1 character for server2.com, got %d", len(chars))
+	}
+}
+
+func TestDeleteServer(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "accounts.json")
+
+	cfg, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Add server and characters
+	server := Server{
+		Name: "TestServer",
+		Host: "mud.example.com",
+		Port: 4000,
+	}
+
+	char := Character{
+		Name:     "TestChar",
+		Host:     "mud.example.com",
+		Port:     4000,
+		Username: "testuser",
+	}
+
+	cfg.AddServer(server)
+	cfg.AddCharacter(char)
+
+	// Delete server
+	err = cfg.DeleteServer("TestServer")
+	if err != nil {
+		t.Fatalf("Failed to delete server: %v", err)
+	}
+
+	// Verify server is deleted
+	cfg2, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if len(cfg2.Servers) != 0 {
+		t.Errorf("Expected 0 servers after delete, got %d", len(cfg2.Servers))
+	}
+
+	// Verify characters for that server are also deleted
+	if len(cfg2.Characters) != 0 {
+		t.Errorf("Expected 0 characters after server delete, got %d", len(cfg2.Characters))
+	}
+}
+
+func TestDeleteCharacter(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "accounts.json")
+
+	cfg, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Add characters
+	char1 := Character{
+		Name:     "Char1",
+		Host:     "mud.example.com",
+		Port:     4000,
+		Username: "user1",
+	}
+
+	char2 := Character{
+		Name:     "Char2",
+		Host:     "mud.example.com",
+		Port:     4000,
+		Username: "user2",
+	}
+
+	cfg.AddCharacter(char1)
+	cfg.AddCharacter(char2)
+
+	// Delete one character
+	err = cfg.DeleteCharacter("Char1", "mud.example.com", 4000)
+	if err != nil {
+		t.Fatalf("Failed to delete character: %v", err)
+	}
+
+	// Verify character is deleted
+	cfg2, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if len(cfg2.Characters) != 1 {
+		t.Errorf("Expected 1 character after delete, got %d", len(cfg2.Characters))
+	}
+
+	_, err = cfg2.GetCharacter("Char1", "mud.example.com", 4000)
+	if err == nil {
+		t.Errorf("Expected error getting deleted character")
+	}
+
+	_, err = cfg2.GetCharacter("Char2", "mud.example.com", 4000)
+	if err != nil {
+		t.Errorf("Expected to find Char2, got error: %v", err)
+	}
+}
