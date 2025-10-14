@@ -939,6 +939,10 @@ func (m *Model) updateViewport() {
 		// Update split viewport content (always stays at bottom for live tracking)
 		m.splitViewport.SetContent(content)
 		m.splitViewport.GotoBottom()
+	} else if m.forceScrollToBottom {
+		// Content hasn't changed but we need to scroll to bottom (e.g., description split activated)
+		m.viewport.GotoBottom()
+		m.forceScrollToBottom = false
 	}
 
 	// Log TUI content if logging enabled
