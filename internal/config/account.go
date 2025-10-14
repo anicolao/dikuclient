@@ -16,7 +16,6 @@ type Server struct {
 
 // Character represents a character on a specific server
 type Character struct {
-	Name     string `json:"name"`
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	Username string `json:"username"`
@@ -206,9 +205,9 @@ func (c *Config) DeleteServer(name string) error {
 
 // AddCharacter adds a new character to the configuration
 func (c *Config) AddCharacter(character Character) error {
-	// Check if character with same name and server already exists
+	// Check if character with same username and server already exists
 	for i, existing := range c.Characters {
-		if existing.Name == character.Name && existing.Host == character.Host && existing.Port == character.Port {
+		if existing.Username == character.Username && existing.Host == character.Host && existing.Port == character.Port {
 			// Update existing character
 			c.Characters[i] = character
 			return c.SaveConfig()
@@ -220,14 +219,14 @@ func (c *Config) AddCharacter(character Character) error {
 	return c.SaveConfig()
 }
 
-// GetCharacter retrieves a character by name and server
-func (c *Config) GetCharacter(name string, host string, port int) (*Character, error) {
+// GetCharacter retrieves a character by username and server
+func (c *Config) GetCharacter(username string, host string, port int) (*Character, error) {
 	for _, character := range c.Characters {
-		if character.Name == name && character.Host == host && character.Port == port {
+		if character.Username == username && character.Host == host && character.Port == port {
 			return &character, nil
 		}
 	}
-	return nil, fmt.Errorf("character '%s' not found on %s:%d", name, host, port)
+	return nil, fmt.Errorf("character '%s' not found on %s:%d", username, host, port)
 }
 
 // ListCharacters returns all saved characters
@@ -247,14 +246,14 @@ func (c *Config) ListCharactersForServer(host string, port int) []Character {
 }
 
 // DeleteCharacter removes a character from the configuration
-func (c *Config) DeleteCharacter(name string, host string, port int) error {
+func (c *Config) DeleteCharacter(username string, host string, port int) error {
 	for i, character := range c.Characters {
-		if character.Name == name && character.Host == host && character.Port == port {
+		if character.Username == username && character.Host == host && character.Port == port {
 			c.Characters = append(c.Characters[:i], c.Characters[i+1:]...)
 			return c.SaveConfig()
 		}
 	}
-	return fmt.Errorf("character '%s' not found on %s:%d", name, host, port)
+	return fmt.Errorf("character '%s' not found on %s:%d", username, host, port)
 }
 
 // Helper function to filter out characters for a specific server
