@@ -90,6 +90,7 @@ type Model struct {
 	pendingCommands        []string           // Queue of commands to send (from triggers, aliases, or /go)
 	commandQueueActive     bool               // Currently processing command queue
 	lastViewportContent    string             // Last content set on viewport (to avoid unnecessary updates)
+	forceScrollToBottom    bool               // Force viewport to scroll to bottom on next update
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -921,9 +922,13 @@ func (m *Model) updateViewport() {
 		m.viewport.SetContent(content)
 		m.lastViewportContent = content
 
-		// If not in split mode or if viewport is already at bottom, go to bottom
-		// This preserves scroll position when in split mode
-		if !m.isSplit {
+		// If force scroll flag is set, scroll to bottom regardless of other conditions
+		if m.forceScrollToBottom {
+			m.viewport.GotoBottom()
+			m.forceScrollToBottom = false
+		} else if !m.isSplit {
+			// If not in split mode or if viewport is already at bottom, go to bottom
+			// This preserves scroll position when in split mode
 			m.viewport.GotoBottom()
 		} else if wasAtBottom {
 			// If user was already at bottom and new content arrived, exit split mode
@@ -1576,8 +1581,8 @@ func (m *Model) detectAndUpdateRoom() {
 			// If description split is being activated for the first time, scroll viewport to bottom
 			if !m.hasDescriptionSplit {
 				m.hasDescriptionSplit = true
-				// Scroll the main viewport to the bottom so content is fully visible
-				m.viewport.GotoBottom()
+				// Request scroll to bottom on next viewport update (after SetContent)
+				m.forceScrollToBottom = true
 			} else {
 				m.hasDescriptionSplit = true
 			}
