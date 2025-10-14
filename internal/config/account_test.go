@@ -505,3 +505,45 @@ func TestDeleteCharacter(t *testing.T) {
 		t.Errorf("Expected to find user2, got error: %v", err)
 	}
 }
+
+func TestCharacterWithEmptyUsername(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "accounts.json")
+
+	cfg, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Add a character without username
+	char := Character{
+		Host:     "mud.example.com",
+		Port:     4000,
+		Username: "",
+	}
+
+	err = cfg.AddCharacter(char)
+	if err != nil {
+		t.Fatalf("Failed to add character: %v", err)
+	}
+
+	// Load config and verify
+	cfg2, err := LoadConfigFromPath(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if len(cfg2.Characters) != 1 {
+		t.Fatalf("Expected 1 character, got %d", len(cfg2.Characters))
+	}
+
+	// List all characters to verify empty username is handled
+	chars := cfg2.ListCharactersForServer("mud.example.com", 4000)
+	if len(chars) != 1 {
+		t.Fatalf("Expected 1 character for server, got %d", len(chars))
+	}
+
+	if chars[0].Username != "" {
+		t.Errorf("Expected empty username, got: %s", chars[0].Username)
+	}
+}
