@@ -890,8 +890,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isSplit = false
 	}
 
-	// Update inventory viewport for mouse wheel scrolling
+	// Update sidebar viewports for mouse wheel scrolling
 	m.inventoryViewport, cmd = m.inventoryViewport.Update(msg)
+	cmds = append(cmds, cmd)
+	
+	m.tellsViewport, cmd = m.tellsViewport.Update(msg)
+	cmds = append(cmds, cmd)
+	
+	m.xpViewport, cmd = m.xpViewport.Update(msg)
 	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
