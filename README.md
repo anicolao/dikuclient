@@ -10,6 +10,7 @@ A modern, efficient DikuMUD client written in Go with a beautiful Text User Inte
 - **Room Management**: Search, list, and find nearby rooms with `/rooms`, `/nearby`, and `/legend`
 - **Aliases**: Create command shortcuts with parameter substitution (e.g., `/alias "gat" "give all <target>"`)
 - **Triggers**: Automated responses to MUD output patterns
+- **Tick Timer**: Automatically track tick times and execute commands at specific tick values (e.g., cast heal at T:5)
 - **Web Mode with Terminal Emulation**: Run the full TUI in a browser with identical experience to terminal mode
 - **Session Sharing**: Share your web session with others using the `/share` command
 - **MUD Connection**: Connect to any MUD server via telnet protocol
@@ -142,10 +143,13 @@ The client automatically builds a map as you explore:
 - `/trigger "pattern" "action"` - Add triggers that fire on MUD output
 - `/triggers list` - List all defined triggers
 - `/triggers remove <n>` - Remove trigger by number
+- `/ticktrigger <time> "commands"` - Add tick-based triggers (e.g., `/ticktrigger 5 "cast 'heal'"`)
+- `/ticktriggers list` - List all tick triggers
+- `/ticktriggers remove <n>` - Remove tick trigger by number
 - `/share` - Get shareable URL (web mode only)
 - `/help [command]` - Show available commands or detailed help for a specific command
 
-**Note:** Aliases and triggers support multiple commands separated by semicolons (`;`). Each command is sent sequentially with a 1-second delay.
+**Note:** Aliases, triggers, and tick triggers support multiple commands separated by semicolons (`;`). Each command is sent sequentially with a 1-second delay.
 
 **Navigation Examples:**
 ```
@@ -190,7 +194,23 @@ Trigger added: "You are hungry" -> "eat bread;drink water"
 [Queue: drink water]
 ```
 
-See [MAPPER.md](MAPPER.md) for detailed mapping documentation and [ALIASES.md](ALIASES.md) for comprehensive alias usage.
+**Tick Timer Examples:**
+```
+> /ticktrigger 5 "cast 'heal'"
+Tick trigger added: T:5 -> "cast 'heal'"
+
+> /ticktrigger 4 "cast 'bless';say Ready!"
+Tick trigger added: T:4 -> "cast 'bless';say Ready!"
+
+[When tick time reaches T:5]
+[Queue: cast 'heal']
+
+[When tick time reaches T:4]
+[Queue: cast 'bless']
+[Queue: say Ready!]
+```
+
+See [MAPPER.md](MAPPER.md) for detailed mapping documentation, [ALIASES.md](ALIASES.md) for comprehensive alias usage, and [TICK_TIMER_FEATURE.md](TICK_TIMER_FEATURE.md) for tick timer details.
 
 ### Logging
 
@@ -225,12 +245,14 @@ dikuclient/
 │   ├── client/             # MUD connection logic
 │   ├── config/             # Configuration and account management
 │   ├── mapper/             # Automatic mapping and pathfinding
+│   ├── ticktimer/          # Tick timer and tick-based triggers
 │   ├── tui/                # TUI application
 │   └── web/                # Web server and WebSocket handler
 ├── web/
 │   └── static/             # Web interface files (HTML/CSS/JS)
 ├── DESIGN.md               # Design documentation
 ├── MAPPER.md               # Mapping system documentation
+├── TICK_TIMER_FEATURE.md   # Tick timer feature documentation
 └── README.md               # This file
 ```
 
@@ -248,6 +270,7 @@ This implementation is feature-complete for a modern MUD client:
 - ✅ Map persistence between sessions
 - ✅ Aliases with parameter substitution and multi-command support
 - ✅ Triggers with pattern matching and variable capture
+- ✅ Tick timer with automatic interval detection and tick-based triggers
 
 ## License
 

@@ -14,6 +14,7 @@ import (
 	"github.com/anicolao/dikuclient/internal/client"
 	"github.com/anicolao/dikuclient/internal/history"
 	"github.com/anicolao/dikuclient/internal/mapper"
+	"github.com/anicolao/dikuclient/internal/ticktimer"
 	"github.com/anicolao/dikuclient/internal/triggers"
 	"github.com/anicolao/dikuclient/internal/xpstats"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -87,10 +88,12 @@ type Model struct {
 	barsoomMode            bool               // True if we've ever seen --< marker (switch to Barsoom parsing only)
 	lastRenderedGameOutput string             // Last rendered game output (for testing)
 	lastRenderedSidebar    string             // Last rendered sidebar (for testing)
-	pendingCommands        []string           // Queue of commands to send (from triggers, aliases, or /go)
-	commandQueueActive     bool               // Currently processing command queue
-	lastViewportContent    string             // Last content set on viewport (to avoid unnecessary updates)
-	forceScrollToBottom    bool               // Force viewport to scroll to bottom on next update
+	pendingCommands        []string             // Queue of commands to send (from triggers, aliases, or /go)
+	commandQueueActive     bool                 // Currently processing command queue
+	lastViewportContent    string               // Last content set on viewport (to avoid unnecessary updates)
+	forceScrollToBottom    bool                 // Force viewport to scroll to bottom on next update
+	tickTimerManager       *ticktimer.Manager   // Tick timer manager
+	lastFiredTickTime      int                  // Last tick time when triggers were fired (to avoid duplicates)
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -126,6 +129,7 @@ type errMsg error
 type echoStateMsg bool // true if echo suppressed (password mode)
 type autoWalkTickMsg struct{}
 type commandQueueTickMsg struct{}
+type tickTimerMsg struct{}
 
 // NewModel creates a new application model
 func NewModel(host string, port int, mudLogFile, tuiLogFile *os.File) Model {
@@ -170,6 +174,13 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 	if err != nil {
 		// If we can't load history, create a new manager
 		historyManager = history.NewManager()
+	}
+
+	// Load tick timer manager (will start with 0 interval until we detect it from prompts)
+	tickTimerManager, err := ticktimer.Load(host, port, 0)
+	if err != nil {
+		// If we can't load tick timer, create a new manager
+		tickTimerManager = ticktimer.NewManager(0)
 	}
 
 	inventoryVp := viewport.New(0, 0)
@@ -218,6 +229,8 @@ func NewModelWithAuth(host string, port int, username, password string, mudLogFi
 		isSplit:              false,
 		splitViewport:        splitVp,
 		barsoomMode:          worldMap.BarsoomMode, // Load Barsoom mode from map
+		tickTimerManager:     tickTimerManager,
+		lastFiredTickTime:    0,
 	}
 }
 
@@ -573,7 +586,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateViewport()
 		if m.webSessionID != "" {
 		}
-		return m, m.listenForMessages
+		// Start tick timer
+		return m, tea.Batch(
+			m.listenForMessages,
+			tea.Tick(time.Second, func(t time.Time) tea.Msg {
+				return tickTimerMsg{}
+			}),
+		)
 
 	case mudMsg:
 		// Add message to output - it already has proper line endings
@@ -618,6 +637,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Check if this line is a tell message
 			m.detectAndParseTell(line)
+
+			// Check for tick time in prompt
+			m.detectTickPrompt(line)
 
 			// Check for combat prompt to track XP/s
 			m.detectCombatPrompt(line)
@@ -773,6 +795,51 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
+	case tickTimerMsg:
+		// Check if any tick triggers should fire
+		if m.tickTimerManager != nil && m.tickTimerManager.TickInterval > 0 {
+			currentTickTime := m.tickTimerManager.GetCurrentTickTime()
+			
+			// Only check if we have a valid tick time and it's different from last fired
+			if currentTickTime > 0 && currentTickTime != m.lastFiredTickTime {
+				commandsToFire := m.tickTimerManager.GetTriggersToFire(m.lastFiredTickTime)
+				
+				for _, commandStr := range commandsToFire {
+					// Split commands on `;` to support multiple commands
+					commands := strings.Split(commandStr, ";")
+					for i := range commands {
+						commands[i] = strings.TrimSpace(commands[i])
+					}
+					// Filter out empty commands
+					filteredCommands := make([]string, 0)
+					for _, cmd := range commands {
+						if cmd != "" {
+							filteredCommands = append(filteredCommands, cmd)
+						}
+					}
+					
+					// Add commands to the pending queue
+					m.pendingCommands = append(m.pendingCommands, filteredCommands...)
+				}
+				
+				// Update last fired tick time
+				m.lastFiredTickTime = currentTickTime
+				
+				// Start command queue if we have commands and it's not already running
+				if len(m.pendingCommands) > 0 && !m.commandQueueActive {
+					m.commandQueueActive = true
+					cmds = append(cmds, func() tea.Msg {
+						return commandQueueTickMsg{}
+					})
+				}
+			}
+		}
+		
+		// Schedule next tick timer check (every second)
+		return m, tea.Batch(append(cmds, tea.Tick(time.Second, func(t time.Time) tea.Msg {
+			return tickTimerMsg{}
+		}))...)
 
 	case commandQueueTickMsg:
 		// Process next command in queue
@@ -1752,11 +1819,40 @@ func stripANSI(s string) string {
 // Example: 101H 132V 54710X 49.60% 570C [Osric:V.Bad] [a goblin scout:Good] T:24 Exits:NS>
 var combatPromptRegex = regexp.MustCompile(`\[([^:]+):[^\]]+\]\s*\[([^:]+):[^\]]+\]`)
 
+// tickPromptRegex matches tick time in prompts in format: T:NN
+// Example: T:24 or T:04
+var tickPromptRegex = regexp.MustCompile(`T:(\d+)`)
+
 // deathMessageRegex matches death messages in format: The <target> is dead!
 var deathMessageRegex = regexp.MustCompile(`^(The|A|An)\s+(.+?)\s+is dead!`)
 
 // xpGainRegex matches XP gain messages in format: You <anything> [0-9]+ experience.
 var xpGainRegex = regexp.MustCompile(`^You[^\d]+ (\d+) experience\.`)
+
+// detectTickPrompt detects tick time in the prompt and updates the tick timer
+func (m *Model) detectTickPrompt(line string) {
+	if m.tickTimerManager == nil {
+		return
+	}
+
+	cleanLine := stripANSI(line)
+	matches := tickPromptRegex.FindStringSubmatch(cleanLine)
+	if matches != nil && len(matches) == 2 {
+		// matches[1] is the tick time (e.g., "24")
+		tickTime := 0
+		fmt.Sscanf(matches[1], "%d", &tickTime)
+		
+		// Update the tick timer with the new value
+		m.tickTimerManager.UpdateFromPrompt(tickTime)
+		
+		// If this is the first time we're seeing a tick, try to determine the interval
+		if m.tickTimerManager.TickInterval == 0 {
+			// Common tick intervals are 60 or 75 seconds
+			// We'll default to 75 for now, but it will be refined over time
+			m.tickTimerManager.TickInterval = 75
+		}
+	}
+}
 
 // detectCombatPrompt detects combat status in the prompt
 func (m *Model) detectCombatPrompt(line string) {
@@ -1894,6 +1990,12 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 		return nil
 	case "aliases":
 		m.handleAliasesCommand(args)
+		return nil
+	case "ticktrigger":
+		m.handleTickTriggerCommand(command)
+		return nil
+	case "ticktriggers":
+		m.handleTickTriggersCommand(args)
 		return nil
 	case "share":
 		m.handleShareCommand()
@@ -2143,6 +2245,9 @@ func (m *Model) handleHelpCommand(args []string) {
 	m.output = append(m.output, "  \x1b[96m/trigger \"pat\" \"act\"\x1b[0m - Add a trigger (pattern can use <var>)")
 	m.output = append(m.output, "  \x1b[96m/triggers list\x1b[0m          - List all triggers")
 	m.output = append(m.output, "  \x1b[96m/triggers remove <n>\x1b[0m    - Remove trigger by number")
+	m.output = append(m.output, "  \x1b[96m/ticktrigger # \"cmd\"\x1b[0m  - Add a tick trigger (fires at T:#)")
+	m.output = append(m.output, "  \x1b[96m/ticktriggers list\x1b[0m     - List all tick triggers")
+	m.output = append(m.output, "  \x1b[96m/ticktriggers remove <n>\x1b[0m - Remove tick trigger by number")
 	m.output = append(m.output, "  \x1b[96m/alias \"name\" \"tmpl\"\x1b[0m  - Add an alias (template can use <var>)")
 	m.output = append(m.output, "  \x1b[96m/aliases list\x1b[0m           - List all aliases")
 	m.output = append(m.output, "  \x1b[96m/aliases remove <n>\x1b[0m     - Remove alias by number")
@@ -2317,6 +2422,31 @@ func (m *Model) showDetailedHelp(cmd string) {
 		m.output = append(m.output, "\x1b[90mMulti-command actions execute sequentially with 1-second delay\x1b[0m")
 		m.output = append(m.output, "\x1b[90mSee also: /help alias, /help stop\x1b[0m")
 
+	case "ticktrigger", "ticktriggers":
+		m.output = append(m.output, "\x1b[92m=== Tick Triggers - Time-Based Automation ===\x1b[0m")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mUsage:\x1b[0m")
+		m.output = append(m.output, "  /ticktrigger <tick_time> \"commands\"")
+		m.output = append(m.output, "  /ticktriggers list")
+		m.output = append(m.output, "  /ticktriggers remove <number>")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mDescription:\x1b[0m")
+		m.output = append(m.output, "  Tick triggers execute commands at a specific tick time (T:#).")
+		m.output = append(m.output, "  The client tracks tick times from prompts and projects when triggers should fire.")
+		m.output = append(m.output, "  Triggers fire even if no new prompt appears, based on internal timer.")
+		m.output = append(m.output, "  Commands can include multiple commands separated by semicolons (;).")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mExamples:\x1b[0m")
+		m.output = append(m.output, "  /ticktrigger 5 \"cast 'heal'\"")
+		m.output = append(m.output, "  /ticktrigger 4 \"cast 'bless';say Ready!\"")
+		m.output = append(m.output, "  /ticktrigger 10 \"get all from corpse\"")
+		m.output = append(m.output, "  /ticktriggers list             - List all tick triggers")
+		m.output = append(m.output, "  /ticktriggers remove 1         - Remove tick trigger #1")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[90mNote: Tick interval is auto-detected from prompts (typically 60 or 75 seconds)\x1b[0m")
+		m.output = append(m.output, "\x1b[90mMulti-command actions execute sequentially with 1-second delay\x1b[0m")
+		m.output = append(m.output, "\x1b[90mSee also: /help trigger, /help stop\x1b[0m")
+
 	case "alias", "aliases":
 		m.output = append(m.output, "\x1b[92m=== Aliases - Command Shortcuts ===\x1b[0m")
 		m.output = append(m.output, "")
@@ -2379,7 +2509,7 @@ func (m *Model) showDetailedHelp(cmd string) {
 		m.output = append(m.output, "")
 		m.output = append(m.output, "Available commands for detailed help:")
 		m.output = append(m.output, "  point, wayfind, go, stop, map, rooms, nearby, legend,")
-		m.output = append(m.output, "  trigger, triggers, alias, aliases, share, help")
+		m.output = append(m.output, "  trigger, triggers, ticktrigger, ticktriggers, alias, aliases, share, help")
 		m.output = append(m.output, "")
 		m.output = append(m.output, "Use /help to see all commands")
 	}
@@ -2987,6 +3117,155 @@ func parseQuotedArgs(input string) (string, string, error) {
 	action := rest[1:endQuote]
 
 	return pattern, action, nil
+}
+
+// handleTickTriggerCommand handles /ticktrigger command
+func (m *Model) handleTickTriggerCommand(command string) {
+	if m.tickTimerManager == nil {
+		m.output = append(m.output, "\x1b[91mError: Tick timer not initialized\x1b[0m")
+		return
+	}
+
+	if m.tickTimerManager.TickInterval == 0 {
+		m.output = append(m.output, "\x1b[91mError: Tick interval not yet detected. Wait for a prompt with T:NN to appear.\x1b[0m")
+		return
+	}
+
+	// Parse the command to extract tick time and commands
+	// Expected format: /ticktrigger 5 "cast 'heal'"
+
+	// Remove "/ticktrigger " prefix
+	command = strings.TrimPrefix(command, "ticktrigger ")
+	command = strings.TrimSpace(command)
+
+	// Split into tick time and command string
+	parts := strings.SplitN(command, " ", 2)
+	if len(parts) < 2 {
+		m.output = append(m.output, "\x1b[91mError: Invalid format\x1b[0m")
+		m.output = append(m.output, "\x1b[93mUsage: /ticktrigger <tick_time> \"commands\"\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExample: /ticktrigger 5 \"cast 'heal'\"\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExample: /ticktrigger 4 \"cast 'bless';say Ready!\"\x1b[0m")
+		return
+	}
+
+	// Parse tick time
+	tickTime := 0
+	_, err := fmt.Sscanf(parts[0], "%d", &tickTime)
+	if err != nil {
+		m.output = append(m.output, "\x1b[91mError: Invalid tick time\x1b[0m")
+		return
+	}
+
+	// Parse command string (should be quoted)
+	commandStr := strings.TrimSpace(parts[1])
+	if !strings.HasPrefix(commandStr, "\"") || !strings.HasSuffix(commandStr, "\"") {
+		m.output = append(m.output, "\x1b[91mError: Commands must be quoted\x1b[0m")
+		m.output = append(m.output, "\x1b[93mUsage: /ticktrigger <tick_time> \"commands\"\x1b[0m")
+		return
+	}
+
+	// Remove quotes
+	commandStr = strings.TrimPrefix(commandStr, "\"")
+	commandStr = strings.TrimSuffix(commandStr, "\"")
+
+	// Add the tick trigger
+	if err := m.tickTimerManager.AddTrigger(tickTime, commandStr); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError adding tick trigger: %v\x1b[0m", err))
+		return
+	}
+
+	// Save tick timer config
+	if err := m.tickTimerManager.Save(); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving tick triggers: %v\x1b[0m", err))
+		return
+	}
+
+	m.output = append(m.output, fmt.Sprintf("\x1b[92mTick trigger added: T:%d -> \"%s\"\x1b[0m", tickTime, commandStr))
+}
+
+// handleTickTriggersCommand handles /ticktriggers list and /ticktriggers remove
+func (m *Model) handleTickTriggersCommand(args []string) {
+	if m.tickTimerManager == nil {
+		m.output = append(m.output, "\x1b[91mError: Tick timer not initialized\x1b[0m")
+		return
+	}
+
+	if len(args) == 0 {
+		// Default to list
+		m.handleTickTriggersListCommand()
+		return
+	}
+
+	subCmd := strings.ToLower(args[0])
+	switch subCmd {
+	case "list":
+		m.handleTickTriggersListCommand()
+	case "remove":
+		if len(args) < 2 {
+			m.output = append(m.output, "\x1b[91mUsage: /ticktriggers remove <index>\x1b[0m")
+			return
+		}
+		var index int
+		_, err := fmt.Sscanf(args[1], "%d", &index)
+		if err != nil {
+			m.output = append(m.output, "\x1b[91mError: Invalid index\x1b[0m")
+			return
+		}
+		m.handleTickTriggersRemoveCommand(index)
+	default:
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError: Unknown subcommand '%s'\x1b[0m", subCmd))
+		m.output = append(m.output, "\x1b[93mUsage: /ticktriggers [list|remove <index>]\x1b[0m")
+	}
+}
+
+// handleTickTriggersListCommand lists all tick triggers
+func (m *Model) handleTickTriggersListCommand() {
+	if m.tickTimerManager.TickInterval == 0 {
+		m.output = append(m.output, "\x1b[93mTick interval not yet detected. Wait for a prompt with T:NN to appear.\x1b[0m")
+		return
+	}
+
+	if len(m.tickTimerManager.TickTriggers) == 0 {
+		m.output = append(m.output, "\x1b[93mNo tick triggers defined.\x1b[0m")
+		m.output = append(m.output, "\x1b[93mUse /ticktrigger <tick_time> \"commands\" to add a tick trigger.\x1b[0m")
+		return
+	}
+
+	m.output = append(m.output, fmt.Sprintf("\x1b[92m=== Active Tick Triggers (Interval: %ds) ===\x1b[0m", m.tickTimerManager.TickInterval))
+	for i, trigger := range m.tickTimerManager.TickTriggers {
+		m.output = append(m.output, fmt.Sprintf("  \x1b[96m%d. T:%d -> \"%s\"\x1b[0m", i+1, trigger.TickTime, trigger.Commands))
+	}
+
+	// Show current tick time
+	currentTick := m.tickTimerManager.GetCurrentTickTime()
+	if currentTick > 0 {
+		m.output = append(m.output, fmt.Sprintf("\x1b[90m(Current estimated tick time: T:%d)\x1b[0m", currentTick))
+	}
+}
+
+// handleTickTriggersRemoveCommand removes a tick trigger by index
+func (m *Model) handleTickTriggersRemoveCommand(index int) {
+	// Convert from 1-based to 0-based index
+	index--
+
+	if index < 0 || index >= len(m.tickTimerManager.TickTriggers) {
+		m.output = append(m.output, "\x1b[91mError: Invalid trigger index. Use /ticktriggers list to see available triggers.\x1b[0m")
+		return
+	}
+
+	trigger := m.tickTimerManager.TickTriggers[index]
+	if err := m.tickTimerManager.RemoveTrigger(index); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError removing tick trigger: %v\x1b[0m", err))
+		return
+	}
+
+	// Save tick timer config
+	if err := m.tickTimerManager.Save(); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving tick triggers: %v\x1b[0m", err))
+		return
+	}
+
+	m.output = append(m.output, fmt.Sprintf("\x1b[92mRemoved tick trigger: T:%d -> \"%s\"\x1b[0m", trigger.TickTime, trigger.Commands))
 }
 
 // handleHistorySearchKey handles key inputs when in history search mode
