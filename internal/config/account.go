@@ -9,9 +9,10 @@ import (
 
 // Server represents a MUD server
 type Server struct {
-	Name string `json:"name"`
-	Host string `json:"host"`
-	Port int    `json:"port"`
+	Name         string `json:"name"`
+	Host         string `json:"host"`
+	Port         int    `json:"port"`
+	TickInterval int    `json:"tick_interval,omitempty"` // Tick interval in seconds (e.g., 60 or 75)
 }
 
 // Character represents a character on a specific server
