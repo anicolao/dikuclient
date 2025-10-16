@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -389,5 +390,99 @@ func TestSingleCommandNotQueued(t *testing.T) {
 	// Check that command queue is not active
 	if m.commandQueueActive {
 		t.Error("Expected command queue to be inactive for single command")
+	}
+}
+
+// TestMultipleTriggersInSameMessage tests that multiple triggers firing on different lines
+// in the same MUD message all get their commands executed
+func TestMultipleTriggersInSameMessage(t *testing.T) {
+	// Create trigger manager with multiple triggers
+	triggerManager := triggers.NewManager()
+	_, err := triggerManager.Add("You are hungry", "eat bread")
+	if err != nil {
+		t.Fatalf("Failed to add trigger 1: %v", err)
+	}
+	_, err = triggerManager.Add("You are thirsty", "drink water")
+	if err != nil {
+		t.Fatalf("Failed to add trigger 2: %v", err)
+	}
+	_, err = triggerManager.Add("You are tired", "rest")
+	if err != nil {
+		t.Fatalf("Failed to add trigger 3: %v", err)
+	}
+
+	// Create a model - we'll manually simulate the trigger matching logic
+	// to avoid needing a real connection
+	m := &Model{
+		output:             []string{},
+		connected:          true,
+		triggerManager:     triggerManager,
+		worldMap:           mapper.NewMap(),
+		pendingCommands:    []string{},
+		commandQueueActive: false,
+	}
+
+	// Simulate what happens in the mudMsg handler when triggers match
+	lines := []string{"You are hungry", "You are thirsty", "You are tired"}
+	var firstCmd tea.Cmd
+	
+	for _, line := range lines {
+		actions := m.triggerManager.Match(line)
+		for _, action := range actions {
+			// Split action on `;` to support multiple commands
+			commands := strings.Split(action, ";")
+			for i := range commands {
+				commands[i] = strings.TrimSpace(commands[i])
+			}
+			// Filter out empty commands
+			var nonEmptyCommands []string
+			for _, cmd := range commands {
+				if cmd != "" {
+					nonEmptyCommands = append(nonEmptyCommands, cmd)
+				}
+			}
+			if len(nonEmptyCommands) > 0 {
+				m.output = append(m.output, fmt.Sprintf("\x1b[90m[Trigger: %s]\x1b[0m", action))
+				// Only update firstCmd if enqueueCommands returns a non-nil command
+				// This ensures we preserve the first command that starts the queue
+				if cmd := m.enqueueCommands(nonEmptyCommands); cmd != nil && firstCmd == nil {
+					firstCmd = cmd
+				}
+			}
+		}
+	}
+
+	// Verify all three commands were enqueued
+	if len(m.pendingCommands) != 3 {
+		t.Errorf("Expected 3 commands in queue, got %d", len(m.pendingCommands))
+	}
+
+	// Verify the commands are in the right order
+	expectedCommands := []string{"eat bread", "drink water", "rest"}
+	for i, expected := range expectedCommands {
+		if i < len(m.pendingCommands) && m.pendingCommands[i] != expected {
+			t.Errorf("Expected command %d to be '%s', got '%s'", i, expected, m.pendingCommands[i])
+		}
+	}
+
+	// Verify command queue is active
+	if !m.commandQueueActive {
+		t.Error("Expected command queue to be active")
+	}
+
+	// Verify a command was returned to start processing
+	if firstCmd == nil {
+		t.Error("Expected a tea.Cmd to be returned to start queue processing")
+	}
+
+	// Verify trigger messages appear in output
+	triggerCount := 0
+	for _, line := range m.output {
+		if strings.Contains(line, "[Trigger:") {
+			triggerCount++
+		}
+	}
+	if triggerCount != 3 {
+		t.Errorf("Expected 3 trigger messages in output, got %d", triggerCount)
 	}
 }

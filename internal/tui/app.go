@@ -682,7 +682,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					if len(nonEmptyCommands) > 0 {
 						m.output = append(m.output, fmt.Sprintf("\x1b[90m[Trigger: %s]\x1b[0m", action))
-						autoWalkCmd = m.enqueueCommands(nonEmptyCommands)
+						// Only update autoWalkCmd if enqueueCommands returns a non-nil command
+						// This ensures we preserve the first command that starts the queue
+						if cmd := m.enqueueCommands(nonEmptyCommands); cmd != nil {
+							autoWalkCmd = cmd
+						}
 					}
 				}
 			}
