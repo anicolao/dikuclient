@@ -1429,8 +1429,7 @@ func (m *Model) renderSidebar(width, height int) string {
 					return lipgloss.NewStyle().Padding(0, 1).Align(lipgloss.Left)
 				}
 				return lipgloss.NewStyle().Padding(0, 1).Align(lipgloss.Right)
-			}).
-			Height(m.xpViewport.Height)
+			})
 
 		// Add data rows
 		for _, stat := range stats {
