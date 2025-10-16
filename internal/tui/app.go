@@ -551,15 +551,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update viewport sizes for 4 panels
 		panelHeight := (m.height - headerHeight - 8) / 4
 		m.inventoryViewport.Width = sidebarWidth - 4 // Account for borders and padding
-		m.inventoryViewport.Height = panelHeight - 4 // Account for header, timestamp, and borders
+		m.inventoryViewport.Height = panelHeight
 
 		// Update tells viewport size
 		m.tellsViewport.Width = sidebarWidth - 4 // Account for borders and padding
-		m.tellsViewport.Height = panelHeight - 4 // Account for header and borders
+		m.tellsViewport.Height = panelHeight
 
 		// Update XP viewport size
 		m.xpViewport.Width = sidebarWidth - 4 // Account for borders and padding
-		m.xpViewport.Height = panelHeight - 4 // Account for header and borders
+		m.xpViewport.Height = panelHeight
 
 		m.updateViewport()
 		return m, nil
@@ -890,8 +890,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isSplit = false
 	}
 
-	// Update inventory viewport for mouse wheel scrolling
+	// Update sidebar viewports for mouse wheel scrolling
 	m.inventoryViewport, cmd = m.inventoryViewport.Update(msg)
+	cmds = append(cmds, cmd)
+	
+	m.tellsViewport, cmd = m.tellsViewport.Update(msg)
+	cmds = append(cmds, cmd)
+	
+	m.xpViewport, cmd = m.xpViewport.Update(msg)
 	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
