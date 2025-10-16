@@ -1409,14 +1409,13 @@ func (m *Model) renderSidebar(width, height int) string {
 		})
 
 		// Create a lipgloss table for XP stats
-		// No outer borders since the panel already has them
 		t := table.New().
 			Border(lipgloss.NormalBorder()).
 			BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("240"))).
-			BorderTop(false).
-			BorderBottom(false).
-			BorderLeft(false).
-			BorderRight(false).
+			BorderTop(true).
+			BorderBottom(true).
+			BorderLeft(true).
+			BorderRight(true).
 			BorderHeader(true).
 			BorderColumn(true).
 			BorderRow(false).
@@ -1430,7 +1429,8 @@ func (m *Model) renderSidebar(width, height int) string {
 					return lipgloss.NewStyle().Padding(0, 1).Align(lipgloss.Left)
 				}
 				return lipgloss.NewStyle().Padding(0, 1).Align(lipgloss.Right)
-			})
+			}).
+			Height(m.xpViewport.Height)
 
 		// Add data rows
 		for _, stat := range stats {
