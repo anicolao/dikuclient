@@ -2777,20 +2777,13 @@ func (m *Model) handleGoCommand(args []string) tea.Cmd {
 				}
 				rooms = []*mapper.Room{m.mapLegendRooms[index-1]}
 			} else if len(m.lastRoomSearch) > 0 {
-				// Check if this is a durable number from /rooms or /legend
-				// Try to find the room by its durable number in lastRoomSearch
-				found := false
-				for _, room := range m.lastRoomSearch {
-					if m.worldMap.GetRoomNumber(room.ID) == index {
-						rooms = []*mapper.Room{room}
-						found = true
-						break
-					}
-				}
-				if !found {
-					m.output = append(m.output, fmt.Sprintf("\x1b[91mRoom number %d not found in previous search results.\x1b[0m", index))
+				// Use lastRoomSearch from /wayfind, /go, /point disambiguation lists
+				// Treat the number as a simple list index
+				if index < 1 || index > len(m.lastRoomSearch) {
+					m.output = append(m.output, fmt.Sprintf("\x1b[91mInvalid room number. Must be between 1 and %d.\x1b[0m", len(m.lastRoomSearch)))
 					return nil
 				}
+				rooms = []*mapper.Room{m.lastRoomSearch[index-1]}
 			} else {
 				// Try durable room number lookup as last resort
 				room := m.worldMap.GetRoomByNumber(index)

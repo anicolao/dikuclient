@@ -410,3 +410,98 @@ func TestWayfindOutputFormat(t *testing.T) {
 		t.Log("  " + line)
 	}
 }
+
+// TestGoCommandAfterWayfindDisambiguation tests that /go can use numbers from /wayfind disambiguation lists
+func TestGoCommandAfterWayfindDisambiguation(t *testing.T) {
+	worldMap := mapper.NewMap()
+
+	// Create rooms where durable room numbers DON'T match the disambiguation list positions
+	// Add rooms in a specific order to control their durable numbers
+	room1 := mapper.NewRoom("Market Square", "A busy market.", []string{"east"})
+	room2 := mapper.NewRoom("Inn", "A cozy inn.", []string{"west"})
+	room3 := mapper.NewRoom("Temple Square", "A large temple square.", []string{"north"})
+	room4 := mapper.NewRoom("Temple Entrance", "The entrance to the temple.", []string{"south"})
+	room5 := mapper.NewRoom("Tavern", "A noisy tavern.", []string{"south"})
+
+	// Add them in order so they get durable numbers 1, 2, 3, 4, 5
+	worldMap.AddOrUpdateRoom(room1)
+	worldMap.AddOrUpdateRoom(room2)
+	worldMap.AddOrUpdateRoom(room3)
+	worldMap.AddOrUpdateRoom(room4)
+	worldMap.AddOrUpdateRoom(room5)
+	
+	worldMap.CurrentRoomID = room1.ID
+
+	// Link the rooms
+	room1.Exits["north"] = room3.ID
+	room3.Exits["south"] = room1.ID
+
+	m := Model{
+		output:    []string{},
+		connected: true,
+		worldMap:  worldMap,
+	}
+
+	// First, use /wayfind to search for "temple" - should show disambiguation list
+	m.handleWayfindCommand([]string{"temple"})
+
+	// Should have multiple matches
+	if len(m.lastRoomSearch) != 2 {
+		t.Fatalf("Expected 2 rooms to match 'temple', got %d", len(m.lastRoomSearch))
+	}
+
+	// Verify disambiguation list was shown
+	foundDisambiguation := false
+	for _, line := range m.output {
+		if strings.Contains(line, "Found 2 rooms") {
+			foundDisambiguation = true
+			break
+		}
+	}
+	if !foundDisambiguation {
+		t.Error("Expected disambiguation list to be shown")
+	}
+
+	// Clear output
+	m.output = []string{}
+
+	// Now use /go with the number from the disambiguation list
+	t.Logf("Before /go: lastRoomSearch has %d rooms", len(m.lastRoomSearch))
+	t.Logf("Before /go: mapLegendRooms has %d rooms", len(m.mapLegendRooms))
+	for i, room := range m.lastRoomSearch {
+		t.Logf("  lastRoomSearch[%d]: %s (room number %d)", i, room.Title, m.worldMap.GetRoomNumber(room.ID))
+	}
+	
+	// /wayfind shows: 1. Temple Square, 2. Temple Entrance
+	// But their durable room numbers are 3 and 4
+	// So /go 1 should select "Temple Square" (the first in the list)
+	m.handleGoCommand([]string{"1"})
+
+	t.Logf("After /go, output has %d lines:", len(m.output))
+	for _, line := range m.output {
+		t.Logf("  %s", line)
+	}
+
+	// Should start auto-walking to Temple Square (the first in the disambiguation list)
+	if !m.autoWalking {
+		t.Error("Expected auto-walking to start")
+		for _, line := range m.output {
+			t.Logf("  Output: %s", line)
+		}
+	}
+
+	// Check that we're going to Temple Square (first in list), not Market Square (room #1)
+	foundTempleSquare := false
+	for _, line := range m.output {
+		if strings.Contains(line, "Temple Square") {
+			foundTempleSquare = true
+			break
+		}
+	}
+	if !foundTempleSquare {
+		t.Error("Expected to navigate to 'Temple Square' (first item in disambiguation list)")
+		for _, line := range m.output {
+			t.Logf("  Output: %s", line)
+		}
+	}
+}
