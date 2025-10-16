@@ -2946,8 +2946,13 @@ func (m *Model) handleAutoWalkFailure() tea.Cmd {
 // enqueueCommands adds commands to the pending queue and starts processing if not already active
 // Commands should be split on `;` before calling this function
 func (m *Model) enqueueCommands(commands []string) tea.Cmd {
-	// Add commands to the queue
-	m.pendingCommands = append(m.pendingCommands, commands...)
+	// Add commands to the queue, coalescing duplicates
+	// If a command is identical to the last command in the queue, skip it
+	for _, cmd := range commands {
+		if len(m.pendingCommands) == 0 || m.pendingCommands[len(m.pendingCommands)-1] != cmd {
+			m.pendingCommands = append(m.pendingCommands, cmd)
+		}
+	}
 
 	// If queue is not already active, start processing
 	if !m.commandQueueActive && len(m.pendingCommands) > 0 {
