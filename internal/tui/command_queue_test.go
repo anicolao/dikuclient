@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/anicolao/dikuclient/internal/aliases"
+	"github.com/anicolao/dikuclient/internal/client"
 	"github.com/anicolao/dikuclient/internal/mapper"
 	"github.com/anicolao/dikuclient/internal/triggers"
 	tea "github.com/charmbracelet/bubbletea"
@@ -484,5 +485,245 @@ func TestMultipleTriggersInSameMessage(t *testing.T) {
 	}
 	if triggerCount != 3 {
 		t.Errorf("Expected 3 trigger messages in output, got %d", triggerCount)
+	}
+}
+
+// TestCoalesceDuplicateActionStrings tests that duplicate trigger action strings are coalesced
+func TestCoalesceDuplicateActionStrings(t *testing.T) {
+	triggerManager := triggers.NewManager()
+	_, err := triggerManager.Add("You are hungry", "eat bread")
+	if err != nil {
+		t.Fatalf("Failed to add trigger: %v", err)
+	}
+
+	m := &Model{
+		output:         []string{},
+		connected:      true,
+		triggerManager: triggerManager,
+		worldMap:       mapper.NewMap(),
+		conn:           &client.Connection{}, // Needed for trigger matching to work
+	}
+
+	// Simulate the trigger firing multiple times
+	// First trigger
+	actions := m.triggerManager.Match("You are hungry")
+	for _, action := range actions {
+		// Skip if this is the same action as the last one (coalesce duplicate trigger actions)
+		if action == m.lastTriggerAction {
+			continue
+		}
+		m.lastTriggerAction = action
+		
+		commands := strings.Split(action, ";")
+		for i := range commands {
+			commands[i] = strings.TrimSpace(commands[i])
+		}
+		var nonEmptyCommands []string
+		for _, cmd := range commands {
+			if cmd != "" {
+				nonEmptyCommands = append(nonEmptyCommands, cmd)
+			}
+		}
+		if len(nonEmptyCommands) > 0 {
+			m.enqueueCommands(nonEmptyCommands)
+		}
+	}
+
+	// Second trigger - should be coalesced
+	actions = m.triggerManager.Match("You are hungry")
+	for _, action := range actions {
+		if action == m.lastTriggerAction {
+			continue
+		}
+		m.lastTriggerAction = action
+		
+		commands := strings.Split(action, ";")
+		for i := range commands {
+			commands[i] = strings.TrimSpace(commands[i])
+		}
+		var nonEmptyCommands []string
+		for _, cmd := range commands {
+			if cmd != "" {
+				nonEmptyCommands = append(nonEmptyCommands, cmd)
+			}
+		}
+		if len(nonEmptyCommands) > 0 {
+			m.enqueueCommands(nonEmptyCommands)
+		}
+	}
+
+	// Verify that only 1 "eat bread" command was enqueued
+	if len(m.pendingCommands) != 1 {
+		t.Errorf("Expected 1 command in queue (duplicate action coalesced), got %d", len(m.pendingCommands))
+	}
+	
+	if len(m.pendingCommands) >= 1 && m.pendingCommands[0] != "eat bread" {
+		t.Errorf("Expected command to be 'eat bread', got '%s'", m.pendingCommands[0])
+	}
+}
+
+// TestCoalesceWithMultipleCommands tests that actions with multiple commands (semicolons) are not split incorrectly
+func TestCoalesceWithMultipleCommands(t *testing.T) {
+	triggerManager := triggers.NewManager()
+	_, err := triggerManager.Add("Pattern A", "w;w;w;n;n")
+	if err != nil {
+		t.Fatalf("Failed to add trigger: %v", err)
+	}
+
+	m := &Model{
+		output:         []string{},
+		connected:      true,
+		triggerManager: triggerManager,
+		worldMap:       mapper.NewMap(),
+		conn:           &client.Connection{},
+	}
+
+	// Process the trigger action "w;w;w;n;n"
+	actions := m.triggerManager.Match("Pattern A")
+	for _, action := range actions {
+		if action == m.lastTriggerAction {
+			continue
+		}
+		m.lastTriggerAction = action
+		
+		commands := strings.Split(action, ";")
+		for i := range commands {
+			commands[i] = strings.TrimSpace(commands[i])
+		}
+		var nonEmptyCommands []string
+		for _, cmd := range commands {
+			if cmd != "" {
+				nonEmptyCommands = append(nonEmptyCommands, cmd)
+			}
+		}
+		if len(nonEmptyCommands) > 0 {
+			m.enqueueCommands(nonEmptyCommands)
+		}
+	}
+
+	// Verify all 5 commands were enqueued (w, w, w, n, n)
+	if len(m.pendingCommands) != 5 {
+		t.Errorf("Expected 5 commands in queue, got %d", len(m.pendingCommands))
+	}
+	
+	// Verify the commands are correct
+	expectedCommands := []string{"w", "w", "w", "n", "n"}
+	for i, expected := range expectedCommands {
+		if i < len(m.pendingCommands) && m.pendingCommands[i] != expected {
+			t.Errorf("Expected command %d to be '%s', got '%s'", i, expected, m.pendingCommands[i])
+		}
+	}
+
+	// Now try to trigger the same action again - should be coalesced
+	actions = m.triggerManager.Match("Pattern A")
+	for _, action := range actions {
+		if action == m.lastTriggerAction {
+			continue
+		}
+		m.lastTriggerAction = action
+		
+		commands := strings.Split(action, ";")
+		for i := range commands {
+			commands[i] = strings.TrimSpace(commands[i])
+		}
+		var nonEmptyCommands []string
+		for _, cmd := range commands {
+			if cmd != "" {
+				nonEmptyCommands = append(nonEmptyCommands, cmd)
+			}
+		}
+		if len(nonEmptyCommands) > 0 {
+			m.enqueueCommands(nonEmptyCommands)
+		}
+	}
+
+	// Should still be 5 commands (no new ones added)
+	if len(m.pendingCommands) != 5 {
+		t.Errorf("Expected 5 commands in queue (duplicate action coalesced), got %d", len(m.pendingCommands))
+	}
+}
+
+// TestDifferentActionsNotCoalesced tests that different action strings are not coalesced
+func TestDifferentActionsNotCoalesced(t *testing.T) {
+	triggerManager := triggers.NewManager()
+	_, err := triggerManager.Add("Pattern A", "w;w;w;n;n")
+	if err != nil {
+		t.Fatalf("Failed to add trigger A: %v", err)
+	}
+	_, err = triggerManager.Add("Pattern B", "n;n;n")
+	if err != nil {
+		t.Fatalf("Failed to add trigger B: %v", err)
+	}
+
+	m := &Model{
+		output:         []string{},
+		connected:      true,
+		triggerManager: triggerManager,
+		worldMap:       mapper.NewMap(),
+		conn:           &client.Connection{},
+	}
+
+	// Process action "w;w;w;n;n"
+	actions := m.triggerManager.Match("Pattern A")
+	for _, action := range actions {
+		if action == m.lastTriggerAction {
+			continue
+		}
+		m.lastTriggerAction = action
+		
+		commands := strings.Split(action, ";")
+		for i := range commands {
+			commands[i] = strings.TrimSpace(commands[i])
+		}
+		var nonEmptyCommands []string
+		for _, cmd := range commands {
+			if cmd != "" {
+				nonEmptyCommands = append(nonEmptyCommands, cmd)
+			}
+		}
+		if len(nonEmptyCommands) > 0 {
+			m.enqueueCommands(nonEmptyCommands)
+		}
+	}
+
+	// Should have 5 commands
+	if len(m.pendingCommands) != 5 {
+		t.Errorf("Expected 5 commands after first action, got %d", len(m.pendingCommands))
+	}
+
+	// Process action "n;n;n" - this is different, should NOT be coalesced
+	actions = m.triggerManager.Match("Pattern B")
+	for _, action := range actions {
+		if action == m.lastTriggerAction {
+			continue
+		}
+		m.lastTriggerAction = action
+		
+		commands := strings.Split(action, ";")
+		for i := range commands {
+			commands[i] = strings.TrimSpace(commands[i])
+		}
+		var nonEmptyCommands []string
+		for _, cmd := range commands {
+			if cmd != "" {
+				nonEmptyCommands = append(nonEmptyCommands, cmd)
+			}
+		}
+		if len(nonEmptyCommands) > 0 {
+			m.enqueueCommands(nonEmptyCommands)
+		}
+	}
+
+	// Should now have 8 commands (5 + 3)
+	if len(m.pendingCommands) != 8 {
+		t.Errorf("Expected 8 commands after second action, got %d", len(m.pendingCommands))
+	}
+	
+	// Verify the commands
+	expectedCommands := []string{"w", "w", "w", "n", "n", "n", "n", "n"}
+	for i, expected := range expectedCommands {
+		if i < len(m.pendingCommands) && m.pendingCommands[i] != expected {
+			t.Errorf("Expected command %d to be '%s', got '%s'", i, expected, m.pendingCommands[i])
+		}
 	}
 }

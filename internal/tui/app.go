@@ -94,6 +94,7 @@ type Model struct {
 	forceScrollToBottom    bool                 // Force viewport to scroll to bottom on next update
 	tickTimerManager       *ticktimer.Manager   // Tick timer manager
 	lastFiredTickTime      int                  // Last tick time when triggers were fired (to avoid duplicates)
+	lastTriggerAction      string               // Last trigger action string enqueued (to avoid duplicate trigger actions)
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -668,6 +669,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.triggerManager != nil && m.conn != nil {
 				actions := m.triggerManager.Match(line)
 				for _, action := range actions {
+					// Skip if this is the same action as the last one (coalesce duplicate trigger actions)
+					if action == m.lastTriggerAction {
+						continue
+					}
+					m.lastTriggerAction = action
+					
 					// Split action on `;` to support multiple commands
 					commands := strings.Split(action, ";")
 					for i := range commands {
