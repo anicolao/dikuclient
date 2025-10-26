@@ -304,8 +304,6 @@ This implementation is feature-complete for a modern MUD client:
 - ✅ Tick timer with automatic interval detection and tick-based triggers
 - ✅ AI integration for command suggestions (OpenAI, Ollama)
 - ✅ Special trigger variable `<last_command>` for referencing previous commands
-- ✅ Triggers with pattern matching and variable capture
-- ✅ Tick timer with automatic interval detection and tick-based triggers
 
 ## License
 
