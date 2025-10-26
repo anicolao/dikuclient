@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 	
 	"github.com/anicolao/dikuclient/internal/triggers"
@@ -40,8 +41,7 @@ func TestLastCommandTriggerIntegration(t *testing.T) {
 	
 	// Now test the substitution that happens in the TUI layer
 	// This is what happens in the actual code when processing triggers
-	substitutedAction := actions[0]
-	substitutedAction = substitutedAction[:len("/ai ")] + m.lastCommand
+	substitutedAction := strings.ReplaceAll(actions[0], "<last_command>", m.lastCommand)
 	
 	expectedAction := "/ai heall"
 	if substitutedAction != expectedAction {
