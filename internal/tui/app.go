@@ -10,8 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anicolao/dikuclient/internal/ai"
 	"github.com/anicolao/dikuclient/internal/aliases"
 	"github.com/anicolao/dikuclient/internal/client"
+	"github.com/anicolao/dikuclient/internal/config"
 	"github.com/anicolao/dikuclient/internal/history"
 	"github.com/anicolao/dikuclient/internal/mapper"
 	"github.com/anicolao/dikuclient/internal/ticktimer"
@@ -95,6 +97,7 @@ type Model struct {
 	tickTimerManager       *ticktimer.Manager   // Tick timer manager
 	lastFiredTickTime      int                  // Last tick time when triggers were fired (to avoid duplicates)
 	lastTriggerAction      string               // Last trigger action string enqueued (to avoid duplicate trigger actions)
+	lastCommand            string               // Last command sent to MUD (for <last_command> trigger variable)
 }
 
 // XPStat represents XP per second statistics for a creature
@@ -397,6 +400,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.mapLegendRooms = nil
 				}
 
+				// Store this as the last command (for <last_command> trigger variable)
+				m.lastCommand = command
+
 				// Send command to MUD server
 				m.conn.Send(command)
 
@@ -674,6 +680,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						continue
 					}
 					m.lastTriggerAction = action
+					
+					// Substitute <last_command> with the actual last command
+					action = strings.ReplaceAll(action, "<last_command>", m.lastCommand)
 					
 					// Split action on `;` to support multiple commands
 					commands := strings.Split(action, ";")
@@ -2017,6 +2026,18 @@ func (m *Model) handleClientCommand(command string) tea.Cmd {
 	case "share":
 		m.handleShareCommand()
 		return nil
+	case "configure-ai":
+		m.handleConfigureAICommand(args)
+		return nil
+	case "ai-prompt":
+		m.handleAIPromptCommand(command)
+		return nil
+	case "ai":
+		m.handleAICommand(command)
+		return nil
+	case "howto":
+		m.handleHowtoCommand(command)
+		return nil
 	case "help":
 		m.handleHelpCommand(args)
 		return nil
@@ -2241,6 +2262,261 @@ func (m *Model) handleShareCommand() {
 	m.output = append(m.output, "\x1b[90mAnyone who opens this URL will see and control the same session\x1b[0m")
 }
 
+// handleConfigureAICommand configures the AI endpoint
+func (m *Model) handleConfigureAICommand(args []string) {
+	if len(args) < 2 {
+		m.output = append(m.output, "\x1b[91mUsage: /configure-ai <type> <url> [api-key]\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExamples:\x1b[0m")
+		m.output = append(m.output, "  /configure-ai openai https://api.openai.com/v1/chat/completions sk-...")
+		m.output = append(m.output, "  /configure-ai ollama http://localhost:11434/api/generate")
+		return
+	}
+
+	aiType := strings.ToLower(args[0])
+	url := args[1]
+	var apiKey string
+	if len(args) > 2 {
+		apiKey = args[2]
+	}
+
+	// Load config
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError loading config: %v\x1b[0m", err))
+		return
+	}
+
+	// Set AI config (type and URL only, not API key)
+	if err := cfg.SetAIConfig(aiType, url); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving AI config: %v\x1b[0m", err))
+		return
+	}
+
+	// Store API key in password store if provided
+	if apiKey != "" {
+		// Check if we're in web mode
+		webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+		isWebMode := webSessionID != ""
+		
+		passwordStore := config.NewPasswordStore(isWebMode)
+		if err := passwordStore.Load(); err != nil {
+			m.output = append(m.output, fmt.Sprintf("\x1b[91mError loading password store: %v\x1b[0m", err))
+			return
+		}
+		
+		if err := config.SetAIAPIKey(passwordStore, apiKey); err != nil {
+			m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving API key: %v\x1b[0m", err))
+			return
+		}
+		
+		m.output = append(m.output, fmt.Sprintf("\x1b[92mAI configured: %s at %s (API key saved securely)\x1b[0m", aiType, url))
+	} else {
+		m.output = append(m.output, fmt.Sprintf("\x1b[92mAI configured: %s at %s\x1b[0m", aiType, url))
+	}
+}
+
+// loadPreset loads a preset prompt from the data/presets directory
+func loadPreset(presetName string) (string, error) {
+	presetPath := fmt.Sprintf("data/presets/%s.prompt", presetName)
+	data, err := os.ReadFile(presetPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to load preset '%s': %w", presetName, err)
+	}
+	return string(data), nil
+}
+
+// handleAIPromptCommand configures the AI prompt template
+func (m *Model) handleAIPromptCommand(command string) {
+	// Remove "/ai-prompt " prefix
+	command = strings.TrimPrefix(command, "ai-prompt ")
+	command = strings.TrimSpace(command)
+
+	// Check for preset
+	if strings.HasPrefix(command, "preset ") {
+		preset := strings.TrimPrefix(command, "preset ")
+		preset = strings.TrimSpace(preset)
+		
+		switch strings.ToLower(preset) {
+		case "barsoom":
+			// Load preset from file
+			presetContent, err := loadPreset("barsoom")
+			if err != nil {
+				m.output = append(m.output, fmt.Sprintf("\x1b[91mError loading preset: %v\x1b[0m", err))
+				return
+			}
+			command = presetContent
+		default:
+			m.output = append(m.output, fmt.Sprintf("\x1b[91mError: Unknown preset '%s'\x1b[0m", preset))
+			m.output = append(m.output, "\x1b[93mAvailable presets: barsoom\x1b[0m")
+			return
+		}
+	} else {
+		// Parse quoted string for custom prompt
+		if !strings.HasPrefix(command, "\"") {
+			m.output = append(m.output, "\x1b[91mUsage: /ai-prompt \"<prompt>\" or /ai-prompt preset <name>\x1b[0m")
+			m.output = append(m.output, "\x1b[93mExample: /ai-prompt \"You are a helpful MUD assistant\"\x1b[0m")
+			m.output = append(m.output, "\x1b[93mExample: /ai-prompt preset barsoom\x1b[0m")
+			return
+		}
+		
+		// Extract quoted string
+		endQuote := strings.Index(command[1:], "\"")
+		if endQuote == -1 {
+			m.output = append(m.output, "\x1b[91mError: Missing closing quote\x1b[0m")
+			return
+		}
+		command = command[1 : endQuote+1]
+	}
+
+	// Load config
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError loading config: %v\x1b[0m", err))
+		return
+	}
+
+	// Set AI prompt
+	if err := cfg.SetAIPrompt(command); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving AI prompt: %v\x1b[0m", err))
+		return
+	}
+
+	m.output = append(m.output, fmt.Sprintf("\x1b[92mAI prompt set: %s\x1b[0m", command))
+}
+
+// handleAICommand sends a prompt to the AI and executes the suggested command
+func (m *Model) handleAICommand(command string) {
+	// Remove "/ai " prefix
+	command = strings.TrimPrefix(command, "ai ")
+	command = strings.TrimSpace(command)
+
+	if command == "" {
+		m.output = append(m.output, "\x1b[91mUsage: /ai <prompt>\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExample: /ai <last_command>\x1b[0m")
+		return
+	}
+
+	// Substitute <last_command>
+	prompt := strings.ReplaceAll(command, "<last_command>", m.lastCommand)
+
+	// Load config to get AI settings
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError loading config: %v\x1b[0m", err))
+		return
+	}
+
+	if cfg.AI.Type == "" || cfg.AI.URL == "" {
+		m.output = append(m.output, "\x1b[91mError: AI not configured. Use /configure-ai first.\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExample: /configure-ai ollama http://localhost:11434/api/generate\x1b[0m")
+		return
+	}
+
+	// Build full prompt with template if set
+	fullPrompt := prompt
+	if cfg.AIPrompt != "" {
+		fullPrompt = strings.ReplaceAll(cfg.AIPrompt, "{command}", prompt)
+	}
+
+	// Check if we're in web mode
+	if m.webSessionID != "" {
+		// TODO: Send request to web client to make the AI call
+		m.output = append(m.output, "\x1b[93m[AI request in web mode - not yet implemented]\x1b[0m")
+		return
+	}
+
+	// Load API key from password store
+	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+	isWebMode := webSessionID != ""
+	passwordStore := config.NewPasswordStore(isWebMode)
+	if err := passwordStore.Load(); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError loading password store: %v\x1b[0m", err))
+		return
+	}
+	apiKey := config.GetAIAPIKey(passwordStore)
+
+	// CLI mode - make the AI request directly
+	m.output = append(m.output, "\x1b[90m[AI: Generating response...]\x1b[0m")
+	
+	aiClient := ai.NewClient(cfg.AI.Type, cfg.AI.URL, apiKey)
+	response, err := aiClient.GenerateResponse(fullPrompt)
+	if err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mAI Error: %v\x1b[0m", err))
+		return
+	}
+
+	// Display AI response
+	m.output = append(m.output, fmt.Sprintf("\x1b[96m[AI suggests: %s]\x1b[0m", response))
+	
+	// Send the suggested command to the MUD
+	if m.conn != nil {
+		m.conn.Send(response)
+		m.lastCommand = response
+	}
+}
+
+// handleHowtoCommand asks the AI how to do something but doesn't execute
+func (m *Model) handleHowtoCommand(command string) {
+	// Remove "/howto " prefix
+	command = strings.TrimPrefix(command, "howto ")
+	command = strings.TrimSpace(command)
+
+	if command == "" {
+		m.output = append(m.output, "\x1b[91mUsage: /howto <query>\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExample: /howto heal myself\x1b[0m")
+		return
+	}
+
+	// Load config to get AI settings
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError loading config: %v\x1b[0m", err))
+		return
+	}
+
+	if cfg.AI.Type == "" || cfg.AI.URL == "" {
+		m.output = append(m.output, "\x1b[91mError: AI not configured. Use /configure-ai first.\x1b[0m")
+		m.output = append(m.output, "\x1b[93mExample: /configure-ai ollama http://localhost:11434/api/generate\x1b[0m")
+		return
+	}
+
+	// Build prompt asking for instructions
+	fullPrompt := "How do I " + command + " in a MUD game?"
+	if cfg.AIPrompt != "" {
+		fullPrompt = strings.ReplaceAll(cfg.AIPrompt, "{command}", "How to: "+command)
+	}
+
+	// Check if we're in web mode
+	if m.webSessionID != "" {
+		// TODO: Send request to web client to make the AI call
+		m.output = append(m.output, "\x1b[93m[AI request in web mode - not yet implemented]\x1b[0m")
+		return
+	}
+
+	// Load API key from password store
+	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+	isWebMode := webSessionID != ""
+	passwordStore := config.NewPasswordStore(isWebMode)
+	if err := passwordStore.Load(); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError loading password store: %v\x1b[0m", err))
+		return
+	}
+	apiKey := config.GetAIAPIKey(passwordStore)
+
+	// CLI mode - make the AI request directly
+	m.output = append(m.output, "\x1b[90m[AI: Generating response...]\x1b[0m")
+	
+	aiClient := ai.NewClient(cfg.AI.Type, cfg.AI.URL, apiKey)
+	response, err := aiClient.GenerateResponse(fullPrompt)
+	if err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mAI Error: %v\x1b[0m", err))
+		return
+	}
+
+	// Display AI response (like a trigger match)
+	m.output = append(m.output, fmt.Sprintf("\x1b[90m[AI: %s]\x1b[0m", response))
+}
+
 // handleHelpCommand shows available client commands or detailed help for a specific command
 func (m *Model) handleHelpCommand(args []string) {
 	// If a specific command is requested, show detailed help
@@ -2268,6 +2544,10 @@ func (m *Model) handleHelpCommand(args []string) {
 	m.output = append(m.output, "  \x1b[96m/alias \"name\" \"tmpl\"\x1b[0m  - Add an alias (template can use <var>)")
 	m.output = append(m.output, "  \x1b[96m/aliases list\x1b[0m           - List all aliases")
 	m.output = append(m.output, "  \x1b[96m/aliases remove <n>\x1b[0m     - Remove alias by number")
+	m.output = append(m.output, "  \x1b[96m/configure-ai <type> <url>\x1b[0m - Configure AI endpoint")
+	m.output = append(m.output, "  \x1b[96m/ai-prompt \"prompt\"\x1b[0m    - Set AI prompt template")
+	m.output = append(m.output, "  \x1b[96m/ai <prompt>\x1b[0m            - Get AI suggestion and execute it")
+	m.output = append(m.output, "  \x1b[96m/howto <query>\x1b[0m          - Ask AI how to do something (info only)")
 	m.output = append(m.output, "  \x1b[96m/share\x1b[0m                  - Get shareable URL (web mode only)")
 	m.output = append(m.output, "  \x1b[96m/help [command]\x1b[0m         - Show this help or detailed help for a command")
 	m.output = append(m.output, "")
@@ -2506,6 +2786,77 @@ func (m *Model) showDetailedHelp(cmd string) {
 		m.output = append(m.output, "\x1b[90mNote: Only available in web mode\x1b[0m")
 		m.output = append(m.output, "\x1b[90mStart web mode with: dikuclient --web\x1b[0m")
 
+	case "configure-ai":
+		m.output = append(m.output, "\x1b[92m=== /configure-ai - Configure AI Endpoint ===\x1b[0m")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mUsage:\x1b[0m")
+		m.output = append(m.output, "  /configure-ai <type> <url> [api-key]")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mDescription:\x1b[0m")
+		m.output = append(m.output, "  Configures the AI endpoint for command suggestions.")
+		m.output = append(m.output, "  Supported types: openai, ollama")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mExamples:\x1b[0m")
+		m.output = append(m.output, "  /configure-ai openai https://api.openai.com/v1/chat/completions sk-...")
+		m.output = append(m.output, "  /configure-ai ollama http://localhost:11434/api/generate")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[90mSee also: /help ai-prompt, /help ai\x1b[0m")
+
+	case "ai-prompt":
+		m.output = append(m.output, "\x1b[92m=== /ai-prompt - Configure AI Prompt ===\x1b[0m")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mUsage:\x1b[0m")
+		m.output = append(m.output, "  /ai-prompt \"<prompt template>\"")
+		m.output = append(m.output, "  /ai-prompt preset <name>")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mDescription:\x1b[0m")
+		m.output = append(m.output, "  Sets the prompt template for AI requests.")
+		m.output = append(m.output, "  Use {command} as a placeholder for the user's input.")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mExamples:\x1b[0m")
+		m.output = append(m.output, "  /ai-prompt \"You are a helpful MUD assistant. The command was: {command}\"")
+		m.output = append(m.output, "  /ai-prompt preset barsoom")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[90mAvailable presets: barsoom\x1b[0m")
+
+	case "ai":
+		m.output = append(m.output, "\x1b[92m=== /ai - Get AI Command Suggestion ===\x1b[0m")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mUsage:\x1b[0m")
+		m.output = append(m.output, "  /ai <prompt>")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mDescription:\x1b[0m")
+		m.output = append(m.output, "  Sends a prompt to the configured AI and executes the suggested command.")
+		m.output = append(m.output, "  Use <last_command> to reference the last command you sent.")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mExamples:\x1b[0m")
+		m.output = append(m.output, "  /ai <last_command>         - Get suggestion for last command")
+		m.output = append(m.output, "  /ai fix my health          - Ask AI to suggest healing command")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mCommon Pattern:\x1b[0m")
+		m.output = append(m.output, "  /trigger \"Huh?!\" \"/ai <last_command>\"")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[90mRequires: /configure-ai to be set first\x1b[0m")
+		m.output = append(m.output, "\x1b[90mSee also: /help howto, /help trigger\x1b[0m")
+
+	case "howto":
+		m.output = append(m.output, "\x1b[92m=== /howto - Ask AI How To Do Something ===\x1b[0m")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mUsage:\x1b[0m")
+		m.output = append(m.output, "  /howto <query>")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mDescription:\x1b[0m")
+		m.output = append(m.output, "  Asks the AI how to do something and displays the answer.")
+		m.output = append(m.output, "  Unlike /ai, this does not execute any commands.")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[96mExamples:\x1b[0m")
+		m.output = append(m.output, "  /howto heal myself")
+		m.output = append(m.output, "  /howto find the marketplace")
+		m.output = append(m.output, "  /howto cast spells")
+		m.output = append(m.output, "")
+		m.output = append(m.output, "\x1b[90mRequires: /configure-ai to be set first\x1b[0m")
+		m.output = append(m.output, "\x1b[90mSee also: /help ai\x1b[0m")
+
 	case "help":
 		m.output = append(m.output, "\x1b[92m=== /help - Show Help Information ===\x1b[0m")
 		m.output = append(m.output, "")
@@ -2526,7 +2877,8 @@ func (m *Model) showDetailedHelp(cmd string) {
 		m.output = append(m.output, "")
 		m.output = append(m.output, "Available commands for detailed help:")
 		m.output = append(m.output, "  point, wayfind, go, stop, map, rooms, nearby, legend,")
-		m.output = append(m.output, "  trigger, triggers, ticktrigger, ticktriggers, alias, aliases, share, help")
+		m.output = append(m.output, "  trigger, triggers, ticktrigger, ticktriggers, alias, aliases,")
+		m.output = append(m.output, "  configure-ai, ai-prompt, ai, howto, share, help")
 		m.output = append(m.output, "")
 		m.output = append(m.output, "Use /help to see all commands")
 	}
