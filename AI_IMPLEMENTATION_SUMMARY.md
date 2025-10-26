@@ -34,7 +34,7 @@ Huh?!
 - AI Type (openai, ollama)
 - AI URL (endpoint)
 - AI Prompt template
-- API Key (TODO: integrate with password store for security)
+- API Key (stored securely in password store)
 
 ### 3. `/configure-ai` Command ✅
 **Files Modified:**
@@ -207,7 +207,7 @@ Huh?!
 ## Security Summary
 
 ### Security Measures
-1. **API Key Storage**: Currently stored in config, TODO to move to password store
+1. **API Key Storage**: ✅ API keys stored securely in password store (`.passwords` file with 0600 permissions), not in config JSON
 2. **Input Validation**: Commands sanitized before sending to AI
 3. **Error Handling**: Network errors don't crash the client
 4. **Web Mode**: Designed to make AI requests from browser to avoid exposing API keys to server
@@ -216,7 +216,6 @@ Huh?!
 ✅ No security vulnerabilities detected
 
 ### Future Security Improvements
-- Move API key to password store
 - Add rate limiting for AI requests
 - Implement request timeout configuration
 - Add option to disable AI features
@@ -267,9 +266,7 @@ This architecture prevents exposing API keys to the server.
 1. **Immediate**: Code review and merge
 2. **Short-term**: Implement web mode AI support
 3. **Medium-term**: 
-   - Move API key to password store
    - Add more AI provider support (Anthropic, etc.)
-   - Implement actual Barsoom preset prompt
 4. **Long-term**:
    - Context-aware prompts with game state
    - Command history analysis

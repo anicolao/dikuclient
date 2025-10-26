@@ -289,6 +289,32 @@ func (c *Config) GetAIPrompt() string {
 	return c.AIPrompt
 }
 
+// SetAIAPIKey stores the AI API key in the password store
+func SetAIAPIKey(ps *PasswordStore, apiKey string) error {
+	if ps.IsReadOnly() {
+		return fmt.Errorf("cannot save API key in read-only mode (web mode)")
+	}
+	
+	// Use a special key for AI API key
+	ps.passwords["ai:api_key"] = apiKey
+	return ps.Save()
+}
+
+// GetAIAPIKey retrieves the AI API key from the password store
+func GetAIAPIKey(ps *PasswordStore) string {
+	return ps.passwords["ai:api_key"]
+}
+
+// DeleteAIAPIKey removes the AI API key from the password store
+func DeleteAIAPIKey(ps *PasswordStore) error {
+	if ps.IsReadOnly() {
+		return fmt.Errorf("cannot delete API key in read-only mode (web mode)")
+	}
+	
+	delete(ps.passwords, "ai:api_key")
+	return ps.Save()
+}
+
 // Helper function to filter out characters for a specific server
 func filterCharactersByServer(characters []Character, host string, port int) []Character {
 	var filtered []Character

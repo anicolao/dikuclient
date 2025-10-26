@@ -2286,19 +2286,33 @@ func (m *Model) handleConfigureAICommand(args []string) {
 		return
 	}
 
-	// Set AI config
+	// Set AI config (type and URL only, not API key)
 	if err := cfg.SetAIConfig(aiType, url); err != nil {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving AI config: %v\x1b[0m", err))
 		return
 	}
 
-	// Store API key if provided
+	// Store API key in password store if provided
 	if apiKey != "" {
-		// Store in AI config (it will be handled by password store in the future)
-		cfg.AI.APIKey = apiKey
+		// Check if we're in web mode
+		webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+		isWebMode := webSessionID != ""
+		
+		passwordStore := config.NewPasswordStore(isWebMode)
+		if err := passwordStore.Load(); err != nil {
+			m.output = append(m.output, fmt.Sprintf("\x1b[91mError loading password store: %v\x1b[0m", err))
+			return
+		}
+		
+		if err := config.SetAIAPIKey(passwordStore, apiKey); err != nil {
+			m.output = append(m.output, fmt.Sprintf("\x1b[91mError saving API key: %v\x1b[0m", err))
+			return
+		}
+		
+		m.output = append(m.output, fmt.Sprintf("\x1b[92mAI configured: %s at %s (API key saved securely)\x1b[0m", aiType, url))
+	} else {
+		m.output = append(m.output, fmt.Sprintf("\x1b[92mAI configured: %s at %s\x1b[0m", aiType, url))
 	}
-
-	m.output = append(m.output, fmt.Sprintf("\x1b[92mAI configured: %s at %s\x1b[0m", aiType, url))
 }
 
 // loadPreset loads a preset prompt from the data/presets directory
@@ -2411,10 +2425,20 @@ func (m *Model) handleAICommand(command string) {
 		return
 	}
 
+	// Load API key from password store
+	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+	isWebMode := webSessionID != ""
+	passwordStore := config.NewPasswordStore(isWebMode)
+	if err := passwordStore.Load(); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError loading password store: %v\x1b[0m", err))
+		return
+	}
+	apiKey := config.GetAIAPIKey(passwordStore)
+
 	// CLI mode - make the AI request directly
 	m.output = append(m.output, "\x1b[90m[AI: Generating response...]\x1b[0m")
 	
-	aiClient := ai.NewClient(cfg.AI.Type, cfg.AI.URL, cfg.AI.APIKey)
+	aiClient := ai.NewClient(cfg.AI.Type, cfg.AI.URL, apiKey)
 	response, err := aiClient.GenerateResponse(fullPrompt)
 	if err != nil {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mAI Error: %v\x1b[0m", err))
@@ -2469,10 +2493,20 @@ func (m *Model) handleHowtoCommand(command string) {
 		return
 	}
 
+	// Load API key from password store
+	webSessionID := os.Getenv("DIKUCLIENT_WEB_SESSION_ID")
+	isWebMode := webSessionID != ""
+	passwordStore := config.NewPasswordStore(isWebMode)
+	if err := passwordStore.Load(); err != nil {
+		m.output = append(m.output, fmt.Sprintf("\x1b[91mError loading password store: %v\x1b[0m", err))
+		return
+	}
+	apiKey := config.GetAIAPIKey(passwordStore)
+
 	// CLI mode - make the AI request directly
 	m.output = append(m.output, "\x1b[90m[AI: Generating response...]\x1b[0m")
 	
-	aiClient := ai.NewClient(cfg.AI.Type, cfg.AI.URL, cfg.AI.APIKey)
+	aiClient := ai.NewClient(cfg.AI.Type, cfg.AI.URL, apiKey)
 	response, err := aiClient.GenerateResponse(fullPrompt)
 	if err != nil {
 		m.output = append(m.output, fmt.Sprintf("\x1b[91mAI Error: %v\x1b[0m", err))

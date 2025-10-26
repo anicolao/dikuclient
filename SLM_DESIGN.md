@@ -224,7 +224,7 @@ This document outlines the design for integrating AI assistance into the DikuMUD
 
 ## Security Considerations
 
-1. **API Key Storage**: Store API keys in the password store, not in accounts.json
+1. **API Key Storage**: ✅ Implemented - API keys are stored in the password store (`.passwords` file with 0600 permissions), not in accounts.json. Methods added: `SetAIAPIKey`, `GetAIAPIKey`, `DeleteAIAPIKey`
 2. **Web Mode**: Browser makes AI requests to prevent exposing API keys to the server
 3. **Input Validation**: Sanitize prompts before sending to AI
 4. **Rate Limiting**: Consider adding rate limiting to prevent API abuse
