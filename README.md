@@ -146,10 +146,16 @@ The client automatically builds a map as you explore:
 - `/ticktrigger <time> "commands"` - Add tick-based triggers (e.g., `/ticktrigger 5 "cast 'heal'"`)
 - `/ticktriggers list` - List all tick triggers
 - `/ticktriggers remove <n>` - Remove tick trigger by number
+- `/configure-ai <type> <url>` - Configure AI endpoint (openai or ollama)
+- `/ai-prompt "prompt"` - Set AI prompt template (or use preset)
+- `/ai <prompt>` - Get AI suggestion and execute it (use `<last_command>` to reference last command)
+- `/howto <query>` - Ask AI how to do something (info only, doesn't execute)
 - `/share` - Get shareable URL (web mode only)
 - `/help [command]` - Show available commands or detailed help for a specific command
 
 **Note:** Aliases, triggers, and tick triggers support multiple commands separated by semicolons (`;`). Each command is sent sequentially with a 1-second delay.
+
+**AI Integration:** The client supports AI assistance for command suggestions. Configure an AI endpoint (OpenAI or Ollama), then use `/ai` to get command suggestions or set up a trigger like `/trigger "Huh?!" "/ai <last_command>"` to automatically get help when the MUD doesn't understand your commands.
 
 **Navigation Examples:**
 ```
@@ -210,7 +216,30 @@ Tick trigger added: T:4 -> "cast 'bless';say Ready!"
 [Queue: say Ready!]
 ```
 
-See [MAPPER.md](MAPPER.md) for detailed mapping documentation, [ALIASES.md](ALIASES.md) for comprehensive alias usage, and [TICK_TIMER_FEATURE.md](TICK_TIMER_FEATURE.md) for tick timer details.
+**AI Integration Examples:**
+```
+> /configure-ai ollama http://localhost:11434/api/generate
+AI configured: ollama at http://localhost:11434/api/generate
+
+> /ai-prompt preset barsoom
+AI prompt set: PLACEHOLDER
+
+> /trigger "Huh?!" "/ai <last_command>"
+Trigger added: "Huh?!" -> "/ai <last_command>"
+
+> heall
+Huh?!
+[Trigger: /ai heall]
+[AI: Generating response...]
+[AI suggests: heal]
+(sends: heal)
+
+> /howto find the temple
+[AI: Generating response...]
+[AI: To find the temple, you can try these commands: 'look for temple', 'search temple', or ask other players with 'tell someone where is the temple']
+```
+
+See [MAPPER.md](MAPPER.md) for detailed mapping documentation, [ALIASES.md](ALIASES.md) for comprehensive alias usage, [TICK_TIMER_FEATURE.md](TICK_TIMER_FEATURE.md) for tick timer details, and [SLM_DESIGN.md](SLM_DESIGN.md) for AI integration design.
 
 ### Logging
 
@@ -242,6 +271,7 @@ dikuclient/
 ├── cmd/
 │   └── dikuclient/         # Main entry point
 ├── internal/
+│   ├── ai/                 # AI client for OpenAI/Ollama integration
 │   ├── client/             # MUD connection logic
 │   ├── config/             # Configuration and account management
 │   ├── mapper/             # Automatic mapping and pathfinding
@@ -253,6 +283,7 @@ dikuclient/
 ├── DESIGN.md               # Design documentation
 ├── MAPPER.md               # Mapping system documentation
 ├── TICK_TIMER_FEATURE.md   # Tick timer feature documentation
+├── SLM_DESIGN.md           # AI integration design documentation
 └── README.md               # This file
 ```
 
@@ -269,6 +300,10 @@ This implementation is feature-complete for a modern MUD client:
 - ✅ Room search and discovery (`/rooms`, `/nearby`, `/legend`)
 - ✅ Map persistence between sessions
 - ✅ Aliases with parameter substitution and multi-command support
+- ✅ Triggers with pattern matching and variable capture
+- ✅ Tick timer with automatic interval detection and tick-based triggers
+- ✅ AI integration for command suggestions (OpenAI, Ollama)
+- ✅ Special trigger variable `<last_command>` for referencing previous commands
 - ✅ Triggers with pattern matching and variable capture
 - ✅ Tick timer with automatic interval detection and tick-based triggers
 
