@@ -32,12 +32,21 @@ type Account struct {
 	Password string `json:"-"` // Never serialize to JSON
 }
 
+// AIConfig represents AI endpoint configuration
+type AIConfig struct {
+	Type   string `json:"type"`    // "openai", "ollama", or custom
+	URL    string `json:"url"`     // API endpoint URL
+	APIKey string `json:"-"`       // Not stored in JSON, stored in passwords file
+}
+
 // Config represents the application configuration
 type Config struct {
 	Servers        []Server    `json:"servers,omitempty"`
 	Characters     []Character `json:"characters,omitempty"`
 	Accounts       []Account   `json:"accounts"` // Legacy field for backward compatibility
 	DefaultAccount string      `json:"default_account,omitempty"`
+	AI             AIConfig    `json:"ai,omitempty"`     // AI configuration
+	AIPrompt       string      `json:"ai_prompt,omitempty"` // AI prompt template
 	configPath     string      // Path to the config file (for testing)
 }
 
@@ -255,6 +264,29 @@ func (c *Config) DeleteCharacter(username string, host string, port int) error {
 		}
 	}
 	return fmt.Errorf("character '%s' not found on %s:%d", username, host, port)
+}
+
+// SetAIConfig updates the AI configuration
+func (c *Config) SetAIConfig(aiType, url string) error {
+	c.AI.Type = aiType
+	c.AI.URL = url
+	return c.SaveConfig()
+}
+
+// GetAIConfig returns the AI configuration
+func (c *Config) GetAIConfig() AIConfig {
+	return c.AI
+}
+
+// SetAIPrompt updates the AI prompt template
+func (c *Config) SetAIPrompt(prompt string) error {
+	c.AIPrompt = prompt
+	return c.SaveConfig()
+}
+
+// GetAIPrompt returns the AI prompt template
+func (c *Config) GetAIPrompt() string {
+	return c.AIPrompt
 }
 
 // Helper function to filter out characters for a specific server
