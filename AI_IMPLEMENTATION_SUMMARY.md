@@ -63,7 +63,7 @@ Huh?!
 
 **Features:**
 - Custom prompt templates
-- Preset support (Barsoom preset currently shows "PLACEHOLDER")
+- Preset support (Barsoom preset loaded from `data/presets/barsoom.prompt`)
 - Uses `{command}` placeholder for user input
 
 ### 5. AI Client Implementation ✅

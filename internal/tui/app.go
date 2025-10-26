@@ -2301,6 +2301,16 @@ func (m *Model) handleConfigureAICommand(args []string) {
 	m.output = append(m.output, fmt.Sprintf("\x1b[92mAI configured: %s at %s\x1b[0m", aiType, url))
 }
 
+// loadPreset loads a preset prompt from the data/presets directory
+func loadPreset(presetName string) (string, error) {
+	presetPath := fmt.Sprintf("data/presets/%s.prompt", presetName)
+	data, err := os.ReadFile(presetPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to load preset '%s': %w", presetName, err)
+	}
+	return string(data), nil
+}
+
 // handleAIPromptCommand configures the AI prompt template
 func (m *Model) handleAIPromptCommand(command string) {
 	// Remove "/ai-prompt " prefix
@@ -2314,7 +2324,13 @@ func (m *Model) handleAIPromptCommand(command string) {
 		
 		switch strings.ToLower(preset) {
 		case "barsoom":
-			command = "PLACEHOLDER"
+			// Load preset from file
+			presetContent, err := loadPreset("barsoom")
+			if err != nil {
+				m.output = append(m.output, fmt.Sprintf("\x1b[91mError loading preset: %v\x1b[0m", err))
+				return
+			}
+			command = presetContent
 		default:
 			m.output = append(m.output, fmt.Sprintf("\x1b[91mError: Unknown preset '%s'\x1b[0m", preset))
 			m.output = append(m.output, "\x1b[93mAvailable presets: barsoom\x1b[0m")

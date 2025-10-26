@@ -222,7 +222,7 @@ Tick trigger added: T:4 -> "cast 'bless';say Ready!"
 AI configured: ollama at http://localhost:11434/api/generate
 
 > /ai-prompt preset barsoom
-AI prompt set: PLACEHOLDER
+AI prompt set: You are a command translator for DikuMUD, a text-based adventure game from the 1990s. Your ONLY job is to convert the user's attempted command into valid DikuMUD syntax...
 
 > /trigger "Huh?!" "/ai <last_command>"
 Trigger added: "Huh?!" -> "/ai <last_command>"

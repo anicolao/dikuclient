@@ -43,7 +43,7 @@ This document outlines the design for integrating AI assistance into the DikuMUD
 
 **Implementation**:
 - Add `AIPrompt` field to the `Config` struct
-- Provide default prompt for Barsoom MUD: "PLACEHOLDER" (as specified)
+- Provide default prompt for Barsoom MUD loaded from `data/presets/barsoom.prompt`
 - Allow users to customize the prompt via `/ai-prompt` command
 - The prompt should instruct the AI on how to interpret the failed command and suggest alternatives
 
@@ -93,7 +93,7 @@ This document outlines the design for integrating AI assistance into the DikuMUD
 - Add `handleAIPromptCommand` function in `internal/tui/app.go`
 - Support both custom prompts and presets
 - Store in configuration
-- For now, Barsoom preset shows "PLACEHOLDER"
+- Barsoom preset loaded from `data/presets/barsoom.prompt` containing comprehensive DikuMUD command translation rules
 
 **Location**: `internal/tui/app.go`
 
